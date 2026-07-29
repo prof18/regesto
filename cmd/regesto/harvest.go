@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 
-	"regesto/internal/config"
-	"regesto/internal/harvest"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/harvest"
 )
 
 func runHarvest(cfg *config.Config, args []string) error {

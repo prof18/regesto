@@ -1,14 +1,14 @@
 ---
 name: regesto-write
-description: Record a fact in the knowledge base at ~/regesto-kb. Use IMMEDIATELY when the user asks to remember/store/note something (this trigger is absolute — never reply "noted" without writing the file); when a decision is agreed in conversation ("let's go with X because Y"); when a preference is stated or a correction is given for the second time; when a non-obvious fact about the environment, tooling, or a project surfaces; when a recurring approach is settled on; when a gotcha is discovered. Do it at the moment it happens, unprompted — not at the end of the session. Also the manual store command, /regesto-write <statement> or bare /regesto-write.
+description: Record a fact in the knowledge base at {{kb_root}}. Use IMMEDIATELY when the user asks to remember/store/note something (this trigger is absolute — never reply "noted" without writing the file); when a decision is agreed in conversation ("let's go with X because Y"); when a preference is stated or a correction is given for the second time; when a non-obvious fact about the environment, tooling, or a project surfaces; when a recurring approach is settled on; when a gotcha is discovered. Do it at the moment it happens, unprompted — not at the end of the session. Also the manual store command, /regesto-write <statement> or bare /regesto-write.
 when_to_use: The moment any trigger above occurs, mid-session, without being asked. Also on explicit invocation.
 allowed-tools: Read, Grep, Write, Bash
 ---
 
 # regesto-write — record a fact
 
-This is `~/regesto-kb/SCHEMA.md` as an executable procedure. The KB root is
-`~/regesto-kb`.
+This is `{{kb_root}}/SCHEMA.md` as an executable procedure. The KB root is
+`{{kb_root}}`.
 
 ## Values to look up, never guess
 
@@ -16,8 +16,8 @@ Run these rather than inferring them — they must match what the rest of the
 system uses for the same repo and machine:
 
 ```
-~/regesto-kb/bin/regesto project --scope    # scope:  project:<name>, run from the repo
-~/regesto-kb/bin/regesto config             # machine=<name>, for source: and the inbox path
+{{kb_root}}/bin/regesto project --scope    # scope:  project:<name>, run from the repo
+{{kb_root}}/bin/regesto config             # machine=<name>, for source: and the inbox path
 date -u +%Y-%m-%dT%H:%M:%SZ                 # created: / modified:
 ```
 
@@ -46,7 +46,7 @@ wrong `(subject, relation)` pair, which is silent corruption.
 1. **State the claim as one sentence.** One claim per file. If what you have
    is half-formed — a fragment, a hunch, no clear `(subject, relation)` —
    do NOT force it: write it verbatim to
-   `~/regesto-kb/inbox/human@<machine>/<timestamp>-note.md` — `<machine>` from
+   `{{kb_root}}/inbox/human@<machine>/<timestamp>-note.md` — `<machine>` from
    `bin/regesto config` — and stop. Create the directory if absent. A rough note
    in the inbox beats a wrong pair in `facts/`.
 
@@ -59,7 +59,7 @@ wrong `(subject, relation)` pair, which is silent corruption.
    `fact`/`fact-`, `pattern`/`pat-`.
 
 4. **Choose `(subject, relation)` — check the vocabulary FIRST.** Open
-   `~/regesto-kb/INDEX.md`, section "Controlled vocabulary". If an existing
+   `{{kb_root}}/INDEX.md`, section "Controlled vocabulary". If an existing
    pair fits, reuse it **exactly**; only mint a new pair when nothing fits.
    Pick the pair so a future contradicting claim would land on the same pair:
    `subject: gradle` + `relation: console-flags`, never the whole sentence.

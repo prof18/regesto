@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"regesto/internal/config"
-	"regesto/internal/facts"
-	"regesto/internal/normalize"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/normalize"
 )
 
 func normalizeInstance(t *testing.T) *config.Config {
@@ -57,12 +57,12 @@ func fakeAgent(t *testing.T, response string) string {
 }
 
 // A model that cannot see the project names in use invents a spelling, and the
-// project's knowledge splits in two — which is how feedflow and feed-flow both
-// came to exist.
+// project's knowledge splits in two — which is how a store ends up holding both
+// aurora-2 and aurora.
 func TestPromptOffersKnownProjectNames(t *testing.T) {
 	c := normalize.Capture{Path: "p", Source: "claude@testbox", Body: "note"}
-	got := normalize.Prompt(c, []string{"(a, b)"}, []string{"dec-x"}, "feed-flow", "reader-flow")
-	for _, want := range []string{"project:feed-flow", "project:reader-flow", "splits"} {
+	got := normalize.Prompt(c, []string{"(a, b)"}, []string{"dec-x"}, "aurora", "beacon")
+	for _, want := range []string{"project:aurora", "project:beacon", "splits"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt missing %q", want)
 		}

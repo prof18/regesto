@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"regesto/internal/config"
-	"regesto/internal/facts"
-	"regesto/internal/index"
-	"regesto/internal/project"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/index"
+	"github.com/prof18/regesto/internal/project"
 )
 
 func runContext(cfg *config.Config, args []string) error {

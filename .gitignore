@@ -4,3 +4,8 @@
 # Built binary — build locally with `go build -o bin/regesto ./cmd/regesto`.
 # Binaries are not released through git; the bin/ shims fall back to `go run`.
 /bin/regesto
+
+# A checkout used as its own instance while hacking on it: an instance's config
+# and its per-machine state are never engine content.
+/config.toml
+/.state/

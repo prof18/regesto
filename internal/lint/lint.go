@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"regesto/internal/facts"
+	"github.com/prof18/regesto/internal/facts"
 )
 
 type Severity int

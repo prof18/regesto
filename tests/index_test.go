@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"regesto/internal/facts"
-	"regesto/internal/index"
+	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/index"
 )
 
 func buildFixtureIndex(t *testing.T) index.Result {

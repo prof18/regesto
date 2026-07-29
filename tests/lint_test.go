@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"regesto/internal/facts"
-	"regesto/internal/lint"
+	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/lint"
 )
 
 var lintNow = time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)

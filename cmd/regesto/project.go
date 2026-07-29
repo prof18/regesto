@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"regesto/internal/config"
-	"regesto/internal/project"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/project"
 )
 
 // runProject prints the canonical project name for a directory. The write path

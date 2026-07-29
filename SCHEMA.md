@@ -26,9 +26,8 @@ bin/                               scripts: regesto-search, lint, index generati
 docs/                              design documents. NOT knowledge — ignore when consulting.
 ```
 
-Project names are **canonical**, not paths: `feed-flow`, not `feedflow/feed-flow` or
-`/Users/marcogomiero/Workspace/tmp/feed-flow`. Every checkout on every machine maps to the
-same name.
+Project names are **canonical**, not paths: `aurora`, not `apps/aurora` or
+`/Users/you/work/aurora`. Every checkout on every machine maps to the same name.
 
 ## A fact
 
@@ -40,10 +39,10 @@ schema_version: 1
 id: dec-kmp-expect-actual-boundary
 title: Platform services cross the KMP boundary as interfaces
 type: decision
-scope: project:feed-flow
+scope: project:aurora
 subject: expect/actual
 relation: boundary-rule
-topics: [kmp-conventions, feed-flow]
+topics: [kmp-conventions, aurora]
 status: active
 supersedes: dec-kmp-interface-boundary
 source: codex@macbook

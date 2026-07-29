@@ -6,10 +6,10 @@ import (
 	"os"
 	"time"
 
-	"regesto/internal/config"
-	"regesto/internal/facts"
-	"regesto/internal/index"
-	"regesto/internal/lint"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/index"
+	"github.com/prof18/regesto/internal/lint"
 )
 
 func runLint(cfg *config.Config, args []string) error {

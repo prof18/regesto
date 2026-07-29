@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"regesto/internal/adapters"
-	"regesto/internal/config"
+	"github.com/prof18/regesto/internal/adapters"
+	"github.com/prof18/regesto/internal/config"
 )
 
 func writeConfig(t *testing.T, body string) *config.Config {

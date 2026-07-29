@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"regesto/internal/config"
+	"github.com/prof18/regesto/internal/config"
 )
 
 // Blobs are the last-seen copy of each captured file, kept in .state/ so a

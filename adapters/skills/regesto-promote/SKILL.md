@@ -9,12 +9,12 @@ allowed-tools: Read, Grep, Write, Bash
 # regesto-promote — chat export → facts → archive
 
 The only ingestion path for the Claude and ChatGPT mobile/desktop apps, which
-cannot participate in the KB automatically. KB root: `~/regesto-kb`.
+cannot participate in the KB automatically. KB root: `{{kb_root}}`.
 
 ## Procedure
 
 1. **Locate the export.** The user names a file (often a `.zip` or `.json`
-   in `~/Downloads`, or already filed under `~/regesto-kb/archive/`). Do not
+   in `~/Downloads`, or already filed under `{{kb_root}}/archive/`). Do not
    go looking for exports unprompted.
 
 2. **Read the transcript and extract durable facts** — apply SCHEMA.md's
@@ -31,7 +31,7 @@ cannot participate in the KB automatically. KB root: `~/regesto-kb`.
    provenance.
 
 4. **Archive the raw transcript** to
-   `~/regesto-kb/archive/chat-exports/<YYYY-MM-DD>-<short-name>.<ext>` —
+   `{{kb_root}}/archive/chat-exports/<YYYY-MM-DD>-<short-name>.<ext>` —
    move, don't copy, so nothing lingers in Downloads. The archive is
    immutable: never edit files under `archive/`, and never delete them.
 

@@ -3,11 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"regesto/internal/config"
+	regesto "github.com/prof18/regesto"
+	"github.com/prof18/regesto/internal/config"
 )
 
 // runInit scaffolds a new instance: the tree, a commented config, the ignore
@@ -103,6 +105,19 @@ func runInit(args []string) error {
 	if err := writeIfAbsent(root, ".stignore", stignoreTemplate); err != nil {
 		return err
 	}
+	if err := writeIfAbsent(root, "SCHEMA.md", regesto.Schema); err != nil {
+		return err
+	}
+
+	// The instance-side half of the engine. Without it the shims, the hook and
+	// the skills have nothing to point at, and `regesto-install` has nothing to
+	// install — an instance is not usable until these are on disk.
+	if err := unpack(root, regesto.Shims); err != nil {
+		return err
+	}
+	if err := unpack(root, regesto.Adapters); err != nil {
+		return err
+	}
 
 	fmt.Println()
 	fmt.Println("instance ready at", root)
@@ -113,6 +128,45 @@ func runInit(args []string) error {
 	fmt.Println("  3. bin/regesto schedule install   # harvest every 15 min, cycle hourly")
 	fmt.Println("  4. open a session in a project — its facts should appear without being asked for")
 	return nil
+}
+
+// unpack materialises an embedded tree under root, leaving any file that is
+// already there alone. Scripts land executable; nothing else does.
+//
+// Existing files are never overwritten because init is a scaffold, not an
+// upgrade: re-running it on a live instance must not silently revert a local
+// edit to a skill. Refreshing an instance after an engine upgrade is a separate
+// job, and does not exist yet.
+func unpack(root string, src fs.FS) error {
+	return fs.WalkDir(src, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || p == "." {
+			return err
+		}
+		dest := filepath.Join(root, filepath.FromSlash(p))
+		if d.IsDir() {
+			return os.MkdirAll(dest, 0o755)
+		}
+		if _, err := os.Stat(dest); err == nil {
+			fmt.Printf("  kept    %s (already present)\n", p)
+			return nil
+		}
+		body, err := fs.ReadFile(src, p)
+		if err != nil {
+			return err
+		}
+		mode := os.FileMode(0o644)
+		if strings.HasSuffix(p, ".sh") || strings.HasPrefix(p, "bin/") {
+			mode = 0o755
+		}
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(dest, body, mode); err != nil {
+			return err
+		}
+		fmt.Printf("  wrote   %s\n", p)
+		return nil
+	})
 }
 
 func writeIfAbsent(root, name, body string) error {

@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"regesto/internal/config"
-	"regesto/internal/facts"
-	"regesto/internal/index"
-	"regesto/internal/lint"
-	"regesto/internal/normalize"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/index"
+	"github.com/prof18/regesto/internal/lint"
+	"github.com/prof18/regesto/internal/normalize"
 )
 
 // runCycle is the whole downstream pass in one command: normalise the inbox,

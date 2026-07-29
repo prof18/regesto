@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"regesto/internal/config"
-	"regesto/internal/harvest"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/harvest"
 )
 
 // harvestInstance builds a KB plus a fake agent memory directory.

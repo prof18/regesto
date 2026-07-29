@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"os"
 
-	"regesto/internal/config"
-	"regesto/internal/facts"
-	"regesto/internal/search"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/search"
 )
 
 const usage = `usage: regesto [--config <path>] <command> [args]

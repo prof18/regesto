@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"regesto/internal/adapters"
-	"regesto/internal/config"
+	"github.com/prof18/regesto/internal/adapters"
+	"github.com/prof18/regesto/internal/config"
 )
 
 // runShowConfig prints the resolved instance configuration as key=value lines.

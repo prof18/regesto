@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"regesto/internal/config"
-	"regesto/internal/facts"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/facts"
 )
 
 // ScopeFix is one fact filed under a non-canonical project name.
@@ -30,7 +30,7 @@ type ScopeFix struct {
 // the same map to facts.
 //
 // Only names explicitly listed as aliases are touched. Similar-looking names are
-// left alone — `difftray` and `difftray-mobile` are two real projects, and
+// left alone — `beacon` and `beacon-mobile` are two real projects, and
 // guessing by resemblance would merge them.
 func CanonicaliseScopes(kbRoot string, cfg *config.Config, all []facts.Fact, apply bool, now time.Time) ([]ScopeFix, error) {
 	var out []ScopeFix

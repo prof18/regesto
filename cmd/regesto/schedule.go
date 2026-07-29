@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"regesto/internal/config"
+	"github.com/prof18/regesto/internal/config"
 )
 
 // Two jobs, because they have different homes (DECISION §9.0): harvest runs on

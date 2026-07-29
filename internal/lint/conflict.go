@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"regesto/internal/facts"
+	"github.com/prof18/regesto/internal/facts"
 )
 
 // ConflictResolution is one decided sync conflict, for the run summary.

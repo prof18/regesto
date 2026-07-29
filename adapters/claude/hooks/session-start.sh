@@ -3,12 +3,13 @@
 # context before the first prompt — verified 2026-07-27 with a sentinel string
 # in an isolated session (PLAN section 0 verify list, item 2).
 #
-# Install by adding to ~/.claude/settings.json:
+# `regesto-install` registers this automatically. By hand, add to
+# ~/.claude/settings.json:
 #
 #   "hooks": {
 #     "SessionStart": [
 #       { "hooks": [ { "type": "command",
-#                      "command": "~/regesto-kb/adapters/claude/hooks/session-start.sh" } ] }
+#                      "command": "<kb-root>/adapters/claude/hooks/session-start.sh" } ] }
 #     ]
 #   }
 #
@@ -17,7 +18,10 @@
 # rather than wherever the hook happens to run.
 set -uo pipefail
 
-REGESTO_ROOT="${REGESTO_KB_ROOT:-$HOME/regesto-kb}"
+# The instance is wherever this script lives, three levels up — the same
+# self-locating rule the bin/ shims use, so no instance path is baked in.
+# REGESTO_KB_ROOT still wins, for testing against another instance.
+REGESTO_ROOT="${REGESTO_KB_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 
 payload="$(cat)"
 dir=""

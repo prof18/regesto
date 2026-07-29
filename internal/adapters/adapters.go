@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"regesto/internal/config"
+	"github.com/prof18/regesto/internal/config"
 )
 
 // Agent is one agent's install targets. Paths are declared locations; they may

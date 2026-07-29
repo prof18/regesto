@@ -1,8 +1,8 @@
 ---
 name: regesto-search
-description: Search the personal knowledge base at ~/regesto-kb for prior decisions, conventions, preferences, and facts. Use before answering questions about past work, architecture, conventions, or the environment, and before making a decision a prior fact might settle.
+description: Search the personal knowledge base at {{kb_root}} for prior decisions, conventions, preferences, and facts. Use before answering questions about past work, architecture, conventions, or the environment, and before making a decision a prior fact might settle.
 when_to_use: Before decisions or answers that prior decisions, stated preferences, or recorded project facts could affect. Pass the query as arguments.
-allowed-tools: Bash(~/regesto-kb/bin/regesto-search:*), Read, Grep
+allowed-tools: Bash({{kb_root}}/bin/regesto-search:*), Read, Grep
 ---
 
 # regesto-search
@@ -22,11 +22,11 @@ memory.
 
 ## Matching knowledge
 
-!`~/regesto-kb/bin/regesto-search "$ARGUMENTS"`
+!`{{kb_root}}/bin/regesto-search "$ARGUMENTS"`
 
 ---
 
-To read a claim in full, open the path listed for it, relative to `~/regesto-kb`.
+To read a claim in full, open the path listed for it, relative to `{{kb_root}}`.
 A claim tagged `[proposed]` is awaiting human review — you may rely on it, but say
 that you are. No lines at all means nothing is recorded on the topic; say so rather
 than inventing an answer.
@@ -34,7 +34,7 @@ than inventing an answer.
 Full usage, for narrowing a query or widening it to history:
 
 ```
-~/regesto-kb/bin/regesto-search [--subject S] [--relation R] [--scope SC] [--history] [terms...]
+{{kb_root}}/bin/regesto-search [--subject S] [--relation R] [--scope SC] [--history] [terms...]
 ```
 
 Field filters match exactly and free-text terms AND together over frontmatter and

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"regesto/internal/config"
-	"regesto/internal/index"
-	"regesto/internal/project"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/index"
+	"github.com/prof18/regesto/internal/project"
 )
 
 func TestContextInjectsGlobalAndProjectScopes(t *testing.T) {

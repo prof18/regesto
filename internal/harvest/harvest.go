@@ -28,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"regesto/internal/adapters"
-	"regesto/internal/config"
+	"github.com/prof18/regesto/internal/adapters"
+	"github.com/prof18/regesto/internal/config"
 )
 
 // entry is one file as last seen. Content is hashed rather than stored: the

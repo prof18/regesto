@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"regesto/internal/facts"
+	"github.com/prof18/regesto/internal/facts"
 )
 
 // ContextOptions controls the SessionStart payload (PLAN 1.c).

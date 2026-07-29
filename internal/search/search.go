@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"regesto/internal/facts"
+	"github.com/prof18/regesto/internal/facts"
 )
 
 type Query struct {

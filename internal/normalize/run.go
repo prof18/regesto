@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"regesto/internal/config"
-	"regesto/internal/facts"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/facts"
 )
 
 // Options controls a normalisation pass.

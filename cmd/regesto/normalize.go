@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"regesto/internal/config"
-	"regesto/internal/facts"
-	"regesto/internal/lint"
-	"regesto/internal/normalize"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/lint"
+	"github.com/prof18/regesto/internal/normalize"
 )
 
 func runNormalize(cfg *config.Config, args []string) error {

@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
-	"regesto/internal/config"
-	"regesto/internal/facts"
-	"regesto/internal/index"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/index"
 )
 
 func runIndex(cfg *config.Config) error {

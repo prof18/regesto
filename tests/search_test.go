@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"regesto/internal/config"
-	"regesto/internal/facts"
-	"regesto/internal/search"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/search"
 )
 
 func fixtureRoot(t *testing.T) string {

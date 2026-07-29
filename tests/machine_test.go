@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"regesto/internal/config"
+	"github.com/prof18/regesto/internal/config"
 )
 
 // writeInstance builds a KB root with a config file and optional .state/machine.

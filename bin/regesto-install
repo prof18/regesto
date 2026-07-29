@@ -35,26 +35,40 @@ warn() { printf '  ! %s\n' "$*" >&2; }
 # realpath that tolerates a not-yet-existing target.
 real() { readlink -f "$1" 2>/dev/null || printf '%s\n' "$1"; }
 
-# --- build the binary --------------------------------------------------------
-# The hook runs on every session start. With the binary it costs ~50ms; via the
-# `go run` fallback, ~900ms — which throws away the reason decision 0.11 picked
-# Go in the first place (DECISION §12's latency warning). The binary is
-# deliberately not committed, so installing must build it.
-say "binary"
-if [[ -x "$ROOT/bin/regesto" ]] && [[ -z "$(find "$ROOT/cmd" "$ROOT/internal" -name '*.go' -newer "$ROOT/bin/regesto" -print -quit 2>/dev/null)" ]]; then
-  say "  ok   bin/regesto is up to date"
-elif command -v go >/dev/null 2>&1; then
-  act "build bin/regesto"
-  if (( ! DRY )); then
-    if ! (cd "$ROOT" && go build -o bin/regesto ./cmd/regesto); then
-      warn "build failed — the hook would fall back to 'go run' (~900ms per session)"
+# --- find the engine ---------------------------------------------------------
+# An instance is knowledge; the engine is a binary. It can arrive three ways,
+# and the hook runs on every session start, so whichever it is has to be a
+# binary and not `go run` — ~50ms against ~900ms, which is the whole reason
+# decision 0.11 picked Go (DECISION §12's latency warning).
+say "engine"
+ENGINE=""
+if [[ -f "$ROOT/go.mod" && -d "$ROOT/cmd/regesto" ]]; then
+  # This instance is also an engine checkout. The binary is deliberately not
+  # committed, so installing builds it.
+  if [[ -x "$ROOT/bin/regesto" ]] && [[ -z "$(find "$ROOT/cmd" "$ROOT/internal" -name '*.go' -newer "$ROOT/bin/regesto" -print -quit 2>/dev/null)" ]]; then
+    say "  ok   bin/regesto is up to date"
+    ENGINE="$ROOT/bin/regesto"
+  elif command -v go >/dev/null 2>&1; then
+    act "build bin/regesto"
+    if (( ! DRY )) && ! (cd "$ROOT" && go build -o bin/regesto ./cmd/regesto); then
+      warn "build failed"
       exit 1
     fi
+    ENGINE="$ROOT/bin/regesto"
+  elif [[ -x "$ROOT/bin/regesto" ]]; then
+    warn "go not found — keeping the existing bin/regesto, which may be stale"
+    ENGINE="$ROOT/bin/regesto"
   fi
 elif [[ -x "$ROOT/bin/regesto" ]]; then
-  warn "go not found — keeping the existing bin/regesto, which may be stale"
-else
-  warn "go not found and no bin/regesto — install Go, or the hook will not work"
+  say "  ok   bin/regesto"
+  ENGINE="$ROOT/bin/regesto"
+elif command -v regesto >/dev/null 2>&1; then
+  ENGINE="$(command -v regesto)"
+  say "  ok   $ENGINE (on PATH)"
+fi
+if [[ -z "$ENGINE" ]]; then
+  warn "no regesto engine found. Install a release, or build one from a checkout:"
+  warn "  go build -o $ROOT/bin/regesto ./cmd/regesto"
   exit 1
 fi
 
@@ -62,9 +76,13 @@ fi
 # A symlink into a directory already on PATH, rather than editing a shell rc:
 # nothing to undo, no reload, and it survives rebuilds because the link points at
 # a path rather than a copy. The binary finds its own instance from its location,
-# so `regesto` works from any directory.
+# so `regesto` works from any directory. Skipped when the engine already came
+# from PATH — there is nothing to add.
 say
 say "regesto on PATH"
+if [[ "$ENGINE" != "$ROOT/bin/regesto" ]]; then
+  say "  ok   already on PATH at $ENGINE"
+else
 link_dir=""
 for candidate in "$HOME/.local/bin" "$HOME/bin" /usr/local/bin /opt/homebrew/bin; do
   case ":$PATH:" in *":$candidate:"*) ;; *) continue ;; esac
@@ -86,10 +104,13 @@ else
     (( DRY )) || ln -sf "$ROOT/bin/regesto" "$link"
   fi
 fi
+fi
 
-# --- resolved instance config, straight from the binary ----------------------
-if [[ -x "$ROOT/bin/regesto" ]]; then
-  CONF="$("$ROOT/bin/regesto" --config "$CONFIG" config)" || exit 1
+# --- resolved instance config, straight from the engine ----------------------
+# On a dry run the binary may not have been built yet; fall back to source so a
+# dry run still reports real values instead of failing.
+if [[ -x "$ENGINE" ]]; then
+  CONF="$("$ENGINE" --config "$CONFIG" config)" || exit 1
 else
   CONF="$(go -C "$ROOT" run ./cmd/regesto --config "$CONFIG" config)" || exit 1
 fi
@@ -98,6 +119,19 @@ conf() { printf '%s\n' "$CONF" | sed -n "s|^$1=||p" | head -1; }
 MACHINE="$(conf machine)"
 MACHINE_SRC="$(conf machine_source)"
 AGENTS="$(conf agents)"
+
+# How this instance's root is written into the files handed to agents. Tilde
+# form when it sits under $HOME: skills and instructions are routinely shared
+# across machines via a dotfiles repo, where an absolute /Users/<someone> path
+# is wrong everywhere but here.
+ROOT_DISPLAY="$ROOT"
+[[ "$ROOT" == "$HOME/"* ]] && ROOT_DISPLAY="~${ROOT#"$HOME"}"
+
+# Substitute the instance's values into a shipped template. {{machine}} is
+# deliberately NOT substituted — a machine name baked into a shared file is
+# wrong on every other machine, so templates name the resolving command instead.
+render() { sed -e "s|{{kb_root}}|$ROOT_DISPLAY|g" "$1"; }
+
 say "instance: root=$ROOT machine=$MACHINE (from $MACHINE_SRC) agents=[${AGENTS// /, }]"
 if [[ "$MACHINE_SRC" == "hostname" ]]; then
   warn "machine name guessed from the hostname, which drifts on macOS."
@@ -105,6 +139,45 @@ if [[ "$MACHINE_SRC" == "hostname" ]]; then
 fi
 
 # --- 1. skills ---------------------------------------------------------------
+# The shipped skills carry {{kb_root}} rather than a resolved path, so they are
+# the same file in every instance. They are therefore rendered per instance
+# before they can be linked. The rendered copies live in .state/, which is
+# per-machine and never synced or committed — a resolved path is a local fact.
+# Consequence: editing a skill under adapters/ needs a re-run of this script to
+# reach the agents, exactly as an edit to the instructions template does.
+STAGE="$ROOT/.state/skills"
+say
+say "skills → rendered into .state/skills"
+for src in "$ROOT"/adapters/skills/*/; do
+  [[ -d "$src" ]] || continue
+  name="$(basename "$src")"
+  changed=0
+  while IFS= read -r rel; do
+    out="$STAGE/$name/$rel"
+    if [[ "$rel" == *.md ]]; then
+      new="$(render "$src$rel")"
+    else
+      new="$(cat "$src$rel")"
+    fi
+    [[ -f "$out" && "$(cat "$out")" == "$new" ]] && continue
+    changed=1
+    (( DRY )) && continue
+    mkdir -p "$(dirname "$out")"
+    printf '%s\n' "$new" > "$out"
+  done < <(cd "$src" && find . -type f -not -name '.*' | sed 's|^\./||')
+  if (( changed )); then act "  render $name"; else say "    ok   $name up to date"; fi
+done
+# Drop renders whose source skill is gone, so a removed skill does not linger.
+if [[ -d "$STAGE" ]]; then
+  for old in "$STAGE"/*/; do
+    [[ -d "$old" ]] || continue
+    name="$(basename "$old")"
+    [[ -d "$ROOT/adapters/skills/$name" ]] && continue
+    act "  drop  $name (no longer shipped)"
+    (( DRY )) || rm -rf "$old"
+  done
+fi
+
 say
 say "skills → agent skills directories"
 for agent in $AGENTS; do
@@ -127,12 +200,12 @@ for agent in $AGENTS; do
 
   # Prune links this instance created that no longer resolve — a skill that was
   # renamed or removed otherwise leaves a dangling entry in the agent's skills
-  # directory. Scoped to links pointing into THIS repo's adapters/skills, so a
-  # broken link belonging to anything else is left alone.
+  # directory. Scoped to links pointing into THIS instance, so a broken link
+  # belonging to anything else is left alone.
   for old in "$resolved"/*; do
     [[ -L "$old" ]] || continue
     tgt="$(readlink "$old")"
-    [[ "$tgt" == "$ROOT/adapters/skills/"* ]] || continue
+    [[ "$tgt" == "$STAGE/"* || "$tgt" == "$ROOT/adapters/skills/"* ]] || continue
     [[ -e "$tgt" ]] && continue
     act "  prune $(basename "$old") (dangling → $(basename "$tgt"))"
     (( DRY )) || rm -f "$old"
@@ -141,13 +214,21 @@ for agent in $AGENTS; do
     [[ -d "$src" ]] || continue
     name="$(basename "$src")"
     dest="$resolved/$name"
+    want="$STAGE/$name"
     if [[ -L "$dest" ]]; then
-      if [[ "$(real "$dest")" == "$(real "${src%/}")" ]]; then say "    ok   $name"; continue; fi
+      if [[ "$(real "$dest")" == "$(real "$want")" ]]; then say "    ok   $name"; continue; fi
+      # A link straight at adapters/skills/ is this instance's own, from before
+      # skills were rendered. Repoint it rather than warning about it.
+      if [[ "$(readlink "$dest")" == "$ROOT/adapters/skills/"* ]]; then
+        act "  relink $name (was pointing at the unrendered source)"
+        (( DRY )) || ln -sfn "$want" "$dest"
+        continue
+      fi
       warn "  $name → $(readlink "$dest") points elsewhere — leaving it alone"; continue
     fi
     if [[ -e "$dest" ]]; then warn "  $name exists and is not a symlink — leaving it alone"; continue; fi
     act "  link $name"
-    (( DRY )) || ln -s "${src%/}" "$dest"
+    (( DRY )) || ln -s "$want" "$dest"
   done
 done
 
@@ -215,14 +296,7 @@ else
       continue
     fi
     rendered="$(mktemp)"
-    # Render the KB root in tilde form when it sits under $HOME. Instructions
-    # files are routinely shared across machines via a dotfiles repo, where an
-    # absolute /Users/<someone> path is wrong everywhere but here. {{machine}} is
-    # deliberately NOT substituted — a machine name baked into a shared file is
-    # wrong on every other machine, so the template names the resolving command.
-    root_display="$ROOT"
-    [[ "$ROOT" == "$HOME/"* ]] && root_display="~${ROOT#"$HOME"}"
-    sed -e "s|{{kb_root}}|$root_display|g" "$TEMPLATE" > "$rendered"
+    render "$TEMPLATE" > "$rendered"
 
     if ! grep -qE "$SECTION_START" "$target"; then
       act "append KB section for $agent to $declared$note"

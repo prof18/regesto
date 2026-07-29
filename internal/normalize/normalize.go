@@ -111,7 +111,7 @@ func Find(kbRoot string) ([]Capture, error) {
 // (subject, relation) pair is the whole defence against undetectable
 // contradictions — a model that cannot see the vocabulary will invent synonyms.
 // The same applies to project names: a model that cannot see them writes
-// `project:feedflow` where the store uses `feed-flow`, and the project's
+// `project:aurora-2` where the store uses `aurora`, and the project's
 // knowledge quietly splits in two.
 func Prompt(c Capture, vocabulary []string, existingIDs []string, projects ...string) string {
 	var b strings.Builder

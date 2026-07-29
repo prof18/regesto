@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"regesto/internal/config"
+	"github.com/prof18/regesto/internal/config"
 )
 
 // Resolution records how a name was derived, so a hook or `--debug` run can
@@ -52,7 +52,7 @@ func Resolve(cfg *config.Config, dir string) Resolution {
 }
 
 // canonical applies config.toml's [projects] table, which is what collapses
-// feed-flow-2 onto feed-flow.
+// aurora-2 onto aurora.
 func canonical(cfg *config.Config, derived string) (string, bool) {
 	if mapped, ok := cfg.Projects[derived]; ok {
 		return mapped, true
@@ -64,8 +64,8 @@ func canonical(cfg *config.Config, derived string) (string, bool) {
 //
 // A submodule is its own repository with its own remote, so a vendored
 // dependency would otherwise resolve to the dependency's name rather than the
-// project that vendors it — editing difftray-mobile's vendor/difftray would
-// inject difftray's facts and file new ones under difftray, splitting the
+// project that vendors it — editing beacon-mobile's vendor/beacon would
+// inject beacon's facts and file new ones under beacon, splitting the
 // project in two on every visit. Climbing to the superproject follows what the
 // person is actually working on. The loop handles submodules within submodules.
 func gitTopLevel(dir string) string {

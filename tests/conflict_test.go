@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"regesto/internal/config"
-	"regesto/internal/facts"
-	"regesto/internal/lint"
+	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/lint"
 )
 
 var conflictNow = time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
@@ -194,18 +194,18 @@ func TestReportOnlyChangesNothing(t *testing.T) {
 // session in that repo sees only the half matching the name the hook resolved.
 func TestScopeAliasesAreCanonicalised(t *testing.T) {
 	root := conflictStore(t)
-	if err := os.MkdirAll(filepath.Join(root, "knowledge", "facts", "projects", "feedflow"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "knowledge", "facts", "projects", "aurora-2"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	body := "---\nschema_version: 1\nid: fact-a\ntitle: A claim\ntype: fact\n" +
-		"scope: project:feedflow\nsubject: s\nrelation: r\nstatus: active\nsource: codex@studio\n" +
+		"scope: project:aurora-2\nsubject: s\nrelation: r\nstatus: active\nsource: codex@studio\n" +
 		"created:  2026-07-01T09:00:00Z\nmodified: 2026-07-01T09:00:00Z\n---\n\nThe claim body.\n"
-	stray := filepath.Join(root, "knowledge", "facts", "projects", "feedflow", "fact-a.md")
+	stray := filepath.Join(root, "knowledge", "facts", "projects", "aurora-2", "fact-a.md")
 	if err := os.WriteFile(stray, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(root, "config.toml")
-	if err := os.WriteFile(cfgPath, []byte("agents = [\"claude\"]\n\n[projects]\n\"feedflow\" = \"feed-flow\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("agents = [\"claude\"]\n\n[projects]\n\"aurora-2\" = \"aurora\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.Load(cfgPath)
@@ -225,13 +225,13 @@ func TestScopeAliasesAreCanonicalised(t *testing.T) {
 		t.Fatalf("expected one clean move, got %+v", fixes)
 	}
 
-	moved := filepath.Join(root, "knowledge", "facts", "projects", "feed-flow", "fact-a.md")
+	moved := filepath.Join(root, "knowledge", "facts", "projects", "aurora", "fact-a.md")
 	f, err := facts.ParseFile(moved)
 	if err != nil {
 		t.Fatalf("fact not at the canonical path: %v", err)
 	}
-	if f.Scope != "project:feed-flow" {
-		t.Errorf("scope = %q, want project:feed-flow", f.Scope)
+	if f.Scope != "project:aurora" {
+		t.Errorf("scope = %q, want project:aurora", f.Scope)
 	}
 	if !strings.Contains(f.Body, "The claim body.") {
 		t.Error("the claim body was altered by a filing correction")
@@ -241,22 +241,22 @@ func TestScopeAliasesAreCanonicalised(t *testing.T) {
 	}
 }
 
-// A name that merely resembles another must be left alone: difftray and
-// difftray-mobile are two real projects.
+// A name that merely resembles another must be left alone: beacon and
+// beacon-mobile are two real projects.
 func TestUnlistedSimilarNamesAreLeftAlone(t *testing.T) {
 	root := conflictStore(t)
-	dir := filepath.Join(root, "knowledge", "facts", "projects", "difftray")
+	dir := filepath.Join(root, "knowledge", "facts", "projects", "beacon")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	body := "---\nschema_version: 1\nid: fact-b\ntitle: A claim\ntype: fact\n" +
-		"scope: project:difftray\nsubject: s\nrelation: r\nstatus: active\nsource: codex@studio\n" +
+		"scope: project:beacon\nsubject: s\nrelation: r\nstatus: active\nsource: codex@studio\n" +
 		"created:  2026-07-01T09:00:00Z\nmodified: 2026-07-01T09:00:00Z\n---\n\nBody.\n"
 	if err := os.WriteFile(filepath.Join(dir, "fact-b.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(root, "config.toml")
-	if err := os.WriteFile(cfgPath, []byte("agents = [\"claude\"]\n\n[projects]\n\"feedflow\" = \"feed-flow\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("agents = [\"claude\"]\n\n[projects]\n\"aurora-2\" = \"aurora\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, _ := config.Load(cfgPath)
