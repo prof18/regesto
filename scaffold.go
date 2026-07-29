@@ -32,3 +32,11 @@ var Shims embed.FS
 //
 //go:embed SCHEMA.md
 var Schema string
+
+// Examples are the demo facts `regesto init --examples` copies in: an invented
+// project with a controlled vocabulary worth imitating. An empty knowledge base
+// gives an agent nothing to pattern-match against, and the first few facts set
+// the vocabulary everything after them has to reuse.
+//
+//go:embed examples/facts
+var Examples embed.FS

@@ -90,7 +90,7 @@ func SetFields(path string, updates map[string]string) error {
 
 // writeAtomic writes via a temporary file in the same directory and renames.
 // Hermes is always-on and lint runs hourly, so there is no quiet window
-// (DECISION §8) — a reader must never observe a half-written fact.
+// (DESIGN §8) — a reader must never observe a half-written fact.
 func writeAtomic(path string, data []byte) error {
 	dir := path[:strings.LastIndex(path, "/")+1]
 	tmp, err := os.CreateTemp(dir, ".regesto-*")

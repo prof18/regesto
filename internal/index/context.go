@@ -12,7 +12,7 @@ type ContextOptions struct {
 	// Project is the canonical current project name; "" injects global only.
 	Project string
 	// MaxBytes caps the payload. This lands in every session, and
-	// accumulation is unbounded (DECISION §12), so the cap is the mechanism
+	// accumulation is unbounded (DESIGN §12), so the cap is the mechanism
 	// that keeps a growing store from silently inflating every prompt.
 	// Zero means no cap.
 	MaxBytes int

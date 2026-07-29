@@ -63,7 +63,7 @@ type defaults struct {
 const defaultMaxCaptureBytes = 10 * 1024 * 1024
 
 // Per-vendor defaults. Adding a fourth agent should touch only this table
-// (DECISION §7) plus its config override, if any.
+// (DESIGN §7) plus its config override, if any.
 var vendorDefaults = map[string]defaults{
 	"claude": {
 		skills:       "~/.claude/skills",

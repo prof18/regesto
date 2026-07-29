@@ -12,7 +12,7 @@ import (
 	"github.com/prof18/regesto/internal/config"
 )
 
-// Two jobs, because they have different homes (DECISION §9.0): harvest runs on
+// Two jobs, because they have different homes (DESIGN §9.0): harvest runs on
 // every machine against its own native memory, while the cycle runs only where
 // write authority lives.
 type job struct {

@@ -23,6 +23,7 @@ func runInit(args []string) error {
 	dir := fs.String("dir", "", "where to create the instance (default: cwd)")
 	machine := fs.String("machine", "", "short name for this machine (default: derived from the hostname)")
 	force := fs.Bool("force", false, "write into a directory that already has a config.toml")
+	examples := fs.Bool("examples", false, "populate knowledge/facts/ with the example facts")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -119,6 +120,16 @@ func runInit(args []string) error {
 		return err
 	}
 
+	if *examples {
+		src, err := exampleFacts()
+		if err != nil {
+			return err
+		}
+		if err := unpack(filepath.Join(root, "knowledge", "facts"), src); err != nil {
+			return err
+		}
+	}
+
 	fmt.Println()
 	fmt.Println("instance ready at", root)
 	fmt.Println()
@@ -128,6 +139,13 @@ func runInit(args []string) error {
 	fmt.Println("  3. bin/regesto schedule install   # harvest every 15 min, cycle hourly")
 	fmt.Println("  4. open a session in a project — its facts should appear without being asked for")
 	return nil
+}
+
+// exampleFacts is the embedded examples/facts tree with its prefix stripped, so
+// it unpacks straight onto knowledge/facts/ and keeps its global/ and projects/
+// split.
+func exampleFacts() (fs.FS, error) {
+	return fs.Sub(regesto.Examples, "examples/facts")
 }
 
 // unpack materialises an embedded tree under root, leaving any file that is

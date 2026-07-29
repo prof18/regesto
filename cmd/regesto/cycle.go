@@ -21,7 +21,7 @@ import (
 //
 // It exists so a scheduler has a single thing to call. Harvest is deliberately
 // not part of it — harvest runs on every machine, while this runs only where
-// write authority lives (DECISION §9.0), and conflating them would put two
+// write authority lives (DESIGN §9.0), and conflating them would put two
 // machines in the business of deciding what becomes a fact.
 func runCycle(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("cycle", flag.ContinueOnError)
@@ -174,7 +174,7 @@ func runCycle(cfg *config.Config, args []string) error {
 }
 
 // commit records the pass. Nothing here is fatal: the markdown files are the
-// knowledge and git is convenience (DECISION §9.1), so a failure to commit must
+// knowledge and git is convenience (DESIGN §9.1), so a failure to commit must
 // not fail the cycle or the next one will not run either.
 func commit(cfg *config.Config, written, actions int, push bool) error {
 	if _, err := os.Stat(cfg.KBRoot + "/.git"); err != nil {

@@ -39,7 +39,7 @@ type PromoteResult struct {
 }
 
 // Promote turns a chat export into facts and archives the transcript
-// (PLAN 2.e, DECISION §5).
+// (PLAN 2.e, DESIGN §5).
 //
 // This is the only ingestion path for the Claude and ChatGPT apps, which cannot
 // participate automatically — there is no native memory to harvest and no hook

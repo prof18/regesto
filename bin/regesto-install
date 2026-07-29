@@ -12,7 +12,7 @@
 # as Phase 4's `init` (PLAN 4.a) rather than a script that only fits one machine.
 #
 # Symlinks live outside the synced folder and point into it, so the sync client
-# only ever sees real files (DECISION §9.0).
+# only ever sees real files (DESIGN §9.0).
 #
 # Usage:  bin/regesto-install [--dry-run] [--config <path>]
 set -uo pipefail
@@ -39,7 +39,7 @@ real() { readlink -f "$1" 2>/dev/null || printf '%s\n' "$1"; }
 # An instance is knowledge; the engine is a binary. It can arrive three ways,
 # and the hook runs on every session start, so whichever it is has to be a
 # binary and not `go run` — ~50ms against ~900ms, which is the whole reason
-# decision 0.11 picked Go (DECISION §12's latency warning).
+# decision 0.11 picked Go (DESIGN §12's latency warning).
 say "engine"
 ENGINE=""
 if [[ -f "$ROOT/go.mod" && -d "$ROOT/cmd/regesto" ]]; then

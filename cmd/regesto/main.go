@@ -26,8 +26,8 @@ commands:
         print the resolved instance config as key=value lines
   harvest [--dry-run] [-v]
         capture new native-memory writes into inbox/<agent>@<machine>/
-  init [--dir D] [--machine NAME]
-        scaffold a new instance: tree, config, ignore files, machine identity
+  init [--dir D] [--machine NAME] [--examples] [--force]
+        scaffold a new instance: tree, config, adapters, shims, machine identity
   promote [file|-] [--source S] [--name N] [--dry-run]
         chat transcript → facts → archive/chat-exports/ (reads stdin if no file)
   cycle [--dry-run] [--push] [--no-commit]
@@ -62,6 +62,12 @@ func run(args []string) error {
 		return fmt.Errorf("no command given")
 	}
 
+	// init runs before an instance exists, so it must not need one. Every other
+	// command resolves the instance first.
+	if rest[0] == "init" {
+		return runInit(rest[1:])
+	}
+
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
 		return err
@@ -78,8 +84,6 @@ func run(args []string) error {
 		return runShowConfig(cfg)
 	case "harvest":
 		return runHarvest(cfg, rest[1:])
-	case "init":
-		return runInit(rest[1:])
 	case "promote":
 		return runPromote(cfg, rest[1:])
 	case "cycle":

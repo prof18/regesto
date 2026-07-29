@@ -1,5 +1,5 @@
 // Package lint validates knowledge/facts/ against SCHEMA.md and reconciles
-// contradicting claims (PLAN 2.c, DECISION §6).
+// contradicting claims (PLAN 2.c, DESIGN §6).
 //
 // Two rules govern everything here:
 //

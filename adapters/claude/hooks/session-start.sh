@@ -31,6 +31,6 @@ fi
 [[ -z "$dir" || ! -d "$dir" ]] && dir="$PWD"
 
 # Never fail a session start. A broken hook must degrade to injecting nothing —
-# every layer of this design degrades gracefully (DECISION §12), and a
+# every layer of this design degrades gracefully (DESIGN §12), and a
 # non-zero exit here would surface as an error on every single session.
 "$REGESTO_ROOT/bin/regesto-context" --dir "$dir" 2>/dev/null || exit 0

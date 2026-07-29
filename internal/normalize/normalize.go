@@ -1,5 +1,5 @@
 // Package normalize converts raw inbox captures into canonical facts
-// (PLAN 2.b, DECISION §6 step 2).
+// (PLAN 2.b, DESIGN §6 step 2).
 //
 // Normalising is a judgement task — choosing `subject` and `relation`, reusing
 // existing vocabulary rather than minting a synonym — so a model does that part.

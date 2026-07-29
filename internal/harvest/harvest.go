@@ -1,5 +1,5 @@
 // Package harvest captures what agents wrote to their own native memory
-// (PLAN 2.a, DECISION §5).
+// (PLAN 2.a, DESIGN §5).
 //
 // It is diff-based and read-only with respect to vendor files: a snapshot of
 // each agent's memory tree is kept in .state/<machine>/, and anything new or
