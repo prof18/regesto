@@ -1,0 +1,140 @@
+// regesto — single binary with subcommands (decision 0.11). The bin/ shims
+// (bin/regesto-search, bin/regesto-index) are thin wrappers over these subcommands so
+// hooks and skills get a stable path.
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+
+	"regesto/internal/config"
+	"regesto/internal/facts"
+	"regesto/internal/search"
+)
+
+const usage = `usage: regesto [--config <path>] <command> [args]
+
+commands:
+  search [--subject S] [--relation R] [--scope SC] [--history] [terms...]
+        query knowledge/facts/; superseded hidden unless --history
+  index
+        regenerate INDEX.md and knowledge/topics/ from knowledge/facts/
+  context [--dir D] [--project P] [--max-bytes N] [--vocabulary]
+        compact SessionStart payload: what exists, scoped to the current project
+  config
+        print the resolved instance config as key=value lines
+  harvest [--dry-run] [-v]
+        capture new native-memory writes into inbox/<agent>@<machine>/
+  init [--dir D] [--machine NAME]
+        scaffold a new instance: tree, config, ignore files, machine identity
+  promote [file|-] [--source S] [--name N] [--dry-run]
+        chat transcript → facts → archive/chat-exports/ (reads stdin if no file)
+  cycle [--dry-run] [--push] [--no-commit]
+        the downstream pass: normalise, reconcile, rebuild, commit
+  schedule [status|print|install|uninstall]
+        run harvest and cycle automatically (launchd on macOS)
+  normalize [--dry-run] [--command CMD] [--show-prompt]
+        turn inbox captures into canonical facts
+  lint [--fix] [--rebuild] [--quiet]
+        validate knowledge/facts/ against SCHEMA.md and reconcile contradictions
+  project [--dir D] [--scope] [-v]
+        print the canonical project name for a directory
+`
+
+func main() {
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, "regesto:", err)
+		os.Exit(1)
+	}
+}
+
+func run(args []string) error {
+	global := flag.NewFlagSet("regesto", flag.ContinueOnError)
+	configPath := global.String("config", "", "path to config.toml (default: walk up from cwd; REGESTO_CONFIG overrides)")
+	global.Usage = func() { fmt.Fprint(os.Stderr, usage) }
+	if err := global.Parse(args); err != nil {
+		return err
+	}
+	rest := global.Args()
+	if len(rest) == 0 {
+		fmt.Fprint(os.Stderr, usage)
+		return fmt.Errorf("no command given")
+	}
+
+	cfg, err := loadConfig(*configPath)
+	if err != nil {
+		return err
+	}
+
+	switch rest[0] {
+	case "search":
+		return runSearch(cfg, rest[1:])
+	case "index":
+		return runIndex(cfg)
+	case "context":
+		return runContext(cfg, rest[1:])
+	case "config":
+		return runShowConfig(cfg)
+	case "harvest":
+		return runHarvest(cfg, rest[1:])
+	case "init":
+		return runInit(rest[1:])
+	case "promote":
+		return runPromote(cfg, rest[1:])
+	case "cycle":
+		return runCycle(cfg, rest[1:])
+	case "schedule":
+		return runSchedule(cfg, rest[1:])
+	case "normalize":
+		return runNormalize(cfg, rest[1:])
+	case "lint":
+		return runLint(cfg, rest[1:])
+	case "project":
+		return runProject(cfg, rest[1:])
+	default:
+		fmt.Fprint(os.Stderr, usage)
+		return fmt.Errorf("unknown command %q", rest[0])
+	}
+}
+
+func loadConfig(path string) (*config.Config, error) {
+	if path == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		path, err = config.Find(cwd)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return config.Load(path)
+}
+
+func runSearch(cfg *config.Config, args []string) error {
+	fs := flag.NewFlagSet("search", flag.ContinueOnError)
+	subject := fs.String("subject", "", "exact subject match")
+	relation := fs.String("relation", "", "exact relation match")
+	scope := fs.String("scope", "", "global, project:<name>, or bare project name")
+	history := fs.Bool("history", false, "include status: superseded claims")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	all, err := facts.LoadAll(cfg.KBRoot)
+	if err != nil {
+		return err
+	}
+	results := search.Run(all, search.Query{
+		Subject:  *subject,
+		Relation: *relation,
+		Scope:    *scope,
+		Terms:    fs.Args(),
+		History:  *history,
+	})
+	for _, f := range results {
+		fmt.Println(search.FormatLine(f))
+	}
+	return nil
+}

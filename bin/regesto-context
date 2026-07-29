@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Thin shim over `regesto context` (decision 0.11) — the stable path the
+# SessionStart hook calls. All instance values come from config.toml.
+#
+# Runs per session, so it uses the built binary when present and only falls
+# back to `go run` (seconds, not milliseconds) if it hasn't been built.
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -x "$root/bin/regesto" ]]; then
+  exec "$root/bin/regesto" --config "$root/config.toml" context "$@"
+fi
+exec go -C "$root" run ./cmd/regesto --config "$root/config.toml" context "$@"

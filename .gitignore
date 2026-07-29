@@ -1,0 +1,6 @@
+# macOS noise
+.DS_Store
+
+# Built binary — build locally with `go build -o bin/regesto ./cmd/regesto`.
+# Binaries are not released through git; the bin/ shims fall back to `go run`.
+/bin/regesto

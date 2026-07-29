@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Thin shim over `regesto index` (decision 0.11) — a stable path for hooks
+# and jobs. All instance values come from config.toml, not from this script.
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -x "$root/bin/regesto" ]]; then
+  exec "$root/bin/regesto" --config "$root/config.toml" index "$@"
+fi
+# Fallback when the binary hasn't been built (binaries are not committed):
+#   go build -o bin/regesto ./cmd/regesto
+exec go -C "$root" run ./cmd/regesto --config "$root/config.toml" index "$@"

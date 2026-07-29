@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Thin shim over `regesto search` (decision 0.11) — a stable path for hooks
+# and skills. All instance values come from config.toml, not from this script.
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -x "$root/bin/regesto" ]]; then
+  exec "$root/bin/regesto" --config "$root/config.toml" search "$@"
+fi
+# Fallback when the binary hasn't been built (binaries are not committed):
+# slower, fine for interactive use. Build with:
+#   go build -o bin/regesto ./cmd/regesto
+exec go -C "$root" run ./cmd/regesto --config "$root/config.toml" search "$@"
