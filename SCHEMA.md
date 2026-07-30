@@ -1,12 +1,12 @@
 # SCHEMA — the knowledge base contract
 
 This file defines how knowledge is stored. It is hand-written and authoritative: agents
-follow it, generated artifacts conform to it, and `regesto` implements it. Design
-reasoning behind these choices: `DESIGN.md`.
+follow it, generated artifacts conform to it, and `regesto` implements it.
 
 It ships in two places — in the engine as the spec, and in every instance `regesto init`
-creates, as the document the write skill points agents at. Changing it is a breaking
-change; see `CONTRIBUTING.md`.
+creates, as the document the write skill points agents at. So it names no sibling file:
+the reasoning behind these choices, and the rule that a schema change needs a migration
+note, both live in the engine repository.
 
 ## The rule that governs everything
 
@@ -200,7 +200,7 @@ it itself.
   — see Superseding.
 - `claude@*`, `codex@*` — trusted; captured from work you supervised. Lands as `active`.
 - `hermes@*` — **trust follows the channel, not the agent.** From the private,
-  single-user Telegram channel (the only surface enabled — DESIGN §8) writes land as
+  single-user Telegram channel, if that is the only surface enabled, writes land as
   `active` like any other agent's: the sender is you. As a compensating check, lint
   lists every hermes write in its run summary — Hermes acts unattended, and content it
   reads for you (forwarded mail, fetched links) is still third-party. If a channel
