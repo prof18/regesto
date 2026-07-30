@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	regesto "github.com/prof18/regesto"
@@ -90,19 +94,103 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	}
 
 	if *dry {
-		fmt.Printf("\ndry run — %d file(s) would change, %d left alone. Nothing was written.\n", written, kept)
+		fmt.Printf("\ndry run — %d file(s) would change, %d left alone.\n", written, kept)
+		fmt.Println("The adapters would then be reinstalled and the scheduled jobs repointed if needed.")
+		fmt.Println("Nothing was written.")
 		return nil
 	}
 	if err := manifest.Save(cfg.KBRoot, next); err != nil {
 		return err
 	}
-	fmt.Printf("\n%d file(s) updated, %d left alone. Manifest at %s\n", written, kept, manifest.FileName)
-	if written > 0 {
-		// The skills agents actually load are rendered copies under .state/,
-		// so updating the sources here changes nothing until install re-renders.
-		fmt.Println("Re-run bin/regesto-install so the agents pick up the new skills and instructions.")
+	fmt.Printf("\n%d file(s) updated, %d left alone.\n", written, kept)
+
+	// Refreshing the files is only half of it. The skills agents load are
+	// rendered copies under .state/, the hook is registered in the agent's
+	// settings, and the scheduled jobs name a binary by absolute path — none of
+	// which change just because the sources did. Leaving those to the user meant
+	// an upgrade that silently did nothing an agent could see.
+	if err := reinstallAdapters(cfg); err != nil {
+		return err
+	}
+	return repointSchedule(cfg)
+}
+
+// reinstallAdapters runs the instance's own install script, which was itself
+// just refreshed — so an engine that changes how installing works takes effect
+// on the same upgrade that ships the change.
+func reinstallAdapters(cfg *config.Config) error {
+	script := filepath.Join(cfg.KBRoot, "bin", "regesto-install")
+	if _, err := os.Stat(script); err != nil {
+		fmt.Printf("\nskipping adapter install — %s is not there\n", script)
+		return nil
+	}
+	fmt.Println("\n── adapters ──")
+	cmd := exec.Command(script)
+	cmd.Dir = cfg.KBRoot
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("bin/regesto-install failed: %w", err)
 	}
 	return nil
+}
+
+// repointSchedule rewrites the launchd jobs when they name an engine that is no
+// longer the one serving this instance — the case that bites after switching
+// from a local build to a released binary, where everything keeps working on the
+// old engine and nothing says so.
+//
+// Jobs that were never installed are left alone: scheduling is opt-in. So are
+// jobs belonging to a *different* instance. LaunchAgents live in one directory
+// per user and the labels are fixed, so every instance on a machine sees the
+// same two files — without this check, running upgrade in a second instance
+// (or a throwaway one) silently steals the first one's schedule.
+func repointSchedule(cfg *config.Config) error {
+	want, err := config.ResolveEngine(cfg)
+	if err != nil {
+		return nil // no schedulable engine; `schedule install` will say why
+	}
+	// Compare what the paths resolve to, not the paths themselves. The engine is
+	// normally reached through a stable symlink on PATH, and which name you
+	// happened to invoke says nothing about which binary will run — comparing
+	// literally would rewrite the jobs back and forth depending on how upgrade
+	// was called.
+	same := func(a, b string) bool {
+		ra, erra := filepath.EvalSymlinks(a)
+		rb, errb := filepath.EvalSymlinks(b)
+		if erra != nil || errb != nil {
+			return false // a path that no longer resolves is definitely stale
+		}
+		return ra == rb
+	}
+	plistBinary := regexp.MustCompile(`<string>([^<]*/regesto)</string>`)
+
+	// The job is this instance's only if it runs against this instance's config.
+	ours := []byte("<string>" + filepath.Join(cfg.KBRoot, config.FileName) + "</string>")
+
+	stale := false
+	installed := 0
+	for _, j := range jobs(cfg) {
+		body, err := os.ReadFile(plistPath(j.label))
+		if err != nil {
+			continue
+		}
+		if !bytes.Contains(body, ours) {
+			fmt.Printf("\nleaving %s alone — it is scheduled against another instance\n", j.label)
+			continue
+		}
+		installed++
+		m := plistBinary.FindSubmatch(body)
+		if m == nil || !same(string(m[1]), want) {
+			stale = true
+		}
+	}
+	if installed == 0 || !stale {
+		return nil
+	}
+	fmt.Println("\n── scheduled jobs ──")
+	fmt.Printf("they name a different engine; repointing at %s\n", want)
+	lintHost := strings.TrimSpace(cfg.Section("roles")["lint"])
+	return scheduleInstall(cfg, lintHost == "" || lintHost == cfg.Machine)
 }
 
 // backupFile copies a file aside before it is overwritten, next to the original
