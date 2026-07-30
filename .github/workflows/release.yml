@@ -51,13 +51,20 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          tar -xzf "dist/regesto_${VERSION}_linux_amd64.tar.gz" -C "$RUNNER_TEMP"
-          engine="$RUNNER_TEMP/regesto"
-          got="$("$engine" version)"
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "dist/regesto_${VERSION}_linux_amd64.tar.gz" -C "$RUNNER_TEMP/bin"
+          # On PATH, because that is how a release is installed and how an
+          # instance's shims are meant to find it — an instance carries no
+          # binary of its own.
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+
+          got="$(regesto version)"
           echo "reports: $got"
           [ "$got" = "regesto ${VERSION}" ] || { echo "version mismatch"; exit 1; }
-          "$engine" init --dir "$RUNNER_TEMP/kb" --machine ci --examples
+
+          regesto init --dir "$RUNNER_TEMP/kb" --machine ci --examples
           "$RUNNER_TEMP/kb/bin/regesto-index"
+          "$RUNNER_TEMP/kb/bin/regesto-search" --scope aurora | grep -q dec-http-port-8080
 
       - name: publish
         env:
