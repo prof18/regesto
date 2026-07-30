@@ -51,8 +51,11 @@ Ten minutes, one machine, one agent.
 **1. Install the engine.**
 
 ```bash
-go install github.com/prof18/regesto/cmd/regesto@latest
+brew install prof18/tap/regesto
 ```
+
+Or `go install github.com/prof18/regesto/cmd/regesto@latest` if you have Go, or grab a
+binary from [releases](https://github.com/prof18/regesto/releases).
 
 **2. Create your instance.** It is a folder of markdown; put it wherever you keep things
 you would miss.
