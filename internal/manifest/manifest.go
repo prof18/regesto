@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -115,6 +116,12 @@ const (
 	Stale                  // differs from the engine, matches what was last written — safe to replace
 	Modified               // differs from both: edited locally since it was written
 	Unknown                // differs from the engine, and nothing recorded what it should have been
+	// The engine no longer ships it, and the copy here is byte for byte what
+	// was last written — so removing it destroys nothing.
+	Withdrawn
+	// The engine no longer ships it, but this copy was changed since. The
+	// change is someone's work and outlives the file's place in the engine.
+	WithdrawnEdited
 )
 
 func (s Status) String() string {
@@ -127,6 +134,10 @@ func (s Status) String() string {
 		return "stale"
 	case Modified:
 		return "modified"
+	case Withdrawn:
+		return "withdrawn"
+	case WithdrawnEdited:
+		return "withdrawn, edited"
 	default:
 		return "unknown"
 	}
@@ -135,10 +146,58 @@ func (s Status) String() string {
 // Writable reports whether an upgrade may write this file without being forced.
 func (s Status) Writable() bool { return s == Missing || s == Stale }
 
+// Removable reports whether an upgrade may delete this file without being
+// forced. Only the case where the contents are provably the engine's own.
+func (s Status) Removable() bool { return s == Withdrawn }
+
 type Change struct {
 	Path   string
 	Status Status
 	Body   []byte // the engine's copy, for the statuses that get written
+}
+
+// PlanRemovals finds files this engine no longer ships but a previous one wrote
+// here — a skill that was retired, a hook that moved. Left in place they keep
+// working: the installer goes on rendering and linking a retired skill, so
+// agents keep following instructions the engine has disowned.
+//
+// Only the manifest makes this decidable. Without a record of what was written,
+// a file the engine does not ship is indistinguishable from one the user added,
+// and deleting it would be a guess. Files with no recorded hash are therefore
+// never considered, which also means an instance predating manifests loses
+// nothing.
+//
+// Entries already gone from disk are returned as Missing so the caller can drop
+// the stale bookkeeping without touching the filesystem.
+func PlanRemovals(root string, engine map[string][]byte, m *Manifest) []Change {
+	paths := make([]string, 0)
+	for p := range m.Files {
+		if _, still := engine[p]; !still {
+			paths = append(paths, p)
+		}
+	}
+	sort.Strings(paths)
+
+	out := make([]Change, 0, len(paths))
+	for _, p := range paths {
+		c := Change{Path: p}
+		// The manifest is a file on disk, and this decides what gets deleted.
+		// A path that escapes the instance is corruption, not an instruction.
+		if !fs.ValidPath(p) || strings.Contains(p, "..") {
+			continue
+		}
+		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(p)))
+		switch {
+		case err != nil:
+			c.Status = Missing
+		case Sum(got) == m.Files[p]:
+			c.Status = Withdrawn
+		default:
+			c.Status = WithdrawnEdited
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // Plan classifies every engine-owned file, sorted by path so output and tests

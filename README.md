@@ -125,10 +125,15 @@ recorded a hash of each in `.regesto-manifest`. Files you edited are **left alon
 reported**, never overwritten; `--force` overwrites them and backs each one up first. A
 file it cannot attribute — an instance older than the manifest — is treated as yours.
 
-Then it finishes the job: re-renders the skills, relinks them into every agent, refreshes
-the instructions section and the hook, and repoints the scheduled jobs if they name an
-engine that is no longer the one serving this instance. A new skill in a release reaches
-your agents from this one command — nothing else to run.
+A file a release **retires** is removed, but only where it is byte for byte what the engine
+recorded writing. Edit it and it becomes yours: kept, reported, and no longer tracked.
+Anything with no recorded hash is never touched at all.
+
+Then it finishes the job: re-renders the skills, relinks them into every agent, drops the
+ones that were retired, refreshes the instructions section and the hook, and repoints the
+scheduled jobs if they name an engine that is no longer the one serving this instance. A
+skill added or withdrawn by a release reaches your agents from this one command — nothing
+else to run.
 
 ## Commands
 

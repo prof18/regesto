@@ -127,6 +127,87 @@ func TestUntouchedPreManifestInstanceAdoptsCleanly(t *testing.T) {
 	}
 }
 
+// A file a previous engine wrote and this one no longer ships. Left in place it
+// keeps being rendered and linked, so a retired skill goes on instructing agents
+// after the engine disowned it.
+func TestWithdrawnFilesAreFoundAndClassified(t *testing.T) {
+	root := t.TempDir()
+	engine := map[string][]byte{"kept.md": []byte("v1")}
+	writeAt(t, root, "kept.md", "v1")
+	writeAt(t, root, "retired.md", "as written")
+	writeAt(t, root, "retired-edited.md", "mine now")
+
+	m := &manifest.Manifest{Files: map[string]string{
+		"kept.md":           manifest.Sum([]byte("v1")),
+		"retired.md":        manifest.Sum([]byte("as written")),
+		"retired-edited.md": manifest.Sum([]byte("as written")),
+		"already-gone.md":   manifest.Sum([]byte("whatever")),
+	}}
+
+	got := map[string]manifest.Status{}
+	for _, c := range manifest.PlanRemovals(root, engine, m) {
+		got[c.Path] = c.Status
+	}
+	want := map[string]manifest.Status{
+		"retired.md":        manifest.Withdrawn,
+		"retired-edited.md": manifest.WithdrawnEdited,
+		"already-gone.md":   manifest.Missing,
+	}
+	for path, w := range want {
+		if got[path] != w {
+			t.Errorf("%s: got %v, want %v", path, got[path], w)
+		}
+	}
+	// A file the engine still ships is not a removal candidate, however it looks.
+	if _, found := got["kept.md"]; found {
+		t.Error("a file the engine still ships was offered for removal")
+	}
+}
+
+// Deletion is the one operation with no undo, so it happens only where the file
+// is byte for byte what the engine recorded writing.
+func TestOnlyProvablyUntouchedFilesAreRemovable(t *testing.T) {
+	removable := map[manifest.Status]bool{
+		manifest.Withdrawn:       true,
+		manifest.WithdrawnEdited: false,
+		manifest.Missing:         false,
+		manifest.Current:         false,
+		manifest.Stale:           false,
+		manifest.Modified:        false,
+		manifest.Unknown:         false,
+	}
+	for status, want := range removable {
+		if got := status.Removable(); got != want {
+			t.Errorf("%v.Removable() = %v, want %v", status, got, want)
+		}
+	}
+}
+
+// Anything the manifest has no hash for is not the engine's to delete — which is
+// also what keeps a hand-made file next to the adapters safe.
+func TestUnrecordedFilesAreNeverRemoved(t *testing.T) {
+	root := t.TempDir()
+	writeAt(t, root, "adapters/skills/mine/SKILL.md", "a skill I wrote myself")
+	m := &manifest.Manifest{Files: map[string]string{}}
+
+	if got := manifest.PlanRemovals(root, map[string][]byte{}, m); len(got) != 0 {
+		t.Errorf("offered %d unrecorded file(s) for removal: %+v", len(got), got)
+	}
+}
+
+// The manifest is a file on disk and it decides what gets deleted, so a path
+// that escapes the instance is corruption rather than an instruction.
+func TestRemovalRefusesPathsOutsideTheInstance(t *testing.T) {
+	root := t.TempDir()
+	m := &manifest.Manifest{Files: map[string]string{
+		"../../etc/passwd": manifest.Sum([]byte("x")),
+		"/etc/hosts":       manifest.Sum([]byte("x")),
+	}}
+	for _, c := range manifest.PlanRemovals(root, map[string][]byte{}, m) {
+		t.Errorf("escaping path %q was considered for removal", c.Path)
+	}
+}
+
 func TestManifestRoundTrips(t *testing.T) {
 	root := t.TempDir()
 	when := time.Date(2026, 7, 30, 9, 0, 0, 0, time.UTC)

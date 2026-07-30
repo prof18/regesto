@@ -48,7 +48,7 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	fmt.Printf("instance %s\nengine   %s → %s\n\n", cfg.KBRoot, from, version.Current())
 
 	changes := manifest.Plan(cfg.KBRoot, engine, m)
-	var written, kept int
+	var written, removed, kept int
 	// Start from what was already recorded, so a file this engine no longer
 	// ships keeps its entry rather than silently losing its provenance.
 	next := &manifest.Manifest{Engine: version.Current(), Written: time.Now(), Files: map[string]string{}}
@@ -93,8 +93,45 @@ func runUpgrade(cfg *config.Config, args []string) error {
 		}
 	}
 
+	// Files a previous engine wrote here and this one no longer ships. Left in
+	// place, the installer keeps rendering and linking them, so a retired skill
+	// goes on instructing agents after the engine disowned it.
+	for _, c := range manifest.PlanRemovals(cfg.KBRoot, engine, m) {
+		switch {
+		case c.Status == manifest.Missing:
+			// Already gone; just stop tracking it.
+			delete(next.Files, c.Path)
+
+		case c.Status.Removable() || *force:
+			if *dry {
+				fmt.Printf("  would remove  %-44s (%s)\n", c.Path, c.Status)
+				removed++
+				continue
+			}
+			if c.Status == manifest.WithdrawnEdited {
+				backup, err := backupFile(cfg.KBRoot, c.Path)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("  backup        %s\n", backup)
+			}
+			if err := removeInstanceFile(cfg.KBRoot, c.Path); err != nil {
+				return err
+			}
+			fmt.Printf("  remove        %-44s (%s)\n", c.Path, c.Status)
+			delete(next.Files, c.Path)
+			removed++
+
+		default:
+			// Withdrawn but edited. The engine has no claim on someone's
+			// changes, so it keeps both the file and its record.
+			fmt.Printf("  keep          %-44s (%s — yours now; delete it yourself)\n", c.Path, c.Status)
+			kept++
+		}
+	}
+
 	if *dry {
-		fmt.Printf("\ndry run — %d file(s) would change, %d left alone.\n", written, kept)
+		fmt.Printf("\ndry run — %d file(s) would change, %d would be removed, %d left alone.\n", written, removed, kept)
 		fmt.Println("The adapters would then be reinstalled and the scheduled jobs repointed if needed.")
 		fmt.Println("Nothing was written.")
 		return nil
@@ -102,7 +139,7 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	if err := manifest.Save(cfg.KBRoot, next); err != nil {
 		return err
 	}
-	fmt.Printf("\n%d file(s) updated, %d left alone.\n", written, kept)
+	fmt.Printf("\n%d file(s) updated, %d removed, %d left alone.\n", written, removed, kept)
 
 	// Refreshing the files is only half of it. The skills agents load are
 	// rendered copies under .state/, the hook is registered in the agent's
@@ -207,6 +244,30 @@ func backupFile(root, rel string) (string, error) {
 		return "", err
 	}
 	return dest, nil
+}
+
+// removeInstanceFile deletes a withdrawn file and any directories it leaves
+// empty, stopping at the instance root.
+//
+// The directory matters as much as the file: `regesto-install` treats every
+// directory under adapters/skills/ as a skill, so a retired skill whose SKILL.md
+// is gone but whose folder remains still gets rendered and linked — an empty
+// skill offered to every agent. Only empty directories are removed, so anything
+// the user put alongside keeps its home.
+func removeInstanceFile(root, rel string) error {
+	dest := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	dir := filepath.Dir(dest)
+	for dir != root && strings.HasPrefix(dir, root+string(filepath.Separator)) {
+		// Fails harmlessly and stops the walk as soon as one is not empty.
+		if err := os.Remove(dir); err != nil {
+			return nil
+		}
+		dir = filepath.Dir(dir)
+	}
+	return nil
 }
 
 func writeInstanceFile(root, rel string, body []byte) error {
