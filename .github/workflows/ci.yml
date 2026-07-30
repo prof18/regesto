@@ -1,0 +1,77 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # The engine is pure Go with no cgo, but it shells out to git and writes
+    # real files, so the tests are worth running on both platforms people
+    # actually run it on. macOS-only paths (launchd) are not exercised here.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'd:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: vet
+        run: go vet ./...
+
+      - name: test
+        run: go test ./...
+
+  # The check that has caught the most real bugs: build an engine, scaffold an
+  # instance with it, and drive that instance using nothing from this checkout.
+  # Every engine/instance split bug so far was invisible to the unit tests.
+  standalone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: build the engine somewhere else entirely
+        run: go build -o "$RUNNER_TEMP/bin/regesto" ./cmd/regesto
+
+      - name: scaffold and drive an instance with it
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          kb="$RUNNER_TEMP/kb"
+
+          regesto version
+          regesto init --dir "$kb" --machine ci --examples
+
+          # The instance must work through its own shims, with this checkout
+          # nowhere on the path.
+          cd "$RUNNER_TEMP"
+          "$kb/bin/regesto-index"
+          "$kb/bin/regesto-search" --scope aurora | grep -q dec-http-port-8080
+          "$kb/bin/regesto-context" --dir "$kb" | grep -q 'Knowledge base'
+          regesto --config "$kb/config.toml" lint
+          regesto --config "$kb/config.toml" upgrade --dry-run
+
+          # A superseded example fact must not surface in a normal search.
+          if "$kb/bin/regesto-search" --scope aurora | grep -q dec-http-port-8000; then
+            echo "a superseded claim reached a plain search"; exit 1
+          fi

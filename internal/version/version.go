@@ -8,6 +8,14 @@ package version
 
 import "runtime/debug"
 
+// stamped is set at link time for builds that have no VCS metadata to read:
+//
+//	go build -ldflags "-X github.com/prof18/regesto/internal/version.stamped=v0.1.0"
+//
+// Releases and package managers build from an extracted source archive with no
+// .git, where Go can stamp nothing and the version would otherwise be "unknown".
+var stamped string
+
 // Current identifies this engine.
 //
 // Usually that is Go's own stamp: a release tag for `go install ...@v0.1.0`, or
@@ -16,6 +24,9 @@ import "runtime/debug"
 // below only runs when VCS stamping was switched off, and "unknown" only when
 // there is no build information at all.
 func Current() string {
+	if stamped != "" {
+		return stamped
+	}
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "unknown"
