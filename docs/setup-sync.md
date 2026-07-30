@@ -71,6 +71,17 @@ against a folder that is already replicating.
 relative to `config.toml`'s location, and the instructions section renders `~/`-relative
 paths rather than absolute ones. Do not hardcode a path anywhere yourself.
 
+## Upgrading, with more than one machine
+
+`.regesto-manifest` records which engine last wrote the instance's shared files, and it
+replicates like everything else — so **upgrade on one machine, and update the engine on the
+others before they run it**. `regesto upgrade` prints `engine <from> → <to>` before it does
+anything; if that reads like a downgrade, it is, and you should stop.
+
+The lint host is the natural place to do it. Every machine still needs its own binary and
+its own `bin/regesto-install` run afterwards, because rendered skills live in `.state/`,
+which never syncs.
+
 ## An always-on third node
 
 A NAS or small server running the same sync client gives you a replica that is always up

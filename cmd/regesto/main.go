@@ -11,6 +11,7 @@ import (
 	"github.com/prof18/regesto/internal/config"
 	"github.com/prof18/regesto/internal/facts"
 	"github.com/prof18/regesto/internal/search"
+	"github.com/prof18/regesto/internal/version"
 )
 
 const usage = `usage: regesto [--config <path>] <command> [args]
@@ -28,6 +29,10 @@ commands:
         capture new native-memory writes into inbox/<agent>@<machine>/
   init [--dir D] [--machine NAME] [--examples] [--force]
         scaffold a new instance: tree, config, adapters, shims, machine identity
+  upgrade [--dry-run] [--force]
+        refresh this instance's engine-owned files after the engine changed
+  version
+        which engine this is
   promote [file|-] [--source S] [--name N] [--dry-run]
         chat transcript → facts → archive/chat-exports/ (reads stdin if no file)
   cycle [--dry-run] [--push] [--no-commit]
@@ -62,10 +67,15 @@ func run(args []string) error {
 		return fmt.Errorf("no command given")
 	}
 
-	// init runs before an instance exists, so it must not need one. Every other
+	// These two must work without an instance: init runs before one exists, and
+	// `version` is the first thing anyone runs to check the install. Every other
 	// command resolves the instance first.
-	if rest[0] == "init" {
+	switch rest[0] {
+	case "init":
 		return runInit(rest[1:])
+	case "version", "--version", "-version":
+		fmt.Println("regesto", version.Current())
+		return nil
 	}
 
 	cfg, err := loadConfig(*configPath)
@@ -96,6 +106,8 @@ func run(args []string) error {
 		return runLint(cfg, rest[1:])
 	case "project":
 		return runProject(cfg, rest[1:])
+	case "upgrade":
+		return runUpgrade(cfg, rest[1:])
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		return fmt.Errorf("unknown command %q", rest[0])

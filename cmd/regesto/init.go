@@ -6,10 +6,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	regesto "github.com/prof18/regesto"
 	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/manifest"
+	"github.com/prof18/regesto/internal/version"
 )
 
 // runInit scaffolds a new instance: the tree, a commented config, the ignore
@@ -106,19 +110,37 @@ func runInit(args []string) error {
 	if err := writeIfAbsent(root, ".stignore", stignoreTemplate); err != nil {
 		return err
 	}
-	if err := writeIfAbsent(root, "SCHEMA.md", regesto.Schema); err != nil {
-		return err
-	}
 
-	// The instance-side half of the engine. Without it the shims, the hook and
-	// the skills have nothing to point at, and `regesto-install` has nothing to
-	// install — an instance is not usable until these are on disk.
-	if err := unpack(root, regesto.Shims); err != nil {
+	// The instance-side half of the engine: the schema, the bin/ shims and the
+	// adapters. Without them the hook and the skills have nothing to point at
+	// and `regesto-install` has nothing to install — an instance is not usable
+	// until these are on disk.
+	//
+	// Their hashes are recorded as they are written, so a later `regesto
+	// upgrade` can tell a file this engine wrote from one edited since.
+	engine, err := regesto.InstanceFiles()
+	if err != nil {
 		return err
 	}
-	if err := unpack(root, regesto.Adapters); err != nil {
+	m := &manifest.Manifest{Engine: version.Current(), Written: time.Now(), Files: map[string]string{}}
+	for _, p := range sortedKeys(engine) {
+		if err := writeFileIfAbsent(root, p, engine[p]); err != nil {
+			return err
+		}
+		// Hash what is on disk, not what was offered. Re-running init over an
+		// instance whose skill someone edited keeps that edit — recording the
+		// engine's hash instead would tell the next upgrade the file was
+		// untouched, and it would be overwritten without warning.
+		onDisk, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(p)))
+		if err != nil {
+			return err
+		}
+		m.Files[p] = manifest.Sum(onDisk)
+	}
+	if err := manifest.Save(root, m); err != nil {
 		return err
 	}
+	fmt.Printf("  engine  %s → %s\n", version.Current(), manifest.FileName)
 
 	if *examples {
 		src, err := exampleFacts()
@@ -185,6 +207,37 @@ func unpack(root string, src fs.FS) error {
 		fmt.Printf("  wrote   %s\n", p)
 		return nil
 	})
+}
+
+func sortedKeys(m map[string][]byte) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// writeFileIfAbsent materialises one engine-owned file, leaving any existing one
+// alone. Same rule as unpack, for the flat path-keyed form InstanceFiles returns.
+func writeFileIfAbsent(root, rel string, body []byte) error {
+	dest := filepath.Join(root, filepath.FromSlash(rel))
+	if _, err := os.Stat(dest); err == nil {
+		fmt.Printf("  kept    %s (already present)\n", rel)
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	mode := os.FileMode(0o644)
+	if regesto.Executable(rel) {
+		mode = 0o755
+	}
+	if err := os.WriteFile(dest, body, mode); err != nil {
+		return err
+	}
+	fmt.Printf("  wrote   %s\n", rel)
+	return nil
 }
 
 func writeIfAbsent(root, name, body string) error {

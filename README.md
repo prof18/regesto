@@ -101,6 +101,25 @@ that must never sync.
 
 ---
 
+## Upgrading
+
+Replacing the binary is half of it. `regesto init` also wrote files *into* your
+knowledge base — the `bin/` shims, `adapters/`, `SCHEMA.md` — and a new engine does not
+touch them on its own:
+
+```bash
+regesto upgrade --dry-run   # what would change
+regesto upgrade
+```
+
+It knows the difference between a file it wrote and one you changed, because `init`
+recorded a hash of each in `.regesto-manifest`. Files you edited are **left alone and
+reported**, never overwritten; `--force` overwrites them and backs each one up first. A
+file it cannot attribute — an instance older than the manifest — is treated as yours.
+
+Re-run `bin/regesto-install` afterwards if anything changed: the skills your agents load
+are rendered copies, and they are refreshed there rather than here.
+
 ## Commands
 
 | | |
@@ -116,7 +135,9 @@ that must never sync.
 | `regesto project` | the canonical project name for a directory |
 | `regesto config` | the resolved instance config |
 | `regesto init` | scaffold a new instance |
+| `regesto upgrade` | refresh an instance's engine-owned files after the engine changed |
 | `regesto schedule` | run harvest and cycle automatically |
+| `regesto version` | which engine this is |
 
 ---
 

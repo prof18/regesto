@@ -24,6 +24,12 @@ validation rule. Adding an optional field is the one case that needs only the ve
 If your change cannot be migrated mechanically, it probably belongs in the instance's own
 vocabulary rather than in the schema.
 
+The same reasoning covers `adapters/`, `bin/` and `SCHEMA.md` generally: those files are
+copied *into* people's knowledge bases, and `regesto upgrade` will offer to replace them.
+It refuses to touch any copy that differs from what the engine recorded writing, so a
+change of yours reaches an instance only where the user never edited that file. Write them
+as if someone has forked their copy, because someone has.
+
 ## Adding an agent
 
 An adapter is a vendor's four locations plus whatever glue it needs, and it should touch
