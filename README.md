@@ -158,6 +158,25 @@ nothing in `knowledge/`.
 
 ---
 
+## The name
+
+A **regèsto** (Latin *regĕsta*, from *regerĕre* — "to carry back", "to report") is an
+archivist's chronological register: one short entry per document, giving its date, its
+author, the parties, and what it is about. Nineteenth-century historians compiled them for
+medieval collections far too large to ever publish in full, so that an archive nobody could
+read end to end could still be searched. The entries never stand in for the documents —
+those stay exactly where they are. Raffaello Morghen's rule for writing one was that it
+summarise each document *without omitting any data*.
+
+Which is the whole design here. `archive/` keeps the sources, untouched. `knowledge/` holds
+one claim per file with its date, its source and its subject. `INDEX.md` is the register the
+agent reads before it goes looking. To anyone who has not met the word, it reads as
+"register" — which is also fine.
+
+→ [it.wikipedia.org/wiki/Regesto](https://it.wikipedia.org/wiki/Regesto)
+
+---
+
 ## Read next
 
 - **[SCHEMA.md](SCHEMA.md)** — the contract. What a fact is, how supersession works, what
