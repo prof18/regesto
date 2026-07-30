@@ -95,8 +95,9 @@ regesto schedule install    # harvest every 15 minutes, lint hourly (launchd, ma
   rebuilds `INDEX.md` and the topic pages, and commits.
 
 Multi-machine is a file-sync client over the folder and nothing else — no server, no
-backend, no daemon of ours. Every machine holds a full replica and reads it locally. See
-[DESIGN.md §9](DESIGN.md#9-sync-and-transport).
+backend, no daemon of ours. Every machine holds a full replica and reads it locally.
+[docs/setup-sync.md](docs/setup-sync.md) is the whole of it, including the two directories
+that must never sync.
 
 ---
 
