@@ -2,6 +2,11 @@
 
 **A knowledge base your agents consult — not a memory they carry.**
 
+> *[Regèsto](https://it.wikipedia.org/wiki/Regesto)* (Latin *regĕsta*, "carried back"): an
+> archivist's register of an archive too large to read end to end — one short entry per
+> document, giving its date, its source and what it is about. Nineteenth-century historians
+> compiled them for medieval collections that could never be published in full.
+
 Every coding agent now ships a memory file. All of them are working-set caches: bounded,
 pruned by the agent to stay under a cap, lossy by design. That is right for a cache and
 wrong for the decisions you spent a week arriving at.
@@ -155,25 +160,6 @@ and this project would rather state it than paper over it.
 
 Adding an agent is a pull request that touches `internal/adapters` and `adapters/`, and
 nothing in `knowledge/`.
-
----
-
-## The name
-
-A **regèsto** (Latin *regĕsta*, from *regerĕre* — "to carry back", "to report") is an
-archivist's chronological register: one short entry per document, giving its date, its
-author, the parties, and what it is about. Nineteenth-century historians compiled them for
-medieval collections far too large to ever publish in full, so that an archive nobody could
-read end to end could still be searched. The entries never stand in for the documents —
-those stay exactly where they are. Raffaello Morghen's rule for writing one was that it
-summarise each document *without omitting any data*.
-
-Which is the whole design here. `archive/` keeps the sources, untouched. `knowledge/` holds
-one claim per file with its date, its source and its subject. `INDEX.md` is the register the
-agent reads before it goes looking. To anyone who has not met the word, it reads as
-"register" — which is also fine.
-
-→ [it.wikipedia.org/wiki/Regesto](https://it.wikipedia.org/wiki/Regesto)
 
 ---
 
