@@ -58,11 +58,15 @@ func runSchedule(cfg *config.Config, args []string) error {
 	case "status":
 		return scheduleStatus(cfg, isLintHost)
 	case "print":
+		bin, err := engineBinary(cfg)
+		if err != nil {
+			return err
+		}
 		for _, j := range jobs(cfg) {
 			if !j.everyMachine && !isLintHost {
 				continue
 			}
-			fmt.Printf("# %s — %s\n%s\n", j.label, j.why, plist(cfg, j))
+			fmt.Printf("# %s — %s\n%s\n", j.label, j.why, plist(cfg, j, bin))
 		}
 		return nil
 	case "install":
@@ -81,10 +85,14 @@ func agentDir() string {
 
 func plistPath(label string) string { return filepath.Join(agentDir(), label+".plist") }
 
+// engineBinary is the path launchd will invoke. The resolution lives in config
+// because "which engine serves this instance" is an instance fact, not a
+// scheduling one.
+func engineBinary(cfg *config.Config) (string, error) { return config.ResolveEngine(cfg) }
+
 // plist renders a LaunchAgent. RunAtLoad is deliberately false for the cycle:
 // loading it should not immediately spend money on a model.
-func plist(cfg *config.Config, j job) string {
-	bin := filepath.Join(cfg.KBRoot, "bin", "regesto")
+func plist(cfg *config.Config, j job, bin string) string {
 	var argXML strings.Builder
 	argXML.WriteString("\t\t<string>" + bin + "</string>\n")
 	argXML.WriteString("\t\t<string>--config</string>\n")
@@ -119,6 +127,14 @@ func plist(cfg *config.Config, j job) string {
 
 func scheduleStatus(cfg *config.Config, isLintHost bool) error {
 	fmt.Printf("machine %s (from %s)\n", cfg.Machine, cfg.MachineSource)
+	// Which engine an install would schedule. Reported rather than fatal: a
+	// status that refuses to print because no binary is installed yet is the
+	// least useful moment to withhold the rest of it.
+	if bin, err := engineBinary(cfg); err == nil {
+		fmt.Printf("engine  %s\n", bin)
+	} else {
+		fmt.Printf("engine  none usable — %v\n", err)
+	}
 	if runtime.GOOS != "darwin" {
 		fmt.Printf("scheduling here targets launchd; on %s use cron or a systemd timer with the same two commands\n", runtime.GOOS)
 	}
@@ -143,8 +159,9 @@ func scheduleInstall(cfg *config.Config, isLintHost bool) error {
 	if runtime.GOOS != "darwin" {
 		return fmt.Errorf("install targets launchd and this is %s; run `regesto schedule print` and adapt the two commands to cron or a systemd timer", runtime.GOOS)
 	}
-	if _, err := os.Stat(filepath.Join(cfg.KBRoot, "bin", "regesto")); err != nil {
-		return fmt.Errorf("bin/regesto is not built — run `go build -o bin/regesto ./cmd/regesto` first, or the jobs would fail every time they fire")
+	bin, err := engineBinary(cfg)
+	if err != nil {
+		return err
 	}
 	if err := os.MkdirAll(agentDir(), 0o755); err != nil {
 		return err
@@ -159,7 +176,7 @@ func scheduleInstall(cfg *config.Config, isLintHost bool) error {
 			continue
 		}
 		path := plistPath(j.label)
-		if err := os.WriteFile(path, []byte(plist(cfg, j)), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(plist(cfg, j, bin)), 0o644); err != nil {
 			return err
 		}
 		// Unload first so a re-install picks up a changed interval or path.
@@ -169,6 +186,7 @@ func scheduleInstall(cfg *config.Config, isLintHost bool) error {
 		}
 		fmt.Printf("loaded  %s — every %ds\n", j.label, j.interval)
 	}
+	fmt.Printf("engine  %s\n", bin)
 	fmt.Printf("logs in %s\n", filepath.Join(cfg.KBRoot, ".state", cfg.Machine, "logs"))
 	return nil
 }

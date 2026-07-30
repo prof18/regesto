@@ -211,6 +211,39 @@ func ResolveMachineFor(cfg *Config) (string, string) {
 	return hostnameSlug(), "hostname"
 }
 
+// ResolveEngine returns the absolute path of the engine binary that serves this
+// instance. Scheduled jobs need one, and an instance need not contain a binary
+// at all: once the engine ships as a release it lives on PATH, and the
+// knowledge base holds only knowledge.
+//
+// Order matches the bin/ shims. A binary inside the instance wins, because in a
+// checkout `regesto-install` rebuilds it in place and anything holding that path
+// picks up the new build with no re-install. Otherwise the engine running right
+// now is by definition a working one, so it is the answer.
+func ResolveEngine(cfg *Config) (string, error) {
+	inInstance := filepath.Join(cfg.KBRoot, "bin", "regesto")
+	if info, err := os.Stat(inInstance); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+		return inInstance, nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine which engine serves %s: %w", cfg.KBRoot, err)
+	}
+	if exe, err = filepath.Abs(exe); err != nil {
+		return "", err
+	}
+	// `go run` builds into a cache directory and deletes it on exit, so a job
+	// holding that path would fail on every fire — silently, in a log nobody
+	// reads. Refuse instead. A symlink is deliberately NOT resolved: a stable
+	// path on PATH is what lets an engine upgrade replace the target without
+	// anything else having to be rewritten.
+	if d := filepath.Dir(exe); strings.Contains(d, "go-build") || strings.HasPrefix(d, os.TempDir()) {
+		return "", fmt.Errorf("this engine is a temporary build at %s, which is deleted on exit.\n"+
+			"Install one first — `go build -o %s ./cmd/regesto` in an engine checkout, or a release on PATH — then re-run", exe, inInstance)
+	}
+	return exe, nil
+}
+
 // hostnameSlug turns a host name into a usable short name. Trailing counters are
 // stripped because macOS appends and increments them when rejoining networks —
 // the same box comes back as "-2", then "-3" — so a raw hostname is not a
