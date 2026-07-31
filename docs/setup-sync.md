@@ -54,18 +54,56 @@ lint = "workstation"
 elsewhere. Machines with no `[roles].lint` entry assume they are it, which is correct for
 the single-machine case.
 
-## Per machine
+## Adding a machine
 
-Each machine needs its own engine binary, its own identity, and its own adapters installed:
+The order matters. The knowledge base arrives through sync; everything else is per machine
+and is set up afterwards.
+
+**1. Install the engine.** Each machine needs its own binary — it is per-platform, and
+`bin/regesto` is in the ignore files precisely so it never syncs.
 
 ```bash
-echo laptop > ~/regesto-kb/.state/machine   # or let it derive one, and check `regesto config`
+brew install prof18/tap/regesto
+```
+
+**2. Set up the sync client** and let the folder replicate fully before touching anything.
+Point it at the same directory path you use elsewhere, or a different one — nothing depends
+on the path matching.
+
+**Do not run `regesto init`.** That scaffolds a *new* instance; this machine is joining an
+existing one. If you run it by mistake, it will keep every file that already exists, so the
+damage is limited to files sync had not yet delivered.
+
+**3. Give it a name**, before anything writes a fact from it.
+
+```bash
+echo laptop > ~/regesto-kb/.state/machine
+regesto --config ~/regesto-kb/config.toml config | head -3
+```
+
+The name appears in `inbox/<agent>@<machine>/` and in every fact's `source:`. Left to a
+hostname it can drift — see the troubleshooting entry below.
+
+**4. Install the adapters and the jobs.**
+
+```bash
 ~/regesto-kb/bin/regesto-install
 regesto schedule install
 ```
 
-The knowledge base itself arrives through sync — do not run `regesto init` a second time
-against a folder that is already replicating.
+`schedule install` gives this machine the harvest job, and the cycle job only if
+`[roles].lint` names it or is unset.
+
+**5. Check it.** Open a session in a project and confirm its facts appear.
+
+```bash
+regesto --config ~/regesto-kb/config.toml upgrade --dry-run   # expect: 0 changed
+regesto --config ~/regesto-kb/config.toml harvest --dry-run   # first run records a baseline
+```
+
+**Home directories differ between machines**, and that is handled: everything resolves
+relative to `config.toml`'s location, and the instructions section renders `~/`-relative
+paths rather than absolute ones. Do not hardcode a path anywhere yourself.
 
 **Home directories differ between machines**, and that is handled: everything resolves
 relative to `config.toml`'s location, and the instructions section renders `~/`-relative
@@ -122,6 +160,20 @@ Two machines normalised the same capture independently before either had seen th
 `regesto lint` reports near-duplicate `(subject, relation)` pairs for you to merge. If it
 keeps happening, `[roles].lint` is unset or names a machine that is not running the job —
 check `regesto schedule status` there.
+
+### A machine kept using its old engine after you installed a new one
+
+Two leftovers shadow a freshly installed engine, and neither announces itself — everything
+keeps working, on the old one:
+
+- `<instance>/bin/regesto`, which the shims check **before** PATH. It does not sync, so a
+  machine that once built its own engine still has it.
+- `~/.local/bin/regesto`, the symlink `regesto-install` creates, which sits earlier in PATH
+  than Homebrew.
+
+Delete both, then `bin/regesto-install` and `regesto schedule install` — or just
+`regesto upgrade`, which does all of it. `regesto version` reports whichever binary won, so
+compare it against what you installed.
 
 ### The machine name keeps changing
 

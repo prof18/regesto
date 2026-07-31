@@ -102,10 +102,25 @@ regesto schedule install    # harvest every 15 minutes, lint hourly (launchd, ma
 - **`regesto cycle`** normalises those captures into facts, reconciles contradictions,
   rebuilds `INDEX.md` and the topic pages, and commits.
 
-Multi-machine is a file-sync client over the folder and nothing else — no server, no
-backend, no daemon of ours. Every machine holds a full replica and reads it locally.
-[docs/setup-sync.md](docs/setup-sync.md) is the whole of it, including the two directories
-that must never sync.
+---
+
+## More than one machine
+
+Point a file-sync client at the folder. That is the entire mechanism — no server, no
+backend, no daemon of ours. Every machine holds a **full replica** and reads it locally, so
+an agent on a laptop greps the laptop's copy, offline on a train if need be. No machine ever
+queries another to consult knowledge.
+
+Each machine gets its own engine, its own name, and its own harvest job, because native
+agent memory is local and nothing else can see it. One machine runs the lint pass, because
+deciding what becomes a fact has to happen in one place or two machines mint competing
+vocabulary for the same claim.
+
+Two directories must **never** sync — `.state/`, whose per-machine baselines are what make
+harvesting work, and `.git`. Both are already in the ignore files `regesto init` writes.
+
+**[docs/setup-sync.md](docs/setup-sync.md)** — adding a machine, step by step, and what goes
+wrong.
 
 ---
 
@@ -179,6 +194,8 @@ nothing in `knowledge/`.
   to record and what not to. Read this before writing facts by hand.
 - **[DESIGN.md](DESIGN.md)** — why it is built this way, including the research verdicts
   that saved a week.
+- **[docs/setup-sync.md](docs/setup-sync.md)** — running across several machines: the order
+  to do it in, what must never sync, and the failure modes.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — one rule that matters: schema changes need a
   migration note.
 
