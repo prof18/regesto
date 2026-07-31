@@ -106,10 +106,15 @@ regesto schedule install    # harvest every 15 minutes, lint hourly (launchd, ma
 
 ## More than one machine
 
-Point a file-sync client at the folder. That is the entire mechanism — no server, no
-backend, no daemon of ours. Every machine holds a **full replica** and reads it locally, so
-an agent on a laptop greps the laptop's copy, offline on a train if need be. No machine ever
-queries another to consult knowledge.
+Get the folder onto both machines. That is the entire mechanism — no server, no backend, no
+daemon of ours. Every machine holds a **full replica** and reads it locally, so an agent on a
+laptop greps the laptop's copy, offline on a train if need be. No machine ever queries
+another to consult knowledge.
+
+**How you move it is your choice.** Syncthing, a hosted drive, `unison` on a timer — regesto
+asks only that the transport replicate plain files and let you exclude two directories.
+Nothing here is built against one vendor, and swapping later costs you nothing, because the
+knowledge was never in the tool.
 
 Each machine gets its own engine, its own name, and its own harvest job, because native
 agent memory is local and nothing else can see it. One machine runs the lint pass, because

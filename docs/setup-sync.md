@@ -15,12 +15,40 @@ The knowledge base is a folder. A sync client keeps a **full replica on every ma
 and every read is a local file read — an agent on a laptop greps the laptop's copy,
 offline if need be. No machine ever queries another to consult knowledge.
 
-Any client that replicates a directory works. Syncthing is the obvious choice (no third
-party holds your knowledge) but nothing here depends on it.
+## What the transport has to do
+
+Regesto has no opinion about how the folder gets from one machine to another. The contract
+is three lines long:
+
+1. **Replicate a directory of plain files.** No database, no API, no daemon of ours.
+2. **Let you exclude two paths** — `.state/` and `.git`. Both are directories, so per-folder
+   exclusion is enough; pattern matching is not needed.
+3. **Keep the files real and local.** An agent greps them directly, so anything that stores
+   placeholders and fetches on demand will not do.
+
+Anything meeting that works. Some shapes it can take:
+
+| | |
+|---|---|
+| **Continuous peer-to-peer** (Syncthing, Resilio) | No third party holds your knowledge. `regesto init` writes a `.stignore` for exactly this case |
+| **A hosted drive** (Dropbox, Google Drive, OneDrive) | Selective sync excludes the two directories. Your knowledge sits in plaintext on someone else's disk — decide that deliberately |
+| **Scheduled `rsync` or `unison`** | Total control, no client to run. Prefer `unison`: plain `rsync` in one direction will happily overwrite the newer copy |
+| **A mounted share** (NFS, SMB) | Works, but there is no replica — reads stop when the network does, and the offline-on-a-train property goes with it |
+| **iCloud Drive** | Not recommended. "Optimize Mac Storage" evicts file contents and leaves stubs, which breaks requirement 3 silently |
+| **git** | Deliberately not — [DESIGN §9](../DESIGN.md#9-sync-and-transport). It fails open: miss a pull and the agent confidently reads stale knowledge |
+
+**One thing is tool-specific.** When two machines edit the same fact, `regesto cycle`
+auto-resolves the duplicate — keeping the newer `modified`, archiving the loser, never
+deleting — and it recognises the copy by Syncthing's `name.sync-conflict-<date>-<id>.md`
+naming. With a client that names conflicts differently, the copies still appear as ordinary
+files and nothing is lost; lint simply will not resolve them for you, and you apply the same
+rule by hand. Everything else in regesto is indifferent to which tool you chose.
 
 ## Two things must never sync
 
-Both are already in the `.stignore` that `regesto init` writes. Do not tidy either away.
+`regesto init` writes a `.stignore` covering both, which Syncthing and Resilio read
+directly. With any other transport you configure the same two exclusions its own way —
+selective sync, an `--exclude` flag, an ignore list. Do not tidy either away.
 
 **`.state/`** — each machine diffs its agents' native memory against **its own** baseline
 snapshot. Share those snapshots and machines overwrite each other's baselines, and
