@@ -31,5 +31,5 @@ what lets a later claim supersede an earlier one instead of silently contradicti
 
 If what you have is half-formed, capture it to `{{kb_root}}/inbox/human@<machine>/`
 rather than forcing a wrong pair — `<machine>` is this machine's short name, which
-`{{kb_root}}/bin/regesto config` prints. Contract: `{{kb_root}}/SCHEMA.md`.
+`{{kb_root}}/bin/regesto-config` prints. Contract: `{{kb_root}}/SCHEMA.md`.
 <!-- regesto:section:end -->

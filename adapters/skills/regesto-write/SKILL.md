@@ -16,8 +16,8 @@ Run these rather than inferring them — they must match what the rest of the
 system uses for the same repo and machine:
 
 ```
-{{kb_root}}/bin/regesto project --scope    # scope:  project:<name>, run from the repo
-{{kb_root}}/bin/regesto config             # machine=<name>, for source: and the inbox path
+{{kb_root}}/bin/regesto-project --scope    # scope:  project:<name>, run from the repo
+{{kb_root}}/bin/regesto-config             # machine=<name>, for source: and the inbox path
 date -u +%Y-%m-%dT%H:%M:%SZ                 # created: / modified:
 ```
 
@@ -47,7 +47,7 @@ wrong `(subject, relation)` pair, which is silent corruption.
    is half-formed — a fragment, a hunch, no clear `(subject, relation)` —
    do NOT force it: write it verbatim to
    `{{kb_root}}/inbox/human@<machine>/<timestamp>-note.md` — `<machine>` from
-   `bin/regesto config` — and stop. Create the directory if absent. A rough note
+   `bin/regesto-config` — and stop. Create the directory if absent. A rough note
    in the inbox beats a wrong pair in `facts/`.
 
 2. **Check "Don't record".** Skip anything derivable from reading the code,
@@ -68,7 +68,7 @@ wrong `(subject, relation)` pair, which is silent corruption.
 
 5. **Choose `scope`**: `global` if the claim is true beyond one project (put the
    projects in `topics:` instead), otherwise the `project:<name>` that
-   `bin/regesto project --scope` prints when run from the repo. Scope determines
+   `bin/regesto-project --scope` prints when run from the repo. Scope determines
    the path: `knowledge/facts/global/<id>.md` or
    `knowledge/facts/projects/<name>/<id>.md`.
 

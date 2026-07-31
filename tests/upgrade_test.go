@@ -6,6 +6,8 @@ package tests
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -247,6 +249,8 @@ func TestInstanceFilesCoverTheInstanceSideEngine(t *testing.T) {
 		"SCHEMA.md",
 		"bin/regesto-search",
 		"bin/regesto-index",
+		"bin/regesto-config",
+		"bin/regesto-project",
 		"bin/regesto-context",
 		"bin/regesto-install",
 		"adapters/claude/hooks/session-start.sh",
@@ -278,6 +282,37 @@ func TestScriptsAreMarkedExecutable(t *testing.T) {
 	for _, p := range []string{"SCHEMA.md", "adapters/skills/regesto-write/SKILL.md"} {
 		if regesto.Executable(p) {
 			t.Errorf("%s should not be executable", p)
+		}
+	}
+}
+
+// Skills and the instructions block are read by agents, and every path they name
+// has to exist in an instance. This is not hypothetical: the write skill used to
+// say `{{kb_root}}/bin/regesto`, which is absent whenever the engine comes from a
+// release — so an agent could not resolve a fact's scope or this machine's name
+// and was left to guess them, which is silent corruption of `scope:` and
+// `source:` rather than an error anyone would see.
+func TestAdapterFilesOnlyReferencePathsThatExist(t *testing.T) {
+	files, err := regesto.InstanceFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := regexp.MustCompile(`\{\{kb_root\}\}/([A-Za-z0-9_./-]+)`)
+
+	for path, body := range files {
+		if !strings.HasPrefix(path, "adapters/") {
+			continue
+		}
+		for _, m := range ref.FindAllStringSubmatch(string(body), -1) {
+			named := strings.TrimRight(m[1], ".,;:")
+			// Only bin/ entries are executables the engine has to provide;
+			// knowledge/, inbox/ and the like are created per instance.
+			if !strings.HasPrefix(named, "bin/") {
+				continue
+			}
+			if _, ok := files[named]; !ok {
+				t.Errorf("%s tells an agent to run %q, which no instance has", path, named)
+			}
 		}
 	}
 }
