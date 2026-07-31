@@ -54,7 +54,7 @@ func TestConflictCopiesAreInvisibleUntilResolved(t *testing.T) {
 	if len(all) != 1 {
 		t.Fatalf("loaded %d facts, want 1 — a conflict copy reached the store", len(all))
 	}
-	if strings.Contains(all[0].RelPath, facts.ConflictMarker) {
+	if facts.IsConflict(all[0].RelPath) {
 		t.Errorf("the conflict copy was loaded instead of the file: %s", all[0].RelPath)
 	}
 	// It must still be findable, or it could never be resolved.
@@ -268,5 +268,55 @@ func TestUnlistedSimilarNamesAreLeftAlone(t *testing.T) {
 	}
 	if len(fixes) != 0 {
 		t.Errorf("an unlisted project name was merged by resemblance: %+v", fixes)
+	}
+}
+
+// The conflict naming is the one place regesto knows anything about a specific
+// sync client, so it is configurable. A pattern rather than a literal marker,
+// because clients differ in shape: Syncthing appends before the extension,
+// others bracket their insertion mid-name — and taking "the text before a
+// marker" only ever handles the first.
+func TestConflictPatternFollowsTheSyncClient(t *testing.T) {
+	t.Cleanup(func() { _ = facts.SetConflictPattern(facts.DefaultConflictPattern) })
+
+	syncthing := "dec-a.sync-conflict-20260729-101500-ABCDEF.md"
+	dropbox := "dec-a (someone's conflicted copy 2026-07-30).md"
+
+	// The default knows Syncthing and nothing else.
+	if !facts.IsConflict(syncthing) {
+		t.Error("default pattern failed to recognise a Syncthing conflict copy")
+	}
+	if got := facts.BaseName(syncthing); got != "dec-a.md" {
+		t.Errorf("BaseName = %q, want dec-a.md", got)
+	}
+	if facts.IsConflict(dropbox) {
+		t.Error("default pattern claimed another client's naming, which it cannot resolve")
+	}
+
+	if err := facts.SetConflictPattern(` \(.*conflicted copy.*\)`); err != nil {
+		t.Fatal(err)
+	}
+	if !facts.IsConflict(dropbox) {
+		t.Error("configured pattern failed to recognise the client's conflict copy")
+	}
+	if got := facts.BaseName(dropbox); got != "dec-a.md" {
+		t.Errorf("BaseName = %q, want dec-a.md — the insertion must be cut out, not truncated at", got)
+	}
+	// An ordinary fact must never look like a conflict, whatever the pattern.
+	if facts.IsConflict("dec-a.md") {
+		t.Error("a plain fact filename was taken for a conflict copy")
+	}
+}
+
+// A bad pattern has to fail loudly at startup. Silently keeping the default
+// would mean conflict copies loading as real facts, two claims sharing one id.
+func TestInvalidConflictPatternIsRejected(t *testing.T) {
+	t.Cleanup(func() { _ = facts.SetConflictPattern(facts.DefaultConflictPattern) })
+	if err := facts.SetConflictPattern(`([unclosed`); err == nil {
+		t.Error("an invalid regular expression was accepted")
+	}
+	// The default must survive a rejected one.
+	if !facts.IsConflict("dec-a.sync-conflict-20260729-101500-ABCDEF.md") {
+		t.Error("a rejected pattern damaged the working default")
 	}
 }

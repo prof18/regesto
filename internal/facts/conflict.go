@@ -4,7 +4,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // Conflict is one sync-conflict copy and the file it conflicts with.
@@ -16,15 +15,10 @@ type Conflict struct {
 	BasePath string
 }
 
-// BaseName strips the conflict marker, turning
-// dec-a.sync-conflict-20260729-101500-ABCDEF.md back into dec-a.md.
-func BaseName(name string) string {
-	i := strings.Index(name, ConflictMarker)
-	if i < 0 {
-		return name
-	}
-	return name[:i] + filepath.Ext(name)
-}
+// BaseName cuts the conflict marking out of a filename, turning
+// dec-a.sync-conflict-20260729-101500-ABCDEF.md back into dec-a.md — and, under
+// a client that brackets its insertion mid-name, doing the same there.
+func BaseName(name string) string { return conflictPattern.ReplaceAllString(name, "") }
 
 // FindConflicts lists sync-conflict copies under knowledge/.
 //

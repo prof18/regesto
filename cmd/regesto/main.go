@@ -82,6 +82,12 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Applied once, before any command can load a fact: the loader skips
+	// conflict copies, so it and the conflict finder have to agree on what one
+	// looks like.
+	if err := facts.SetConflictPattern(cfg.Section("sync")["conflict_pattern"]); err != nil {
+		return err
+	}
 
 	switch rest[0] {
 	case "search":

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -39,12 +40,38 @@ type Fact struct {
 	RelPath string
 }
 
-// ConflictMarker is what a sync client inserts into a filename when two
-// machines changed the same file: name.sync-conflict-<date>-<time>-<id>.md.
-const ConflictMarker = ".sync-conflict-"
+// DefaultConflictPattern matches what Syncthing inserts into a filename when
+// two machines changed the same file:
+// name.sync-conflict-<date>-<time>-<id>.md.
+const DefaultConflictPattern = `\.sync-conflict-[^.]*`
+
+// conflictPattern is what identifies a sync client's conflict copy, and what is
+// cut out of the name to get back to the original.
+//
+// A pattern rather than a literal marker, because clients differ in shape, not
+// just in wording: Syncthing appends before the extension, while others wrap the
+// insertion in brackets mid-name. Removing a matched span handles both; taking
+// the text before a marker only handles the first.
+var conflictPattern = regexp.MustCompile(DefaultConflictPattern)
+
+// SetConflictPattern points conflict detection at another sync client's naming.
+// Process-wide and set once from the instance config, because the alternative is
+// threading it through every function that loads a fact — and a fact loader that
+// disagrees with the conflict finder would parse conflict copies as real facts.
+func SetConflictPattern(expr string) error {
+	if strings.TrimSpace(expr) == "" {
+		return nil
+	}
+	re, err := regexp.Compile(expr)
+	if err != nil {
+		return fmt.Errorf("conflict_pattern %q is not a valid regular expression: %w", expr, err)
+	}
+	conflictPattern = re
+	return nil
+}
 
 // IsConflict reports whether a filename is a sync client's conflict copy.
-func IsConflict(name string) bool { return strings.Contains(name, ConflictMarker) }
+func IsConflict(name string) bool { return conflictPattern.MatchString(name) }
 
 // LoadAll walks knowledge/facts/ under kbRoot and parses every .md file.
 // Files that fail to parse abort the load: a malformed fact is a schema

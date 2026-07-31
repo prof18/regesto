@@ -304,6 +304,16 @@ agents = ["claude", "codex"]
 # control for "not content"; size is only a proxy for it, and a poor one.
 # [harvest_exclude]
 # codex = "raw_memories.md"
+
+# How your sync client names a conflict copy, as a regular expression. Cycle
+# finds those copies, keeps the newer claim and archives the other. The default
+# matches Syncthing; set this if you replicate the folder another way, and the
+# pattern is cut out of the name to get back to the original file.
+#
+# Values here are taken literally — backslashes are not escape characters — so
+# write the expression exactly as a regex, with single backslashes.
+# [sync]
+# conflict_pattern = " \(.*conflicted copy.*\)"
 `
 }
 

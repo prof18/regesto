@@ -37,12 +37,41 @@ Anything meeting that works. Some shapes it can take:
 | **iCloud Drive** | Not recommended. "Optimize Mac Storage" evicts file contents and leaves stubs, which breaks requirement 3 silently |
 | **git** | Deliberately not — [DESIGN §9](../DESIGN.md#9-sync-and-transport). It fails open: miss a pull and the agent confidently reads stale knowledge |
 
-**One thing is tool-specific.** When two machines edit the same fact, `regesto cycle`
-auto-resolves the duplicate — keeping the newer `modified`, archiving the loser, never
-deleting — and it recognises the copy by Syncthing's `name.sync-conflict-<date>-<id>.md`
-naming. With a client that names conflicts differently, the copies still appear as ordinary
-files and nothing is lost; lint simply will not resolve them for you, and you apply the same
-rule by hand. Everything else in regesto is indifferent to which tool you chose.
+### Conflict naming
+
+When two machines edit the same fact, the client writes a second copy alongside the first.
+`regesto cycle` resolves those: the newer `modified` wins in place, the other is archived,
+nothing is deleted. Until then the copy is invisible to search, the index and the hook —
+an unresolved conflict must not reach a session's context.
+
+Finding those copies is the one thing that depends on your client, because each names them
+differently. It is a setting, not a constant:
+
+```toml
+[sync]
+conflict_pattern = " \(.*conflicted copy.*\)"
+```
+
+Config values are taken literally — backslashes are not escape characters here — so write
+the expression exactly as a regex, with single backslashes.
+
+A regular expression, and the part it matches is **cut out** of the name to get back to the
+original — which is what makes it work across clients whose shapes differ, not merely their
+wording. Syncthing appends before the extension:
+
+```
+dec-a.sync-conflict-20260729-101500-ABCDEF.md   →   dec-a.md
+```
+
+while others bracket the insertion mid-name:
+
+```
+dec-a (someone's conflicted copy 2026-07-30).md   →   dec-a.md
+```
+
+The default matches Syncthing, so leave it alone if that is what you run. A pattern that is
+not valid regex is refused at startup rather than quietly ignored: a conflict copy that
+stops being recognised would load as a real fact, and two claims would share one id.
 
 ## Two things must never sync
 
