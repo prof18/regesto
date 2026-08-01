@@ -12,6 +12,7 @@ package adapters
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -140,6 +141,39 @@ func excludes(cfg *config.Config, agent string, def []string) []string {
 	for _, part := range strings.Split(raw, ",") {
 		if p := strings.TrimSpace(part); p != "" {
 			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// KnownAgents returns the names this engine ships vendor defaults for,
+// sorted. It is the set `regesto init` checks for on the machine, and the set
+// `regesto upgrade` compares a live instance's `agents` against to notice one
+// it did not exist to detect when the instance was created.
+func KnownAgents() []string {
+	out := make([]string, 0, len(vendorDefaults))
+	for name := range vendorDefaults {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Detect reports which known agents are present on this machine: the parent
+// of their vendor-default skills directory exists. This is the same check
+// bin/regesto-install performs before installing (skip if that directory is
+// absent) — run here too so `regesto init` can propose an `agents` list that
+// already matches the machine instead of a fixed pair, and so `regesto
+// upgrade` can notice an agent that showed up after the instance was created.
+func Detect() []string {
+	var out []string
+	for _, name := range KnownAgents() {
+		skills := vendorDefaults[name].skills
+		if skills == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Dir(expandHome(skills))); err == nil {
+			out = append(out, name)
 		}
 	}
 	return out

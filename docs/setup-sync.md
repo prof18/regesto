@@ -145,7 +145,7 @@ hostname it can drift — see the troubleshooting entry below.
 
 ```bash
 ~/regesto-kb/bin/regesto-install
-regesto schedule install
+regesto --config ~/regesto-kb/config.toml schedule install
 ```
 
 `schedule install` gives this machine the harvest job, and the cycle job only if

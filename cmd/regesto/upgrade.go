@@ -12,6 +12,7 @@ import (
 	"time"
 
 	regesto "github.com/prof18/regesto"
+	"github.com/prof18/regesto/internal/adapters"
 	"github.com/prof18/regesto/internal/config"
 	"github.com/prof18/regesto/internal/manifest"
 	"github.com/prof18/regesto/internal/version"
@@ -46,6 +47,8 @@ func runUpgrade(cfg *config.Config, args []string) error {
 		from = "unrecorded"
 	}
 	fmt.Printf("instance %s\nengine   %s → %s\n\n", cfg.KBRoot, from, version.Current())
+
+	noteNewAgents(cfg)
 
 	changes := manifest.Plan(cfg.KBRoot, engine, m)
 	var written, removed, kept int
@@ -150,6 +153,33 @@ func runUpgrade(cfg *config.Config, args []string) error {
 		return err
 	}
 	return repointSchedule(cfg)
+}
+
+// noteNewAgents flags a known agent that is present on this machine but
+// missing from this instance's `agents` in config.toml — the case where a
+// release adds an adapter for something the user already had installed
+// before init ever ran its own detection.
+//
+// This only ever prints. config.toml is the one file upgrade never writes to
+// — "everything machine- or person-specific lives here, never in the engine"
+// — so silently appending to `agents` would be the one place upgrade crossed
+// that line. The user adds it themselves if they want it managed.
+func noteNewAgents(cfg *config.Config) {
+	have := make(map[string]bool, len(cfg.Agents))
+	for _, a := range cfg.Agents {
+		have[a] = true
+	}
+	var missing []string
+	for _, a := range adapters.Detect() {
+		if !have[a] {
+			missing = append(missing, a)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+	fmt.Printf("note     %s detected but not in agents = [...] in config.toml — add it yourself to have this instance manage it\n\n",
+		strings.Join(missing, ", "))
 }
 
 // reinstallAdapters runs the instance's own install script, which was itself

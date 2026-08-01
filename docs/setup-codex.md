@@ -6,6 +6,10 @@ the same schema, the same `regesto-write` procedure — is identical to Claude C
 
 ## Install
 
+`regesto init` already added `codex` to `agents` in `config.toml` if `~/.codex` existed on
+this machine at the time. Add it yourself otherwise, or if this instance predates that
+detection:
+
 ```toml
 # config.toml
 agents = ["claude", "codex"]

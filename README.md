@@ -64,6 +64,9 @@ you would miss.
 regesto init --dir ~/regesto-kb --examples
 ```
 
+`regesto-kb` is just this guide's name for that folder, not a required one — name it
+whatever you like, and read it back into every later example here as whatever you chose.
+
 That writes the tree, a commented `config.toml`, both ignore files, this machine's
 identity, the `bin/` shims, the agent adapters, `SCHEMA.md`, and a handful of example
 facts to imitate. Drop `--examples` for an empty one.
@@ -77,7 +80,9 @@ facts to imitate. Drop `--examples` for an empty one.
 
 Skills are symlinked into each agent, the `SessionStart` hook is registered (Claude Code),
 and a short pointer section is appended to your instructions file. It backs up anything it
-edits and is safe to re-run.
+edits and is safe to re-run. This runs for every agent in `agents` in `config.toml`, which
+`init` already set to whichever it found installed on this machine — edit it if that guess
+was wrong.
 
 **4. Open a session in a project.** Its facts are already in context — you did not ask for
 them, and the agent did not have to decide to look.
@@ -93,8 +98,13 @@ That is the whole loop. Everything below is optional.
 ## Optional: the automatic half
 
 ```bash
-regesto schedule install    # harvest every 15 minutes, lint hourly (launchd, macOS)
+cd ~/regesto-kb && regesto schedule install    # harvest every 15 min, cycle hourly (launchd, macOS)
 ```
+
+Commands other than `init` and the six with a `bin/regesto-*` shim (`install`, `search`,
+`context`, `config`, `index`, `project`) resolve their instance from the working directory,
+so run them from inside `~/regesto-kb` — or pass `--config ~/regesto-kb/config.toml` from
+anywhere else.
 
 - **`regesto harvest`** diffs each agent's native memory against a per-machine snapshot and
   files anything new in `inbox/`. It needs no cooperation from the agent — anything it
@@ -136,6 +146,7 @@ knowledge base — the `bin/` shims, `adapters/`, `SCHEMA.md` — and a new engi
 touch them on its own:
 
 ```bash
+cd ~/regesto-kb
 regesto upgrade --dry-run   # what would change
 regesto upgrade
 ```
@@ -154,6 +165,21 @@ ones that were retired, refreshes the instructions section and the hook, and rep
 scheduled jobs if they name an engine that is no longer the one serving this instance. A
 skill added or withdrawn by a release reaches your agents from this one command — nothing
 else to run.
+
+## Uninstalling
+
+There is no single command, because `regesto-install` only ever *adds* to files it does not
+own outright. Reverse it by hand:
+
+```bash
+cd ~/regesto-kb && regesto schedule uninstall   # stops the launchd jobs, if you ran `schedule install`
+```
+
+Then remove the three things `regesto-install` touched: the `SessionStart` entry under
+`.hooks` in `~/.claude/settings.json`, the block between the `regesto:section:start` /
+`:end` markers in your instructions file, and the `regesto-search` / `regesto-write` /
+`regesto-promote` symlinks in each agent's skills directory. Delete the instance directory
+itself (`~/regesto-kb` by default) to remove the knowledge base.
 
 ## Commands
 

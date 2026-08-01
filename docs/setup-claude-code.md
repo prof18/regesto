@@ -69,7 +69,7 @@ that theoretically could.
 Check, in order:
 
 ```bash
-regesto config                          # is the instance the one you think it is?
+~/regesto-kb/bin/regesto-config         # is the instance the one you think it is?
 ~/regesto-kb/bin/regesto-context        # does it print anything at all?
 jq '.hooks.SessionStart' ~/.claude/settings.json
 ```

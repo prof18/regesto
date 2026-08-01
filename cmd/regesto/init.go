@@ -11,6 +11,7 @@ import (
 	"time"
 
 	regesto "github.com/prof18/regesto"
+	"github.com/prof18/regesto/internal/adapters"
 	"github.com/prof18/regesto/internal/config"
 	"github.com/prof18/regesto/internal/manifest"
 	"github.com/prof18/regesto/internal/version"
@@ -101,7 +102,13 @@ func runInit(args []string) error {
 	}
 	fmt.Printf("  machine %s (%s) → .state/machine\n", name, origin)
 
-	if err := writeIfAbsent(root, config.FileName, instanceConfig()); err != nil {
+	detected := adapters.Detect()
+	if len(detected) > 0 {
+		fmt.Printf("  agents  %s (detected) → config.toml\n", strings.Join(detected, ", "))
+	} else {
+		fmt.Println("  agents  none detected — set `agents` in config.toml once you have one")
+	}
+	if err := writeIfAbsent(root, config.FileName, instanceConfig(detected)); err != nil {
 		return err
 	}
 	if err := writeIfAbsent(root, ".gitignore", gitignoreTemplate); err != nil {
@@ -253,15 +260,22 @@ func writeIfAbsent(root, name, body string) error {
 	return nil
 }
 
-func instanceConfig() string {
+// instanceConfig renders the commented config.toml template. detected is what
+// adapters.Detect() found on this machine at init time — the whole point of
+// detecting instead of hardcoding a pair is that this list grows the moment
+// the engine ships a new adapter, with no line here to update.
+func instanceConfig(detected []string) string {
 	return `# Regesto instance configuration.
 #
 # Everything machine- or person-specific lives here, never in the engine. Run
 # ` + "`regesto config`" + ` to see what these resolve to.
 
-# Agents to install adapters for and harvest from. An agent that is not present
-# on this machine is skipped rather than being an error.
-agents = ["claude", "codex"]
+# Agents to install adapters for and harvest from. init detected these as
+# present on this machine — edit freely. An agent listed here that is not
+# present is skipped rather than being an error; one present but not listed
+# here just goes unmanaged, which is why ` + "`regesto upgrade`" + ` mentions it if a
+# later release adds an adapter for something already on your machine.
+` + agentsLine(detected) + `
 
 # Machine identity is NOT set here. This file sits at the KB root, which a sync
 # client replicates, so a value here would be identical on every machine — while
@@ -315,6 +329,20 @@ agents = ["claude", "codex"]
 # [sync]
 # conflict_pattern = " \(.*conflicted copy.*\)"
 `
+}
+
+// agentsLine renders the `agents = [...]` config line, or a commented-out
+// empty one when nothing was detected — so the file still parses and the
+// reason it does nothing is visible at a glance rather than a bare `[]`.
+func agentsLine(detected []string) string {
+	if len(detected) == 0 {
+		return "# agents = []   # no known agent detected on this machine — add yours here"
+	}
+	quoted := make([]string, len(detected))
+	for i, a := range detected {
+		quoted[i] = `"` + a + `"`
+	}
+	return "agents = [" + strings.Join(quoted, ", ") + "]"
 }
 
 const gitignoreTemplate = `# macOS noise
