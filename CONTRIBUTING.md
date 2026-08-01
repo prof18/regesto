@@ -58,6 +58,16 @@ defaults in `internal/adapters`. Examples in docs and tests use the invented *au
 The shipped skills carry a `{{kb_root}}` placeholder rather than a resolved path;
 `bin/regesto-install` renders them per instance.
 
+## Releases
+
+Every release publishes what `CHANGELOG.md` says about it. Add a `## <version>` section
+before tagging — the workflow reads it from there and **refuses to publish a tag with no
+section**, so the changelog cannot drift behind the releases.
+
+Write it for someone using regesto, not for someone maintaining it: what changed, what they
+have to do about it, and what they can ignore. A generated list of commit subjects is not
+release notes.
+
 ## Before you open a pull request
 
 ```bash

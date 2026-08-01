@@ -66,6 +66,29 @@ jobs:
           "$RUNNER_TEMP/kb/bin/regesto-index"
           "$RUNNER_TEMP/kb/bin/regesto-search" --scope aurora | grep -q dec-http-port-8080
 
+      # A release publishes what CHANGELOG.md says about it, and will not publish
+      # without it. Generated commit lists are written for whoever maintains the
+      # code and read as noise to everyone else — and the release page is where
+      # people land, most of whom will never open the repository.
+      - name: take the notes from the changelog
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          section="${VERSION#v}"
+          awk -v want="## $section" '
+            $0 == want { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+
+          if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
+            echo "CHANGELOG.md has no '## $section' section."
+            echo "Add one describing what changed for someone using this, then re-tag."
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/notes.md"
+
       - name: publish
         env:
           GH_TOKEN: ${{ github.token }}
@@ -73,4 +96,4 @@ jobs:
         run: |
           gh release create "$VERSION" dist/*.tar.gz dist/checksums.txt \
             --title "$VERSION" \
-            --generate-notes
+            --notes-file "$RUNNER_TEMP/notes.md"
