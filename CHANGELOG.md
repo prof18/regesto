@@ -4,6 +4,27 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — `release.yml` reads it from here and refuses to publish a tag
 that has no section, so this file cannot fall behind.
 
+## 0.2.2
+
+**`regesto init` no longer hardcodes `agents = ["claude", "codex"]`.** It now detects which
+known agents are actually installed on this machine — the same check `bin/regesto-install`
+already made before installing — and writes only those. A machine with just Claude Code
+gets `agents = ["claude"]`; one with neither gets an empty list and a printed reason,
+instead of a config file asserting two agents that were never there.
+
+`regesto upgrade` uses the same detection to flag an agent that showed up on the machine
+after the instance was created but is still missing from `agents` — a note only, since
+config.toml is the one file the engine never writes to on its own.
+
+**Several install-flow docs bugs, found by running the README against a real, empty
+`$HOME`.** Most subcommands beyond the six with a `bin/regesto-*` shim resolve their
+instance from the working directory or from beside the engine binary — neither of which
+helps once the engine is installed via Homebrew and invoked from an arbitrary shell. The
+Quickstart and setup docs now say so, and their examples `cd` into the instance first. Also
+fixed: the hourly scheduled job was called "lint" in one place when it actually runs
+`cycle`; there was no Uninstalling section; and `regesto-kb` now reads as this guide's
+suggested folder name, not a required one.
+
 ## 0.2.1
 
 **Skills pointed agents at a binary that was not there.** The `regesto-write` skill told
