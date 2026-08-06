@@ -1,6 +1,6 @@
 ---
 name: regesto-write
-description: Record a fact in the knowledge base at {{kb_root}}. Use IMMEDIATELY when the user asks to remember/store/note something (this trigger is absolute — never reply "noted" without writing the file); when a decision is agreed in conversation ("let's go with X because Y"); when a preference is stated or a correction is given for the second time; when a non-obvious fact about the environment, tooling, or a project surfaces; when a recurring approach is settled on; when a gotcha is discovered. Do it at the moment it happens, unprompted — not at the end of the session. Also the manual store command, /regesto-write <statement> or bare /regesto-write.
+description: Record a fact in the knowledge base at {{kb_root}}. Use IMMEDIATELY when the user asks to remember/store/note something (this trigger is absolute — never reply "noted" without writing the file); when a decision is agreed in conversation ("let's go with X because Y"); when a preference is stated or a correction is given for the second time; when a non-obvious fact surfaces about the environment, tooling, a project, or the user's own life and admin; when a recurring approach is settled on; when a gotcha is discovered. Do it at the moment it happens, unprompted — not at the end of the session. Also the manual store command, /regesto-write <statement> or bare /regesto-write.
 when_to_use: The moment any trigger above occurs, mid-session, without being asked. Also on explicit invocation.
 allowed-tools: Read, Grep, Write, Bash
 ---

@@ -30,8 +30,8 @@ notices they resolve to the same path and appends the section once.
 
 The always-loaded section in `AGENTS.md` tells the agent that canonical knowledge exists,
 where it is, and how to search it. The `regesto-search` skill carries the procedure. In
-practice the agent reaches for it on questions about past decisions and conventions, and
-sometimes does not.
+practice the agent reaches for it on questions about past decisions and conventions, less
+reliably on everything else it holds, and sometimes not at all.
 
 Two things make that better:
 

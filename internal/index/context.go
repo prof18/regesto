@@ -44,8 +44,8 @@ func BuildContext(all []facts.Fact, opts ContextOptions) string {
 
 	var b strings.Builder
 	b.WriteString("# Knowledge base\n\n")
-	b.WriteString("Canonical knowledge for this machine. Consult it before decisions about\n")
-	b.WriteString("architecture, conventions, preferences, or past work.\n\n")
+	b.WriteString("Canonical knowledge for this machine, technical and not. Consult it before\n")
+	b.WriteString("any answer or decision a recorded claim could settle.\n\n")
 	b.WriteString("- Search: `bin/regesto-search [--subject S] [--relation R] [--scope SC] [terms...]`\n")
 	b.WriteString("- Read a claim in full at the path listed by that search.\n")
 	b.WriteString("- Full manifest `INDEX.md` · contract `SCHEMA.md`\n")

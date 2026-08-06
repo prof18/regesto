@@ -111,13 +111,14 @@ Pick them so a future contradicting claim would naturally land on the same pair:
 
 ## What to record
 
-**Record:** architecture decisions and *why*; conventions that differ from tool defaults;
-corrections you had to give more than once; non-obvious environment and tooling facts;
-preferences about how work should be done; anything that would take real effort to rediscover.
+**Record** — and not only about code: decisions and *why*; conventions that differ from
+tool defaults; corrections you had to give more than once; non-obvious facts about the
+environment, the tooling, or the user's own life and admin; preferences about how work
+should be done; anything that would take real effort to rediscover.
 
-**Don't record:** anything derivable from reading the code; transient state (branch names,
-current bugs, in-flight work); restatements of official documentation; anything already in
-this repo's own files.
+**Don't record:** anything derivable from a source already at hand — the code, this repo's
+own files, official documentation; transient state (branch names, current bugs, in-flight
+work).
 
 If in doubt: *would a competent stranger need to be told this, and would they struggle to
 find it out?*

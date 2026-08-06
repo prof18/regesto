@@ -2,11 +2,13 @@
 ## Knowledge base
 
 Canonical knowledge lives at `{{kb_root}}` — decisions, conventions, preferences and
-project facts, one claim per file. It is the record, not optional background.
+facts of every kind, one claim per file. Not only code: how this machine is set up, how
+the user wants to be worked with, and matters of their life and admin that live in no
+repo. It is the record, not optional background.
 
-**Consult it** before decisions about architecture, conventions, tooling, or past work.
-On Claude Code a `SessionStart` hook injects what exists for the current project; on other
-agents start from `{{kb_root}}/INDEX.md` and search:
+**Consult it** before any answer or decision a recorded claim could settle, technical or
+not. On Claude Code a `SessionStart` hook injects what exists for the current project; on
+other agents start from `{{kb_root}}/INDEX.md` and search:
 
 ```
 {{kb_root}}/bin/regesto-search [--subject S] [--relation R] [--scope SC] [terms...]
@@ -22,7 +24,8 @@ awaiting human review — you may rely on it, but say that you are.
   "noted" or "I'll keep that in mind" without writing the file.
 - a decision is agreed ("let's go with X because Y")
 - a preference is stated, or a correction is given for the second time
-- a non-obvious fact about the environment, tooling, or a project surfaces
+- a non-obvious fact surfaces about the environment, the tooling, a project, or the
+  user's own life and admin
 - a recurring approach is settled on
 
 Neither behaviour is a per-request favour; both are standing. Before minting a new

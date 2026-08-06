@@ -18,9 +18,10 @@ cannot participate in the KB automatically. KB root: `{{kb_root}}`.
    go looking for exports unprompted.
 
 2. **Read the transcript and extract durable facts** — apply SCHEMA.md's
-   "What to record": architecture decisions and why, conventions, repeated
-   corrections, non-obvious environment/tooling facts, preferences. Skip
-   anything derivable from code, transient state, or restatements of docs.
+   "What to record": decisions and why, conventions, repeated corrections,
+   preferences, non-obvious facts about the environment, the tooling or the
+   user's own life and admin — not only code. Skip anything derivable from a
+   source already at hand, and transient state.
    Expect most of a transcript to yield nothing; that is normal.
 
 3. **Write each fact via the `regesto-write` procedure** (its skill body is the

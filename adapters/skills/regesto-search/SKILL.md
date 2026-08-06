@@ -1,7 +1,7 @@
 ---
 name: regesto-search
-description: Search the personal knowledge base at {{kb_root}} for prior decisions, conventions, preferences, and facts. Use before answering questions about past work, architecture, conventions, or the environment, and before making a decision a prior fact might settle.
-when_to_use: Before decisions or answers that prior decisions, stated preferences, or recorded project facts could affect. Pass the query as arguments.
+description: Search the personal knowledge base at {{kb_root}} for prior decisions, conventions, preferences, and facts of every kind — technical and not. Use before answering any question a recorded claim could settle: past work, architecture and the environment, but equally how the user wants to be worked with and matters of their life, admin and projects that live in no repo.
+when_to_use: Before any answer or decision that a prior decision, stated preference, or recorded fact could affect, whether or not the topic is technical. Pass the query as arguments.
 allowed-tools: Bash({{kb_root}}/bin/regesto-search:*), Read, Grep
 ---
 
