@@ -4,6 +4,34 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — `release.yml` reads it from here and refuses to publish a tag
 that has no section, so this file cannot fall behind.
 
+## 0.2.3
+
+**The instructions agents load described a knowledge base for code.** Every surface that
+tells an agent what belongs here framed the subject as architecture, conventions and
+tooling: the section installed into `CLAUDE.md` / `AGENTS.md`, the `SessionStart` payload,
+the `regesto-search` and `regesto-write` skills, `SCHEMA.md`, and the prompts that extract
+facts from native memory and from transcripts.
+
+An agent reading that literally never searches for a tax record, a device inventory or a
+travel claim, and never files one either — however plainly the knowledge base itself says
+those belong. The payload was the clearest case: it printed "consult it before decisions
+about architecture, conventions, preferences, or past work" directly above a list of facts
+about residency and medical history.
+
+All of it now says what it always meant. Consult the knowledge base before any answer or
+decision a recorded claim could settle, technical or not. Record decisions and why,
+conventions, repeated corrections, preferences, and non-obvious facts about the
+environment, the tooling, or your own life and admin.
+
+The bar for recording is unchanged — durable, non-obvious, costly to rediscover. What
+changed is that "is this about code?" is no longer part of it. The old "don't record
+anything derivable from reading the code" test became "derivable from a source already at
+hand", which is a question you can actually answer about a fact that has no code.
+
+Nothing about behaviour, configuration or the file format changed. `regesto upgrade`
+refreshes the affected files and reinstalls the adapters in the same run, so the new text
+reaches every agent without a separate step.
+
 ## 0.2.2
 
 **`regesto init` no longer hardcodes `agents = ["claude", "codex"]`.** It now detects which
