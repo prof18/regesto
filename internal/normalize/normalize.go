@@ -9,10 +9,14 @@
 // knowledge/.
 //
 // Trust follows the channel, not the agent (SCHEMA.md, Trust). Captures from a
-// source that is reachable by third parties are never normalised at all; they
+// source the instance has not declared trusted are never normalised at all; they
 // stay raw in the inbox, invisible to search and hooks, until a human promotes
 // them. Quarantined has to mean invisible — a planted claim that reached a
 // session's context before review has already done its damage.
+//
+// The default is deny because the safe direction is obvious: a trusted channel
+// wrongly quarantined costs one line of config, while an untrusted one wrongly
+// normalised costs a claim in the store that every later session believes.
 package normalize
 
 import (

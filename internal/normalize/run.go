@@ -185,7 +185,13 @@ func Run(cfg *config.Config, all []facts.Fact, opts Options) ([]Outcome, error) 
 		out := Outcome{Capture: c}
 
 		if c.Quarantined(trusted) {
-			out.Note = "quarantined — reachable by third parties; left raw for a human to promote"
+			// Say what is known, not what is feared. The engine has established
+			// only that this source is undeclared; whether the channel is
+			// actually reachable by anyone else is a question it cannot answer,
+			// and stating it as fact sends people hunting a breach that may not
+			// exist — while hiding the one-line config that resolves it.
+			out.Note = fmt.Sprintf(
+				"quarantined — %s is not in [trusted_sources], so its captures are left raw for a human to promote", c.Source)
 			outcomes = append(outcomes, out)
 			continue
 		}
