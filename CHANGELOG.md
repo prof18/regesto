@@ -4,6 +4,57 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — `release.yml` reads it from here and refuses to publish a tag
 that has no section, so this file cannot fall behind.
 
+## 0.3.0
+
+**The cycle now tells you when it has stopped working.** It aborts on the first validation
+error and commits nothing, which is the right call — applying half a reconciliation is worse
+than applying none. But it runs unattended, so until now the only trace of a failure was an
+exit code and a line in `.state/<machine>/logs/`, and nothing about the knowledge base looks
+wrong from the outside while it is broken. Meanwhile every hour adds facts that are written
+but never committed, reconciliations that never apply, and an `INDEX.md` that agents keep
+reading as current.
+
+A failing cycle now sends a notification naming the file that broke it, and another when it
+recovers. While it stays broken you get one reminder a day, not one an hour — an alert that
+fires every hour is an alert you mute, and a muted channel loses the next real failure too.
+A working pass says nothing at all.
+
+macOS uses `osascript` and Linux `notify-send`, so this works without installing anything.
+To send alerts somewhere else — a phone, a chat channel — point `[notify].command` at any
+program and it receives the title and message as its last two arguments, plus
+`$REGESTO_NOTIFY_TITLE`, `$REGESTO_NOTIFY_MESSAGE`, `$REGESTO_NOTIFY_STATE` and
+`$REGESTO_NOTIFY_KEY` in its environment:
+
+```toml
+[notify]
+on = "off"                     # default is on wherever a notifier exists
+command = "~/bin/my-notifier"  # receives: <title> <message>
+renag_hours = "24"             # 0 to report each transition once and never nag
+```
+
+**`regesto schedule status` now reports whether the cycle is working, not just whether it is
+installed.** It prints how long ago the last clean pass was, or how long it has been failing.
+This is the half the cycle cannot report on itself: a job that never fires — unloaded, or
+holding a path to an engine that has moved — never reports a failure either, and a stale
+last-clean-pass is the only evidence of it. It also warns when notifications are turned off,
+so a silent instance is never silently silent.
+
+**The failure message now names a file.** `regesto cycle` used to end with `2 validation
+error(s); nothing applied, nothing committed`; it now appends the first error and the path
+it came from. A count alone cannot be acted on from a log line or a notification.
+
+**A quarantined capture now says why it was quarantined.** The note read `quarantined —
+reachable by third parties`, which states a conclusion the engine has not reached: all it
+knows is that the source is not listed in `[trusted_sources]`. Whether the channel really is
+reachable by anyone else is a question only you can answer, and asserting it sends people
+looking for a breach instead of at the one line of config that resolves it. It now names the
+source and the setting: `quarantined — hermes@studio is not in [trusted_sources], so its
+captures are left raw for a human to promote`.
+
+Nothing about the file format changed, and no existing configuration becomes invalid.
+Notifications are on by default — if you would rather they were not, set `[notify].on =
+"off"`. `regesto upgrade` refreshes the affected files as usual.
+
 ## 0.2.3
 
 **The instructions agents load described a knowledge base for code.** Every surface that
