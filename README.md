@@ -112,6 +112,18 @@ anywhere else.
 - **`regesto cycle`** normalises those captures into facts, reconciles contradictions,
   rebuilds `INDEX.md` and the topic pages, and commits.
 
+The cycle stops at the first validation error and commits nothing, which is correct — half
+a reconciliation is worse than none — but it means one malformed fact halts the whole thing
+while facts keep being written. Since it runs unattended, it tells you: a notification when
+it starts failing, another when it recovers, and one reminder a day in between. A working
+pass says nothing. `regesto schedule status` prints when the last clean pass was, which is
+the one thing a failing cycle cannot tell you itself — a job that never fires never reports
+anything at all.
+
+macOS uses `osascript`, Linux `notify-send`. To send them somewhere else — a phone, a chat
+channel — point `[notify].command` at any program; it gets the title and message as its
+last two arguments. `[notify].on = "off"` disables it.
+
 ---
 
 ## More than one machine

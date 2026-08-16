@@ -300,6 +300,19 @@ func instanceConfig(detected []string) string {
 # [normalize]
 # command = "claude -p"
 
+# How the cycle tells you it has stopped working. It runs unattended, so a
+# failure is otherwise a line in a log nobody opens — and every hour after the
+# first one adds facts that are written but never committed. Notifications fire
+# on the transition into failure and back out of it, plus once a day while it
+# stays broken; a healthy pass says nothing. macOS uses osascript and Linux
+# notify-send unless you name something else here. A custom command is run with
+# the title and message as its last two arguments, and the same values in
+# $REGESTO_NOTIFY_TITLE and $REGESTO_NOTIFY_MESSAGE.
+# [notify]
+# on = "off"                    # default is on wherever a notifier exists
+# command = "~/bin/my-notifier" # receives: <title> <message>
+# renag_hours = "24"            # 0 to report each transition once and never nag
+
 # Sources trusted enough to normalise automatically. Trust follows the channel,
 # not the agent: a private single-user channel is you; anything a third party can
 # reach is not, and stays raw in the inbox until a human promotes it.

@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/notify"
 )
 
 // Two jobs, because they have different homes (DESIGN §9.0): harvest runs on
@@ -152,7 +154,46 @@ func scheduleStatus(cfg *config.Config, isLintHost bool) error {
 		}
 		fmt.Printf("  %-20s every %4ds  %s\n", j.label, j.interval, state)
 	}
+
+	// Installed is not the same as working, and the difference is the whole
+	// reason this section exists. The cycle reports its own failures (internal
+	// /notify), but a job that never fires — unloaded, or holding a path to an
+	// engine that has moved — reports nothing at all. A stale last clean pass is
+	// the only evidence of that, so print it whether or not anything is wrong.
+	if isLintHost {
+		if s, ok := notify.Load(cfg, "cycle"); ok {
+			now := time.Now().UTC()
+			switch {
+			case s.Failing:
+				fmt.Printf("  %-20s FAILING for %s\n", "cycle health", ago(now.Sub(s.Since)))
+			case s.LastOK.IsZero():
+				fmt.Printf("  %-20s no clean pass recorded yet\n", "cycle health")
+			default:
+				fmt.Printf("  %-20s last clean pass %s ago\n", "cycle health", ago(now.Sub(s.LastOK)))
+			}
+		} else {
+			fmt.Printf("  %-20s no pass recorded yet on this machine\n", "cycle health")
+		}
+		if !notify.Enabled(cfg) {
+			fmt.Printf("  %-20s off — failures will be silent; see [notify] in config.toml\n", "notifications")
+		}
+	}
 	return nil
+}
+
+// ago renders a duration the way someone reading a status line wants it: one
+// unit, largest that fits.
+func ago(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "under a minute"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
 }
 
 func scheduleInstall(cfg *config.Config, isLintHost bool) error {

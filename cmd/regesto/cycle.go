@@ -14,6 +14,7 @@ import (
 	"github.com/prof18/regesto/internal/index"
 	"github.com/prof18/regesto/internal/lint"
 	"github.com/prof18/regesto/internal/normalize"
+	"github.com/prof18/regesto/internal/notify"
 )
 
 // runCycle is the whole downstream pass in one command: normalise the inbox,
@@ -36,10 +37,53 @@ func runCycle(cfg *config.Config, args []string) error {
 	if host := strings.TrimSpace(cfg.Section("roles")["lint"]); host != "" && host != cfg.Machine {
 		// Refuse rather than proceed: a second machine running this would
 		// mint vocabulary against a different INDEX.md and split the store.
+		//
+		// Deliberately before the pass and its health report: this machine was
+		// never meant to run the cycle, so its refusal is not a failure of the
+		// knowledge base and must not alert anyone.
 		return fmt.Errorf("this machine is %q but [roles].lint names %q — cycle runs only there", cfg.Machine, host)
 	}
 
-	chain := normalize.Commands(*command, cfg.Section("normalize")["commands"])
+	err := cyclePass(cfg, cycleOptions{
+		DryRun:   *dry,
+		Command:  *command,
+		NoCommit: *noCommit,
+		Push:     *push,
+	})
+	// A dry run is someone looking, and someone looking needs no telling.
+	if !*dry {
+		reportCycleHealth(cfg, err, time.Now().UTC())
+	}
+	return err
+}
+
+type cycleOptions struct {
+	DryRun   bool
+	Command  string // agent invocation for normalisation; empty means configured
+	NoCommit bool
+	Push     bool
+}
+
+// reportCycleHealth is what makes a silent scheduled failure audible. It is
+// never allowed to change the outcome of the pass: a notifier that is missing,
+// misconfigured or broken is a worse reason to fail than the one it was trying
+// to report.
+func reportCycleHealth(cfg *config.Config, passErr error, now time.Time) {
+	h := notify.Health{Key: "cycle", Failing: passErr != nil}
+	if passErr != nil {
+		h.Title = "regesto: the cycle is failing"
+		h.Message = passErr.Error() + "\nFacts keep accumulating until this is fixed."
+	} else {
+		h.Title = "regesto: the cycle is working again"
+		h.Message = "Lint is clean; the store is reconciled and committed."
+	}
+	if _, err := notify.Report(cfg, h, now); err != nil {
+		fmt.Fprintln(os.Stderr, "notify failed —", err)
+	}
+}
+
+func cyclePass(cfg *config.Config, opts cycleOptions) error {
+	chain := normalize.Commands(opts.Command, cfg.Section("normalize")["commands"])
 
 	all, err := facts.LoadAll(cfg.KBRoot)
 	if err != nil {
@@ -49,7 +93,7 @@ func runCycle(cfg *config.Config, args []string) error {
 	// 1. Normalise whatever the machines have captured.
 	outcomes, err := normalize.Run(cfg, all, normalize.Options{
 		Commands:       chain,
-		DryRun:         *dry,
+		DryRun:         opts.DryRun,
 		Timeout:        5 * time.Minute,
 		Projects:       lint.KnownProjects(cfg, all),
 		MaxPromptBytes: intSetting(cfg, "max_prompt_bytes"),
@@ -87,7 +131,7 @@ func runCycle(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
-	resolutions, err := lint.ResolveConflicts(cfg.KBRoot, conflicts, !*dry, time.Now().UTC())
+	resolutions, err := lint.ResolveConflicts(cfg.KBRoot, conflicts, !opts.DryRun, time.Now().UTC())
 	if err != nil {
 		return err
 	}
@@ -95,7 +139,7 @@ func runCycle(cfg *config.Config, args []string) error {
 		state := "resolved"
 		if r.NeedsHuman {
 			state = "NEEDS HUMAN"
-		} else if *dry {
+		} else if opts.DryRun {
 			state = "would resolve"
 		}
 		fmt.Printf("conflict %s %s — %s\n", state, r.ConflictPath, r.Message)
@@ -110,7 +154,7 @@ func runCycle(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
-	scopeFixes, err := lint.CanonicaliseScopes(cfg.KBRoot, cfg, all, !*dry, time.Now().UTC())
+	scopeFixes, err := lint.CanonicaliseScopes(cfg.KBRoot, cfg, all, !opts.DryRun, time.Now().UTC())
 	if err != nil {
 		return err
 	}
@@ -119,9 +163,9 @@ func runCycle(cfg *config.Config, args []string) error {
 			fmt.Printf("scope BLOCKED %s — %s; %s\n", s.ID, s.Message, s.Blocked)
 			continue
 		}
-		fmt.Printf("scope %s %s — %s\n", map[bool]string{true: "would move", false: "moved"}[*dry], s.ID, s.Message)
+		fmt.Printf("scope %s %s — %s\n", map[bool]string{true: "would move", false: "moved"}[opts.DryRun], s.ID, s.Message)
 	}
-	if len(scopeFixes) > 0 && !*dry {
+	if len(scopeFixes) > 0 && !opts.DryRun {
 		if all, err = facts.LoadAll(cfg.KBRoot); err != nil {
 			return err
 		}
@@ -132,7 +176,7 @@ func runCycle(cfg *config.Config, args []string) error {
 		fmt.Printf("lint %-5s %s: %s\n", f.Severity, f.Path, f.Message)
 	}
 	for _, a := range report.Actions {
-		fmt.Printf("lint %s %s — %s\n", map[bool]string{true: "would", false: "did"}[*dry], a.ID, a.Message)
+		fmt.Printf("lint %s %s — %s\n", map[bool]string{true: "would", false: "did"}[opts.DryRun], a.ID, a.Message)
 	}
 	for _, r := range report.Reviews {
 		fmt.Printf("lint review %s\n", r)
@@ -144,12 +188,13 @@ func runCycle(cfg *config.Config, args []string) error {
 		fmt.Printf("lint due %s\n", d)
 	}
 
-	if *dry {
+	if opts.DryRun {
 		fmt.Printf("dry run — %d error(s), %d action(s) pending\n", report.Errors(), len(report.Actions))
 		return nil
 	}
 	if report.Errors() > 0 {
-		return fmt.Errorf("%d validation error(s); nothing applied, nothing committed", report.Errors())
+		return fmt.Errorf("%d validation error(s); nothing applied, nothing committed%s",
+			report.Errors(), firstError(report))
 	}
 	for _, a := range report.Actions {
 		if err := facts.SetFields(cfg.KBRoot+"/"+a.Path, a.Updates); err != nil {
@@ -167,10 +212,22 @@ func runCycle(cfg *config.Config, args []string) error {
 	}
 	fmt.Printf("rebuilt INDEX.md and knowledge/topics/ from %d fact(s)\n", len(all))
 
-	if *noCommit {
+	if opts.NoCommit {
 		return nil
 	}
-	return commit(cfg, written, len(report.Actions), *push)
+	return commit(cfg, written, len(report.Actions), opts.Push)
+}
+
+// firstError names one offending file in the failure message. A count on its
+// own cannot be acted on from a notification or a log line, and the premise of
+// both is that nobody is going to open the full report.
+func firstError(report *lint.Report) string {
+	for _, f := range report.Findings {
+		if f.Severity == lint.Error {
+			return fmt.Sprintf(" — %s: %s", f.Path, f.Message)
+		}
+	}
+	return ""
 }
 
 // commit records the pass. Nothing here is fatal: the markdown files are the
