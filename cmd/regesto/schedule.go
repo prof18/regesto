@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"html"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/normalize"
 	"github.com/prof18/regesto/internal/notify"
 )
 
@@ -92,15 +94,63 @@ func plistPath(label string) string { return filepath.Join(agentDir(), label+".p
 // scheduling one.
 func engineBinary(cfg *config.Config) (string, error) { return config.ResolveEngine(cfg) }
 
+// schedulePath is deliberately narrower than the installer's entire PATH.
+// Agent sessions and version managers often prepend temporary directories; a
+// LaunchAgent outlives those directories and must not preserve them. Keep the
+// paths of commands that are actually configured, then add stable user,
+// Homebrew and system locations. [schedule].extra_path covers uncommon layouts.
+func schedulePath(cfg *config.Config, bin string) string {
+	var dirs []string
+	dirs = append(dirs, filepath.SplitList(cfg.Section("schedule")["extra_path"])...)
+	dirs = append(dirs, filepath.Dir(bin))
+
+	commands := normalize.Commands("", cfg.Section("normalize")["commands"])
+	if command := strings.TrimSpace(cfg.Section("notify")["command"]); command != "" {
+		commands = append(commands, command)
+	}
+	for _, command := range commands {
+		fields := strings.Fields(command)
+		if len(fields) == 0 {
+			continue
+		}
+		if resolved, err := exec.LookPath(fields[0]); err == nil {
+			dirs = append(dirs, filepath.Dir(resolved))
+		}
+	}
+
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".local", "bin"), filepath.Join(home, "bin"))
+	}
+	dirs = append(dirs,
+		"/opt/homebrew/bin", "/opt/homebrew/sbin",
+		"/usr/local/bin", "/usr/local/sbin",
+		"/usr/bin", "/bin", "/usr/sbin", "/sbin",
+	)
+
+	seen := map[string]bool{}
+	unique := dirs[:0]
+	for _, dir := range dirs {
+		dir = strings.TrimSpace(dir)
+		if dir == "" || seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		unique = append(unique, dir)
+	}
+	return strings.Join(unique, string(os.PathListSeparator))
+}
+
+func xmlText(s string) string { return html.EscapeString(s) }
+
 // plist renders a LaunchAgent. RunAtLoad is deliberately false for the cycle:
 // loading it should not immediately spend money on a model.
 func plist(cfg *config.Config, j job, bin string) string {
 	var argXML strings.Builder
-	argXML.WriteString("\t\t<string>" + bin + "</string>\n")
+	argXML.WriteString("\t\t<string>" + xmlText(bin) + "</string>\n")
 	argXML.WriteString("\t\t<string>--config</string>\n")
-	argXML.WriteString("\t\t<string>" + filepath.Join(cfg.KBRoot, "config.toml") + "</string>\n")
+	argXML.WriteString("\t\t<string>" + xmlText(filepath.Join(cfg.KBRoot, "config.toml")) + "</string>\n")
 	for _, a := range j.args {
-		argXML.WriteString("\t\t<string>" + a + "</string>\n")
+		argXML.WriteString("\t\t<string>" + xmlText(a) + "</string>\n")
 	}
 	logDir := filepath.Join(cfg.KBRoot, ".state", cfg.Machine, "logs")
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
@@ -112,6 +162,11 @@ func plist(cfg *config.Config, j job, bin string) string {
 	<key>ProgramArguments</key>
 	<array>
 %s	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>%s</string>
+	</dict>
 	<key>StartInterval</key>
 	<integer>%d</integer>
 	<key>RunAtLoad</key>
@@ -124,7 +179,8 @@ func plist(cfg *config.Config, j job, bin string) string {
 	<string>%s</string>
 </dict>
 </plist>
-`, j.label, argXML.String(), j.interval, logDir, j.label, logDir, j.label, cfg.KBRoot)
+`, xmlText(j.label), argXML.String(), xmlText(schedulePath(cfg, bin)), j.interval,
+		xmlText(logDir), xmlText(j.label), xmlText(logDir), xmlText(j.label), xmlText(cfg.KBRoot))
 }
 
 func scheduleStatus(cfg *config.Config, isLintHost bool) error {

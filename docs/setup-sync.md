@@ -151,6 +151,11 @@ regesto --config ~/regesto-kb/config.toml schedule install
 `schedule install` gives this machine the harvest job, and the cycle job only if
 `[roles].lint` names it or is unset.
 
+The installed jobs get a deterministic `PATH` rather than launchd's system-only default.
+Regesto includes normaliser/notifier locations it can resolve during installation and the
+usual user, Homebrew and system directories. If this machine keeps a required CLI elsewhere,
+add `[schedule].extra_path = "~/path/to/bin"` and reinstall the schedule.
+
 **5. Check it.** Open a session in a project and confirm its facts appear.
 
 ```bash

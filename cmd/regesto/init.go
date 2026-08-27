@@ -298,7 +298,14 @@ func instanceConfig(detected []string) string {
 # The agent invocation that turns raw captures into candidate facts. It reads a
 # prompt on stdin and prints the answer, so any command of that shape works.
 # [normalize]
-# command = "claude -p"
+# commands = "claude -p ;; codex exec --sandbox read-only"
+
+# LaunchAgents do not read shell startup files. The scheduler includes the
+# directories of normaliser/notifier commands it can resolve at install time,
+# plus stable user, Homebrew and system locations. Add uncommon locations here;
+# re-run ` + "`regesto schedule install`" + ` after changing this value or moving a CLI.
+# [schedule]
+# extra_path = "~/.local/share/mise/shims"
 
 # How the cycle tells you it has stopped working. It runs unattended, so a
 # failure is otherwise a line in a log nobody opens — and every hour after the

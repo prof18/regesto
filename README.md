@@ -101,6 +101,13 @@ That is the whole loop. Everything below is optional.
 cd ~/regesto-kb && regesto schedule install    # harvest every 15 min, cycle hourly (launchd, macOS)
 ```
 
+LaunchAgents do not read shell startup files. At install time Regesto gives them a
+deterministic `PATH`: the directories of the configured normaliser and notifier commands
+it can resolve, followed by stable user, Homebrew and system locations. For a CLI installed
+somewhere uncommon, add its directory with `[schedule].extra_path` and run `schedule install`
+again. Keeping this at the scheduler boundary also covers interpreters such as `node`; using
+absolute paths for `claude` or `codex` alone would not.
+
 Commands other than `init` and the six with a `bin/regesto-*` shim (`install`, `search`,
 `context`, `config`, `index`, `project`) resolve their instance from the working directory,
 so run them from inside `~/regesto-kb` — or pass `--config ~/regesto-kb/config.toml` from
