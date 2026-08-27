@@ -4,6 +4,33 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — `release.yml` reads it from here and refuses to publish a tag
 that has no section, so this file cannot fall behind.
 
+## 0.3.1
+
+**Scheduled cycles can now find normalisers installed outside macOS's system paths.**
+LaunchAgents do not read shell startup files and launchd gives them only
+`/usr/bin:/bin:/usr/sbin:/sbin` by default. A normal terminal could therefore run
+`claude` and `codex` while the hourly cycle could find neither—common on Apple Silicon,
+where Homebrew installs them under `/opt/homebrew/bin`. Harvesting and linting kept
+running, but raw captures stayed in the inbox instead of becoming facts.
+
+`regesto schedule install` now gives both jobs a deterministic `PATH`. It includes the
+directories of the configured normaliser and notifier commands found during installation,
+then stable user, Homebrew and system locations. It deliberately does not copy the entire
+interactive `PATH`, which can contain temporary agent-session or version-manager directories
+that disappear while the LaunchAgent keeps running. The same environment also covers
+interpreters such as `node`; hardcoding only the path to `claude` or `codex` would not.
+
+Installations with an uncommon tool location can add it without replacing the safe defaults:
+
+```toml
+[schedule]
+extra_path = "~/.local/share/mise/shims"
+```
+
+New schedules get the fix automatically. After upgrading an existing installation, run
+`regesto --config /path/to/regesto-kb/config.toml schedule install` once to rewrite and
+reload its current jobs. No fact format or schema changed.
+
 ## 0.3.0
 
 **The cycle now tells you when it has stopped working.** It aborts on the first validation
