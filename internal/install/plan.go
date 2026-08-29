@@ -35,6 +35,7 @@ type Item struct {
 	before          []byte
 	ownership       []byte
 	ownershipTarget string
+	renderRoot      string
 	linkTarget      string
 	mode            os.FileMode
 }
@@ -45,9 +46,8 @@ type Plan struct {
 	Items         []Item `json:"items"`
 }
 
-// Options supplies deterministic renderer inputs. InstructionSections is
-// primarily the boundary the later portable-renderer milestone will own; an
-// absent entry uses the shared instance template.
+// Options supplies deterministic renderer inputs. An absent instruction entry
+// uses the shared portable instance template.
 type Options struct {
 	InstructionSections map[string][]byte
 	EngineLink          string

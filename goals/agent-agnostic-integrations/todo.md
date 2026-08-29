@@ -312,13 +312,55 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 7 — portable skills/instructions
 
-- [ ] Make shared artifacts contract-compliant and render only declared host overlays/optimizations.
-- Scope/owners: shared skills/instructions, variants, installer renderer, skill tests.
+- [x] Make shared artifacts contract-compliant and render only declared host overlays/optimizations.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `58d82a3`;
+  staged, unstaged, and untracked files none.
+- Scope/owners: shared skills/instructions, declarative variants, per-integration
+  rendered trees, installer renderer/application support, and skill tests.
+- High-risk surfaces: portable Agent Skills frontmatter and body syntax,
+  integration-specific overlay isolation and protocol requirements, traversal or
+  unknown variants, shared target conflicts across different renderings,
+  Regesto-owned legacy-stage migration, symlink/marker ownership proofs, stale
+  generated-file pruning, and byte-identical repeated installs.
 - Verify: Skill/Instruction/Render tests; forbidden-syntax `rg`; full gate.
-- Skip list/findings carried: ___
+- Skip list/findings carried: raw Go race runs use isolated
+  `GOCACHE`/`GOPATH`; native-memory harvesting remains M8, stdio MCP M9,
+  capability diagnostics/full product documentation M10, legacy packaging M11,
+  and live-host evidence M12. Existing host-specific behavior may remain only
+  in an explicitly selected variant and must never leak into portable renders.
 - Review shards: Agent Skills contract; leakage/render matrix; installer tests/docs.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- Review pass 1: accepted and fixed non-portable/insufficiently validated
+  frontmatter; generic errors for stale pre-M7 instance skills; vendor syntax
+  and stale product/custom-host documentation; duplicate legacy render plans;
+  and adoption through an unowned skill-directory symlink. Common skills now
+  use a strict portable metadata/YAML subset, host syntax is isolated in a
+  protocol-checked append variant, stale instances receive an explicit upgrade
+  remediation, duplicate legacy ids coalesce, and ownership refuses directory
+  aliases. Per-integration renders, shared-target conflicts, custom profiles,
+  legacy-stage migration, and repeat installs have focused coverage. All three
+  reviewers and targeted re-reviews are clean. The forbidden-syntax scan and
+  full formatting/vet/test/race/bash/diff gate passed with isolated Go caches.
+  Checkpoint `3d157f4` — `feat: render portable integration skills`.
+- Pass 2 baseline: checkpoint `3d157f4`; review the full milestone diff from
+  `58d82a3`. Carry only isolated-cache requirements and the explicit M8 memory,
+  M9 MCP, M10 diagnostic/documentation, M11 packaging, and M12 live-host
+  boundaries; all pass-1 findings are closed.
+- Review pass 2: accepted and fixed ordinary YAML block-scalar support and the
+  missing Agent Skills `compatibility` length bound; undocumented exclusion of
+  host-specific `allowed-tools`; stale README, contributor, and Codex setup
+  wording; rendered payload paths that could alias through symlinks; and a
+  plan/apply root-swap race caused by reopening mutable absolute ancestors.
+  Shared skills now enforce and document the conservative portable subset,
+  generated payloads reject intermediate and final symlinks, and installer
+  mutations traverse canonical paths component-by-component through retained
+  `os.Root` descriptors with inode verification. The Unicode-name suggestion
+  was not retained because the published name syntax explicitly uses `a-z`.
+  All three targeted re-reviews are clean. Skill/render tests, formatting, vet,
+  full tests, race tests, shell syntax, the zero-match forbidden-syntax scan,
+  and diff checks passed with isolated Go caches. Remediation `e39537c` —
+  `fix: close portable renderer safety gaps`.
+- [x] Milestone 7 complete at reviewed checkpoint `e39537c`; final ledger-only
+  closure follows with no implementation changes.
 
 ## Milestone 8 — optional Markdown memory harvesting
 

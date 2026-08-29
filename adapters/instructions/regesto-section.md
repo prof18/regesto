@@ -7,8 +7,8 @@ the user wants to be worked with, and matters of their life and admin that live 
 repo. It is the record, not optional background.
 
 **Consult it** before any answer or decision a recorded claim could settle, technical or
-not. On Claude Code a `SessionStart` hook injects what exists for the current project; on
-other agents start from `{{kb_root}}/INDEX.md` and search:
+not. Integrations with deterministic context injection may provide the relevant index
+automatically. Otherwise start from `{{kb_root}}/INDEX.md` and search:
 
 ```
 {{kb_root}}/bin/regesto-search [--subject S] [--relation R] [--scope SC] [terms...]

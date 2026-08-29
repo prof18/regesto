@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "id": "claude",
+  "mode": "append",
+  "requires_hook_protocols": ["claude-session-start-v1"]
+}

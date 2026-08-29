@@ -3,11 +3,12 @@
 Three built-in adapters ship today: `claude`, `codex`, and `hermes`. Hermes has a tested
 protocol boundary and installer, while validation against a live Hermes host remains on
 the release checklist. See [setup-hermes.md](setup-hermes.md) for its exact registration
-and probe commands. Anything else needs an adapter, which is small.
+and probe commands. Anything else can use the generic profile with configured paths; a
+reusable product preset is a small declarative profile.
 
 ## Adding one
 
-An agent is four locations and nothing else:
+An integration profile declares four capability groups:
 
 | | |
 |---|---|
@@ -16,36 +17,30 @@ An agent is four locations and nothing else:
 | settings file | where a hook is registered, if the platform has hooks |
 | native memory | the files `regesto harvest` diffs, if it has any |
 
-Add the defaults to `internal/adapters/adapters.go`, add a test asserting they sit under
-`$HOME` and hardcode no personal path element, and you are done. Nothing under
-`knowledge/` changes and `SCHEMA.md` does not move. See
+For a reusable preset, add `adapters/profiles/<id>.json`. Use the `portable` skills variant
+unless the host has a tested optimization. An optional append-only variant belongs under
+`adapters/variants/<variant>/`, declares every hook protocol it requires, and is rendered
+only for profiles that select it. No Go table or knowledge-format change is needed. See
 [CONTRIBUTING.md](../CONTRIBUTING.md#adding-an-agent).
 
-Until then, an unknown agent named in `config.toml` is **reported rather than skipped**, so
-you get a warning instead of silence:
+For a one-off host, configure the generic profile and its actual local paths:
 
 ```toml
-agents = ["claude", "someagent"]
+integrations = ["someagent"]
+
+[integrations.someagent]
+profile = "generic"
+skills_dir = "~/.someagent/skills"
+instructions_file = "~/.someagent/AGENTS.md"
 ```
 
-```
-! someagent: no skills dir known — set [skills_dirs].someagent in config.toml
-```
-
-Set the three locations yourself and the generic install path works with no code change at
-all:
-
-```toml
-[skills_dirs]
-someagent = "~/.someagent/skills"
-[instructions]
-someagent = "~/.someagent/AGENTS.md"
-[settings_files]
-someagent = "~/.someagent/settings.json"
-```
-
-The settings entry is only useful if the agent's hook configuration happens to have the
-same shape as Claude Code's; leave it unset otherwise and rely on skills and instructions.
+Create the instructions file first if the host has not done so; the generic profile does
+not invent a host-owned file. Installation then links a separate portable render tree and
+merges the shared instruction section without a source change. If the host has a hook,
+describe it in an instance-owned profile with a
+supported protocol plus `manual` registrar; installation prints the exact event/command
+recipe instead of guessing a settings format. Legacy `agents` and override tables remain
+accepted for existing configurations.
 
 ## Agents with no local files at all
 
@@ -59,9 +54,9 @@ The path for those is manual and deliberate: export the conversation, then
 ```
 
 The `regesto-promote` skill extracts durable facts, writes them through the same
-`regesto-write` procedure, and moves the transcript into `archive/chat-exports/`. It has
-`disable-model-invocation: true` — it is a batch operation with side effects and runs only
-when you ask.
+`regesto-write` procedure, and moves the transcript into `archive/chat-exports/`. Its
+portable trigger and procedure require an explicit user request because it is a batch
+operation with side effects.
 
 ## What not to build
 

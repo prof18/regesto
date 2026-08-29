@@ -1,41 +1,25 @@
 ---
 name: regesto-promote
-description: Promote a chat export (Claude/ChatGPT app conversation) into knowledge-base facts, then archive the raw transcript. Deliberate batch operation with side effects — invoked by the user, never automatically.
-when_to_use: Only when the user explicitly asks to promote an export or a transcript into the KB.
-disable-model-invocation: true
-allowed-tools: Read, Grep, Write, Bash
+description: Promote an exported chat transcript from a host that cannot access local files into durable Regesto facts, then archive the raw export. Use only when the user explicitly requests this side-effecting batch operation.
 ---
 
-# regesto-promote — chat export → facts → archive
+# Promote a chat export
 
-The only ingestion path for the Claude and ChatGPT mobile/desktop apps, which
-cannot participate in the KB automatically. KB root: `{{kb_root}}`.
+This is a deliberate batch operation. Never look for exports or run it automatically.
+The knowledge-base root is `{{kb_root}}`.
 
-## Procedure
-
-1. **Locate the export.** The user names a file (often a `.zip` or `.json`
-   in `~/Downloads`, or already filed under `{{kb_root}}/archive/`). Do not
-   go looking for exports unprompted.
-
-2. **Read the transcript and extract durable facts** — apply SCHEMA.md's
-   "What to record": decisions and why, conventions, repeated corrections,
-   preferences, non-obvious facts about the environment, the tooling or the
-   user's own life and admin — not only code. Skip anything derivable from a
-   source already at hand, and transient state.
-   Expect most of a transcript to yield nothing; that is normal.
-
-3. **Write each fact via the `regesto-write` procedure** (its skill body is the
-   authoritative template): vocabulary check against `INDEX.md` first, one
-   claim per file, supersession rules respected. `source` is the agent that
-   held the conversation if known (e.g. `claude@<machine>`), else `human`.
-   A promoted claim enters `facts/` as `active` and keeps its source for
-   provenance.
-
-4. **Archive the raw transcript** to
-   `{{kb_root}}/archive/chat-exports/<YYYY-MM-DD>-<short-name>.<ext>` —
-   move, don't copy, so nothing lingers in Downloads. The archive is
-   immutable: never edit files under `archive/`, and never delete them.
-
-5. **Report**: list every fact written (id — title — path) and where the
-   transcript was archived. If a candidate fact contradicted a `human` claim
-   and landed as `proposed`, say so — it waits for review.
+1. Locate only the export the user named, commonly a `.zip` or `.json` file in a download
+   directory or under `{{kb_root}}/archive/`.
+2. Extract durable decisions and their reasons, conventions, repeated corrections,
+   preferences, and non-obvious environment or project facts. Skip transient state and
+   facts derivable from source material already at hand. Most transcripts yielding no
+   facts is normal.
+3. Write each fact through the `regesto-write` procedure: check controlled vocabulary,
+   keep one claim per file, preserve provenance, and obey supersession rules. Use the
+   original conversation integration as `<integration>@<machine>` when known; otherwise
+   use the documented human-promotion source.
+4. Move the raw transcript, without editing it, to
+   `{{kb_root}}/archive/chat-exports/<YYYY-MM-DD>-<short-name>.<ext>`. Do not leave a
+   duplicate in its original location and never delete archived exports.
+5. Report every fact written as id, title, and path, plus the archive destination. Call
+   out any proposed claim that still awaits human review.

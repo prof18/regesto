@@ -290,6 +290,8 @@ func TestInstanceFilesCoverTheInstanceSideEngine(t *testing.T) {
 		"adapters/skills/regesto-search/SKILL.md",
 		"adapters/skills/regesto-write/SKILL.md",
 		"adapters/skills/regesto-promote/SKILL.md",
+		"adapters/variants/claude/variant.json",
+		"adapters/variants/claude/skills/regesto-search/SKILL.md",
 	}
 	for _, want := range wantFiles {
 		if _, ok := files[want]; !ok {

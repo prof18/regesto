@@ -19,9 +19,9 @@ agents = ["claude", "codex"]
 ~/regesto-kb/bin/regesto-install
 ```
 
-This links the three skills into `~/.codex/skills/` and appends the knowledge-base section
-to `~/.codex/AGENTS.md`. No hook is registered — Codex has no settings file for one, and
-install skips that step rather than warning about it.
+This links the shipped portable skills into `~/.codex/skills/` and appends the
+knowledge-base section to `~/.codex/AGENTS.md`. No hook is registered — Codex has no
+settings file for one, and install skips that step rather than warning about it.
 
 If both agents share one instructions file (a symlink into a dotfiles repo, say), install
 notices they resolve to the same path and appends the section once.
@@ -44,21 +44,17 @@ Two things make that better:
 
 ## Troubleshooting
 
-### The skill prints a command instead of results
+### The skill reports a command without running it
 
-Expected, and handled. `regesto-search` uses Claude Code's `` !`command` `` dynamic context
-injection, which runs the search *before* the skill body reaches the model. That preamble
-is a Claude Code feature, not part of the agentskills.io standard: **Codex receives the
-line literally, unexecuted, and does not expand `$ARGUMENTS` either.**
+Codex receives the portable `regesto-search` body, with no host-specific pre-execution
+syntax. That body tells the agent to call `bin/regesto-search` with the user's actual query
+and then read matching claims. If it merely repeats the command, ask it to execute the
+documented procedure and check that the instance shims are executable. Re-run
+`bin/regesto-install` if the rendered skill was truncated or edited.
 
-The skill body opens by telling the agent which of the two cases it is in, and in the
-literal case to run the command itself with the query substituted. Codex does that and
-returns the right fact. If you see it print the command and stop, the skill body was
-truncated or edited — re-run `bin/regesto-install`.
-
-The same limitation means **slash invocation with arguments is not portable**.
-`/regesto-write some claim` substitutes the claim on Claude Code and does not on Codex, so
-the skill also tells the agent to take the claim from the message you actually sent.
+Explicit skill invocation syntax varies by host. The portable `regesto-write` procedure
+therefore takes the claim from the user's visible request and never relies on argument
+substitution.
 
 ### The skills are not listed at all
 

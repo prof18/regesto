@@ -248,8 +248,10 @@ generic integrations rely on skills plus always-loaded instructions, where consu
 is likely rather than enforced. That difference is real and this project would rather
 state it than paper over it.
 
-Adding an agent is a pull request that touches `internal/adapters` and `adapters/`, and
-nothing in `knowledge/`.
+Adding a reusable agent preset is normally a declarative profile under
+`adapters/profiles/`; a one-off host can be configured entirely in `config.toml`. Tested
+hooks or host-specific skill optimizations add protocol or variant files under
+`adapters/`, but nothing changes in `knowledge/`.
 
 ---
 

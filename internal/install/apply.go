@@ -51,23 +51,24 @@ func Apply(plan *Plan) (Result, error) {
 			}
 		case "skill-render-prune":
 			{
-				stage, err := CanonicalTarget(filepath.Join(plan.KBRoot, ".state", "skills"))
+				if item.renderRoot == "" || !within(item.renderRoot, item.CanonicalTarget) {
+					return result, fmt.Errorf("refuse generated-stage removal outside %s: %s", item.renderRoot, item.CanonicalTarget)
+				}
+				root, err := openAnchoredRoot(item.renderRoot, false)
 				if err != nil {
 					return result, err
 				}
-				if !within(stage, item.CanonicalTarget) {
-					return result, fmt.Errorf("refuse generated-stage removal outside %s: %s", stage, item.CanonicalTarget)
-				}
-				root, err := os.OpenRoot(stage)
-				if err != nil {
-					return result, err
-				}
-				rel, err := filepath.Rel(stage, item.CanonicalTarget)
+				rel, err := filepath.Rel(item.renderRoot, item.CanonicalTarget)
 				if err != nil {
 					root.Close()
 					return result, err
 				}
-				marker, err := root.ReadFile(filepath.Join(rel, ".regesto-owned"))
+				markerRel, err := filepath.Rel(item.renderRoot, item.ownershipTarget)
+				if err != nil || markerRel == "." || strings.HasPrefix(markerRel, ".."+string(filepath.Separator)) {
+					root.Close()
+					return result, fmt.Errorf("refuse %s: ownership marker is outside rendered root", item.ID)
+				}
+				marker, err := root.ReadFile(markerRel)
 				if err != nil || !bytes.Equal(marker, item.ownership) {
 					root.Close()
 					return result, fmt.Errorf("refuse %s: generated-stage ownership changed after planning", item.ID)
@@ -87,28 +88,24 @@ func Apply(plan *Plan) (Result, error) {
 				break
 			}
 		case "skill-render-file":
-			stage, err := CanonicalTarget(filepath.Join(plan.KBRoot, ".state", "skills"))
+			if item.renderRoot == "" || !within(item.renderRoot, item.CanonicalTarget) {
+				return result, fmt.Errorf("refuse generated-file removal outside %s: %s", item.renderRoot, item.CanonicalTarget)
+			}
+			root, err := openAnchoredRoot(item.renderRoot, false)
 			if err != nil {
 				return result, err
 			}
-			if !within(stage, item.CanonicalTarget) {
-				return result, fmt.Errorf("refuse generated-file removal outside %s: %s", stage, item.CanonicalTarget)
-			}
-			root, err := os.OpenRoot(stage)
-			if err != nil {
-				return result, err
-			}
-			rel, err := filepath.Rel(stage, item.CanonicalTarget)
+			rel, err := filepath.Rel(item.renderRoot, item.CanonicalTarget)
 			if err != nil {
 				root.Close()
 				return result, err
 			}
-			parts := strings.Split(filepath.ToSlash(rel), "/")
-			if len(parts) < 2 {
+			markerRel, err := filepath.Rel(item.renderRoot, item.ownershipTarget)
+			if err != nil || markerRel == "." || strings.HasPrefix(markerRel, ".."+string(filepath.Separator)) {
 				root.Close()
-				return result, fmt.Errorf("refuse generated-file removal without skill directory: %s", rel)
+				return result, fmt.Errorf("refuse %s: ownership marker is outside rendered root", item.ID)
 			}
-			marker, err := root.ReadFile(filepath.Join(parts[0], ".regesto-owned"))
+			marker, err := root.ReadFile(markerRel)
 			if err != nil || !bytes.Equal(marker, item.ownership) {
 				root.Close()
 				return result, fmt.Errorf("refuse %s: generated-stage ownership changed after planning", item.ID)
@@ -278,7 +275,7 @@ func verifyItemOwnership(item Item) error {
 	if len(item.ownership) == 0 {
 		return nil
 	}
-	root, err := os.OpenRoot(filepath.Dir(item.ownershipTarget))
+	root, err := openAnchoredRoot(filepath.Dir(item.ownershipTarget), false)
 	if err != nil {
 		return fmt.Errorf("refuse %s: ownership marker changed after planning: %w", item.ID, err)
 	}
@@ -318,10 +315,7 @@ func backupRoot(root *os.Root, name string, body []byte, mode os.FileMode) (stri
 
 func openTargetRoot(target string) (*os.Root, string, error) {
 	parent := filepath.Dir(target)
-	if err := secureMkdirAll(parent); err != nil {
-		return nil, "", err
-	}
-	root, err := os.OpenRoot(parent)
+	root, err := openAnchoredRoot(parent, true)
 	if err != nil {
 		return nil, "", err
 	}
@@ -329,45 +323,76 @@ func openTargetRoot(target string) (*os.Root, string, error) {
 }
 
 func secureMkdirAll(path string) error {
-	cur := filepath.Clean(path)
-	var suffix []string
-	for {
-		info, err := os.Stat(cur)
-		if err == nil {
-			if !info.IsDir() {
-				return fmt.Errorf("install parent %s is not a directory", cur)
-			}
-			root, err := os.OpenRoot(cur)
-			if err != nil {
-				return err
-			}
-			defer root.Close()
-			if len(suffix) > 0 {
-				rel := strings.Join(reverseCopy(suffix), string(filepath.Separator))
-				if err := root.MkdirAll(rel, 0o755); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		if !os.IsNotExist(err) {
-			return err
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return fmt.Errorf("install parent %s has no existing ancestor", path)
-		}
-		suffix = append(suffix, filepath.Base(cur))
-		cur = parent
+	root, err := openAnchoredRoot(path, true)
+	if err != nil {
+		return err
 	}
+	return root.Close()
 }
 
-func reverseCopy(values []string) []string {
-	out := make([]string, len(values))
-	for i := range values {
-		out[len(values)-1-i] = values[i]
+// openAnchoredRoot walks an absolute canonical path one component at a time
+// from an already-open filesystem root. Each opened child must be the same
+// directory that was inspected without following a symlink. Retaining the
+// child descriptor prevents later renames from redirecting operations.
+func openAnchoredRoot(path string, create bool) (*os.Root, error) {
+	planned, err := CanonicalTarget(path)
+	if err != nil {
+		return nil, err
 	}
-	return out
+	if planned != filepath.Clean(path) {
+		return nil, fmt.Errorf("refuse non-canonical install root %s (resolves to %s)", path, planned)
+	}
+	if !filepath.IsAbs(planned) {
+		return nil, fmt.Errorf("install root must be absolute: %s", path)
+	}
+	volume := filepath.VolumeName(planned)
+	anchor := volume + string(filepath.Separator)
+	rel, err := filepath.Rel(anchor, planned)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("install root %s is outside filesystem anchor %s", planned, anchor)
+	}
+	root, err := os.OpenRoot(anchor)
+	if err != nil {
+		return nil, err
+	}
+	if rel == "." {
+		return root, nil
+	}
+	for _, component := range strings.Split(rel, string(filepath.Separator)) {
+		info, statErr := root.Lstat(component)
+		if os.IsNotExist(statErr) && create {
+			if err := root.Mkdir(component, 0o755); err != nil && !os.IsExist(err) {
+				root.Close()
+				return nil, err
+			}
+			info, statErr = root.Lstat(component)
+		}
+		if statErr != nil {
+			root.Close()
+			if os.IsNotExist(statErr) {
+				return nil, fmt.Errorf("install root does not exist: %s", path)
+			}
+			return nil, statErr
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			root.Close()
+			return nil, fmt.Errorf("refuse non-directory or symlink component %q in install root %s", component, path)
+		}
+		child, err := root.OpenRoot(component)
+		if err != nil {
+			root.Close()
+			return nil, err
+		}
+		opened, err := child.Stat(".")
+		if err != nil || !os.SameFile(info, opened) {
+			child.Close()
+			root.Close()
+			return nil, fmt.Errorf("refuse install root component changed while opening: %s", component)
+		}
+		root.Close()
+		root = child
+	}
+	return root, nil
 }
 
 func createRootTemp(root *os.Root, prefix string) (*os.File, string, error) {

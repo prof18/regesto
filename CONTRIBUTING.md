@@ -32,14 +32,17 @@ as if someone has forked their copy, because someone has.
 
 ## Adding an agent
 
-An adapter is a vendor's four locations plus whatever glue it needs, and it should touch
-nothing else:
+Prefer a declarative integration profile under `adapters/profiles/<id>.json`; it can
+declare skills, instructions, settings, hooks, and memory capabilities without adding a
+Go vendor table. Use the portable skills variant unless the host has a tested optimization.
+Host-specific append-only skill variants live under `adapters/variants/<variant>/`, and a
+host-facing hook wrapper belongs under `adapters/<profile>/hooks/` while protocol
+translation and registrar implementations live in `internal/install`. Add adapter and
+render tests asserting that defaults remain under `$HOME`, contain no personal path
+element, and do not leak a host optimization into another integration.
 
-- `internal/adapters/adapters.go` — where the agent keeps skills, instructions and
-  settings, as defaults an instance's config can override.
-- `adapters/<vendor>/` — a hook if the platform has one.
-- A test in `tests/adapters_test.go` asserting the defaults are under `$HOME` and hardcode
-  no personal path element.
+A one-off host needs no engine change: configure the generic profile and its actual paths
+in the instance's `config.toml`.
 
 Nothing under `knowledge/` changes, and neither does `SCHEMA.md`. If your adapter needs a
 schema change, say so in the issue first — that is a different conversation.

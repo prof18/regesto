@@ -136,7 +136,8 @@ echo laptop > ~/regesto-kb/.state/machine
 ### I edited a skill and nothing changed
 
 Shipped skills carry a `{{kb_root}}` placeholder, so they are rendered into
-`.state/skills/` and linked from there. Re-run `bin/regesto-install` after editing one.
+`.state/integrations/claude/skills/` and linked from there. Re-run
+`bin/regesto-install` after editing one.
 The same applies to the instructions section: install compares the installed copy against
 the template and updates it when it has drifted, because a stale always-loaded section
 actively misdirects every session.

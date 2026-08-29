@@ -136,14 +136,20 @@ that ignores the rule entirely.
 
 ## 3.5 Skills: the portable half of the adapter
 
-Hooks guarantee consultation but are Claude Code only. Skills are the complement, and they
-are the most provider-portable piece of the design: Claude Code skills follow the
-[agentskills.io](https://agentskills.io) open standard, Codex discovers the same files,
-and Hermes documents compatibility with it. **One `SKILL.md` can serve all three.**
+Where a host exposes the right event, hooks guarantee consultation. Skills are the
+complement and the most portable piece of the design: the common files follow the
+[agentskills.io](https://agentskills.io) open standard, while a declared integration
+variant may append an optimization that no other rendered tree receives.
 
 A skill is on-demand instructions in `<dir>/skills/<name>/SKILL.md` with YAML frontmatter.
 Only its `description` sits in context; the body loads when invoked. That fits the central
 rule of this design — keep the always-loaded layer tiny — better than any other mechanism.
+Regesto deliberately uses the standard's host-neutral subset: `name`, `description`,
+`license`, `compatibility`, and string-valued `metadata`. The experimental
+`allowed-tools` field is excluded because its command grammar is host-specific; a tested
+host optimization belongs in that integration's declared variant instead. The installer
+validates a conservative YAML string subset (quoted or safe plain scalars, plus ordinary
+literal/folded blocks); unusual YAML encodings should be normalized during upgrade.
 
 **`regesto-write`** — how to record a fact correctly: id naming, how to choose
 `subject`/`relation`, and when to supersede rather than create. It submits those semantic
@@ -158,26 +164,24 @@ is always in context, and it is what the model matches against when deciding to 
 unprompted. A bland "records facts" means the skill only ever fires when you ask; trigger
 wording is the mechanism behind §5's fast path.
 
-The same skill is the **manual store command**. Skills are user-invocable as slash
-commands, so `/regesto-write <statement>` records that statement on the spot, and
-`/regesto-write` with nothing after it records whatever was just agreed. Natural language
-works too ("remember this") — it is the first trigger in the list, and it is absolute: the
-agent never replies "noted" without writing the file.
+The same skill is the **manual store procedure**. Invoke it explicitly through the host's
+skill UI or ask naturally ("remember this"). The first trigger is absolute: the agent
+never replies "noted" without writing the file.
 
-**`regesto-search`** — deep query. On Claude Code it uses `` !`command` `` dynamic context
-injection, which runs the search *before* the skill body reaches the model and substitutes
-the output. **The skill runs the search itself**; the model receives results rather than an
-instruction to go looking — the same inversion the hooks give you, in a portable package.
+**`regesto-search`** — deep query. The portable body tells the host to call the stable
+search CLI with the user's actual query. The declared `claude` variant appends its dynamic
+pre-execution block, so that integration receives results before the body while portable
+integrations receive no unsupported syntax.
 
-**`regesto-promote`** — chat export → durable facts → archive, for app conversations that
-cannot participate automatically. `disable-model-invocation: true`: it is a deliberate
-batch operation with side effects.
+**`regesto-promote`** — chat export → durable facts → archive, for any conversation host
+that cannot participate automatically. Its portable description and body make explicit
+that it is a user-requested batch operation with side effects.
 
 ### Where skills fit, and where they don't
 
 | Mechanism | Guarantees? | Portable? | Job |
 |---|---|---|---|
-| Hook | **yes** — deterministic | Claude Code only | make sure consultation *happens* |
+| Hook | **yes** — deterministic | host capability | make sure consultation *happens* |
 | Skill | no — the model decides | **yes** | teach the *procedure*; run deep retrieval |
 | Pointer in the memory file | no | yes | last-resort breadcrumb |
 
@@ -188,15 +192,11 @@ Three limits worth knowing:
 - **Skill content persists but is never re-read.** Once invoked, the rendered body stays in
   context for the session and is not reloaded on later turns. A search invoked at turn 1
   has stale results by turn 20 — which is why a per-prompt hook still earns its place.
-- **`description` + `when_to_use` are truncated** in the skill listing, around 1,536
-  characters. Lead with the key use case.
-- **Dynamic context injection is the non-portable part.** The `` !`command` `` preamble is a
-  Claude Code feature, not part of the agentskills.io core standard. Skills themselves do
-  port — Codex discovers all three and lists their descriptions — but Codex receives the
-  `` !`command` `` line literally and unexecuted, and does not expand `$ARGUMENTS` either.
-  So `regesto-search`'s body opens by telling the agent which of the two cases it is in
-  and, in the literal case, to run the command itself with the query substituted. Weaker
-  than hook-grade enforcement, but honest, and retrieval still happens on both.
+- **Descriptions drive discovery.** Only portable `name` and `description` metadata is
+  required at startup, so the description leads with the trigger and concrete use case.
+- **Dynamic context injection is non-portable.** It lives only in the declared `claude`
+  append variant under `adapters/variants/`; portable integrations receive the common
+  procedure byte-for-byte, and render tests prevent cross-profile leakage.
 
 ---
 

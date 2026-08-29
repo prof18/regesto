@@ -320,9 +320,9 @@ func TestInstallPreservesUnownedDirectoryInRenderedStage(t *testing.T) {
 func TestInstallRefusesToClaimShippedStageDirectoryWithUnknownFiles(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	foreign := filepath.Join(root, ".state", "skills", "regesto-search", "notes.txt")
+	foreign := filepath.Join(root, ".state", "integrations", "claude", "skills", "regesto-search", "notes.txt")
 	writeTestFile(t, foreign, "foreign\n")
-	cfg := loadTestConfig(t, root, "integrations = []\n")
+	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
 	_, err := Build(cfg, Options{})
 	if err == nil || !strings.Contains(err.Error(), "unowned rendered skill directory") {
 		t.Fatalf("unowned shipped-stage error = %v", err)
@@ -335,11 +335,11 @@ func TestInstallRefusesToClaimShippedStageDirectoryWithUnknownFiles(t *testing.T
 func TestInstallRefusesToClaimShippedStageDirectoryWithUnexpectedEmptyDirectory(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	foreign := filepath.Join(root, ".state", "skills", "regesto-search", "empty-foreign")
+	foreign := filepath.Join(root, ".state", "integrations", "claude", "skills", "regesto-search", "empty-foreign")
 	if err := os.MkdirAll(foreign, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := loadTestConfig(t, root, "integrations = []\n")
+	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
 	_, err := Build(cfg, Options{})
 	if err == nil || !strings.Contains(err.Error(), "unowned rendered skill directory") {
 		t.Fatalf("unowned shipped-stage empty-directory error = %v", err)
@@ -445,10 +445,48 @@ func TestRetiredSkillDirectoryAndLiveLinkPruneInOneInstall(t *testing.T) {
 	}
 }
 
+func TestLegacyRenderedSkillMigratesToIntegrationTree(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	canonicalRoot := mustCanonical(t, root)
+	legacy := filepath.Join(root, ".state", "skills", "regesto-search")
+	writeTestFile(t, filepath.Join(legacy, ".regesto-owned"), string(stageMarker(canonicalRoot, "regesto-search")))
+	writeTestFile(t, filepath.Join(legacy, "SKILL.md"), "legacy rendered skill\n")
+	link := filepath.Join(home, ".claude", "skills", "regesto-search")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(legacy, link); err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
+	plan, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(legacy); !os.IsNotExist(err) {
+		t.Fatalf("legacy stage remains: %v", err)
+	}
+	want := filepath.Join(root, ".state", "integrations", "claude", "skills", "regesto-search")
+	if got, err := os.Readlink(link); err != nil || got != want {
+		t.Fatalf("migrated skill link = %q, err=%v, want %q", got, err, want)
+	}
+	second, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Changes() != 0 {
+		t.Fatalf("second migrated plan has %d changes", second.Changes())
+	}
+}
+
 func TestRetiredSkillDirectoryChangeAfterPlanIsRefused(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	cfg := loadTestConfig(t, root, "integrations = []\n")
+	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
 	canonicalRoot := mustCanonical(t, root)
 	retired := filepath.Join(root, ".state", "skills", "retired")
 	writeTestFile(t, filepath.Join(retired, ".regesto-owned"), string(stageMarker(canonicalRoot, "retired")))
@@ -469,7 +507,7 @@ func TestRetiredSkillDirectoryChangeAfterPlanIsRefused(t *testing.T) {
 func TestStaleFileInsideShippedSkillPrunesInOneInstall(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	cfg := loadTestConfig(t, root, "integrations = []\n")
+	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
 	initial, err := Build(cfg, Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -477,7 +515,7 @@ func TestStaleFileInsideShippedSkillPrunesInOneInstall(t *testing.T) {
 	if _, err := Apply(initial); err != nil {
 		t.Fatal(err)
 	}
-	stale := filepath.Join(root, ".state", "skills", "regesto-search", "old.md")
+	stale := filepath.Join(root, ".state", "integrations", "claude", "skills", "regesto-search", "old.md")
 	writeTestFile(t, stale, "old\n")
 	plan, err := Build(cfg, Options{})
 	if err != nil {
@@ -501,7 +539,7 @@ func TestStaleFileInsideShippedSkillPrunesInOneInstall(t *testing.T) {
 func TestStaleGeneratedFileChangeAfterPlanIsRefused(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	cfg := loadTestConfig(t, root, "integrations = []\n")
+	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
 	initial, err := Build(cfg, Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -509,7 +547,7 @@ func TestStaleGeneratedFileChangeAfterPlanIsRefused(t *testing.T) {
 	if _, err := Apply(initial); err != nil {
 		t.Fatal(err)
 	}
-	stale := filepath.Join(root, ".state", "skills", "regesto-search", "old.md")
+	stale := filepath.Join(root, ".state", "integrations", "claude", "skills", "regesto-search", "old.md")
 	writeTestFile(t, stale, "old\n")
 	plan, err := Build(cfg, Options{})
 	if err != nil {
@@ -527,7 +565,7 @@ func TestStaleGeneratedFileChangeAfterPlanIsRefused(t *testing.T) {
 func TestRenderedSkillOwnershipChangeAfterPlanIsRefused(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	cfg := loadTestConfig(t, root, "integrations = []\n")
+	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
 	initial, err := Build(cfg, Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -535,7 +573,7 @@ func TestRenderedSkillOwnershipChangeAfterPlanIsRefused(t *testing.T) {
 	if _, err := Apply(initial); err != nil {
 		t.Fatal(err)
 	}
-	rendered := filepath.Join(root, ".state", "skills", "regesto-search", "SKILL.md")
+	rendered := filepath.Join(root, ".state", "integrations", "claude", "skills", "regesto-search", "SKILL.md")
 	if err := os.Remove(rendered); err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +581,7 @@ func TestRenderedSkillOwnershipChangeAfterPlanIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	marker := filepath.Join(root, ".state", "skills", "regesto-search", ".regesto-owned")
+	marker := filepath.Join(root, ".state", "integrations", "claude", "skills", "regesto-search", ".regesto-owned")
 	if err := os.Remove(marker); err != nil {
 		t.Fatal(err)
 	}
@@ -684,8 +722,8 @@ func TestHermesCommandIsShellQuotedForShlexSplit(t *testing.T) {
 func TestOwnershipMarkerIsAppliedBeforeEveryRenderedPayload(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	writeTestFile(t, filepath.Join(root, "adapters", "skills", "order-test", "!payload"), "payload\n")
-	cfg := loadTestConfig(t, root, "integrations = []\n")
+	writeTestFile(t, filepath.Join(root, "adapters", "skills", "order-test", "SKILL.md"), "---\nname: order-test\ndescription: Verify generated ownership ordering.\n---\n\npayload\n")
+	cfg := loadTestConfig(t, root, "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\nskills_dir = \""+filepath.Join(home, "maker", "skills")+"\"\n")
 	plan, err := Build(cfg, Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -693,9 +731,9 @@ func TestOwnershipMarkerIsAppliedBeforeEveryRenderedPayload(t *testing.T) {
 	markerIndex, payloadIndex := -1, -1
 	for i, item := range plan.Items {
 		switch item.ID {
-		case "skill-render:order-test:.regesto-owned":
+		case "skill-render:maker:order-test:.regesto-owned":
 			markerIndex = i
-		case "skill-render:order-test:!payload":
+		case "skill-render:maker:order-test:SKILL.md":
 			payloadIndex = i
 		}
 	}
@@ -705,8 +743,179 @@ func TestOwnershipMarkerIsAppliedBeforeEveryRenderedPayload(t *testing.T) {
 	if _, err := Apply(plan); err != nil {
 		t.Fatal(err)
 	}
-	if got := string(mustReadTest(t, filepath.Join(root, ".state", "skills", "order-test", "!payload"))); got != "payload\n" {
+	if got := string(mustReadTest(t, filepath.Join(root, ".state", "integrations", "maker", "skills", "order-test", "SKILL.md"))); !strings.Contains(got, "payload") {
 		t.Fatalf("rendered payload = %q", got)
+	}
+}
+
+func TestInstanceSkillWithNonPortableFrontmatterRequiresUpgrade(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		field string
+	}{
+		{name: "when-to-use", field: "when_to_use: legacy trigger"},
+		{name: "allowed-tools", field: "allowed-tools: Bash"},
+		{name: "malformed-scalar", field: "compatibility: [unterminated"},
+		{name: "malformed-metadata", field: "metadata:\n  missing-colon"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root, home := t.TempDir(), t.TempDir()
+			t.Setenv("HOME", home)
+			body := "---\nname: legacy-skill\ndescription: Legacy shipped skill.\n" + test.field + "\n---\n\nLegacy.\n"
+			writeTestFile(t, filepath.Join(root, "adapters", "skills", "legacy-skill", "SKILL.md"), body)
+			cfg := loadTestConfig(t, root, "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\nskills_dir = \""+filepath.Join(home, "maker", "skills")+"\"\n")
+			_, err := Build(cfg, Options{})
+			if err == nil || !strings.Contains(err.Error(), "regesto upgrade") {
+				t.Fatalf("legacy skill error = %v", err)
+			}
+		})
+	}
+}
+
+func TestPortableSkillValidationRejectsMalformedYAMLScalars(t *testing.T) {
+	for name, body := range map[string]string{
+		"unterminated collection": "---\nname: sample\ndescription: [unterminated\n---\n",
+		"unterminated quote":      "---\nname: sample\ndescription: \"unterminated\n---\n",
+		"invalid metadata":        "---\nname: sample\ndescription: Valid.\nmetadata:\n  missing-colon\n---\n",
+		"comment value":           "---\nname: sample\ndescription: # not a string\n---\n",
+		"sequence value":          "---\nname: sample\ndescription: - not a scalar\n---\n",
+		"boolean metadata":        "---\nname: sample\ndescription: Valid.\nmetadata:\n  enabled: true\n---\n",
+		"numeric metadata":        "---\nname: sample\ndescription: Valid.\nmetadata:\n  count: 123\n---\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validatePortableSkill("sample", []byte(body)); err == nil {
+				t.Fatal("malformed portable frontmatter was accepted")
+			}
+		})
+	}
+}
+
+func TestPortableSkillValidationAcceptsBlockDescription(t *testing.T) {
+	body := "---\nname: sample\ndescription: >\n  Search prior decisions and conventions before\n  answering questions that recorded knowledge can settle.\ncompatibility: 'Requires a POSIX-compatible shell.'\n---\n"
+	if err := validatePortableSkill("sample", []byte(body)); err != nil {
+		t.Fatalf("valid block-scalar frontmatter rejected: %v", err)
+	}
+}
+
+func TestPortableSkillValidationEnforcesCompatibilityLength(t *testing.T) {
+	for name, compatibility := range map[string]string{
+		"empty":    `""`,
+		"too-long": `"` + strings.Repeat("x", 501) + `"`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			body := "---\nname: sample\ndescription: Valid.\ncompatibility: " + compatibility + "\n---\n"
+			if err := validatePortableSkill("sample", []byte(body)); err == nil {
+				t.Fatal("invalid compatibility was accepted")
+			}
+		})
+	}
+}
+
+func TestDuplicateLegacyIntegrationRendersAndAppliesOnce(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := loadTestConfig(t, root, "agents = [\"claude\", \"claude\"]\n")
+	plan, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Changes() != 0 {
+		t.Fatalf("duplicate legacy second plan has %d changes", second.Changes())
+	}
+}
+
+func TestInstallRefusesSymlinkedRenderedSkillDirectory(t *testing.T) {
+	root, home, foreign := t.TempDir(), t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	writeTestFile(t, filepath.Join(foreign, "SKILL.md"), "foreign\n")
+	dir := filepath.Join(root, ".state", "integrations", "claude", "skills", "regesto-search")
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(foreign, dir); err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
+	_, err := Build(cfg, Options{})
+	if err == nil || !strings.Contains(err.Error(), "symlinked rendered skill directory") {
+		t.Fatalf("symlinked rendered directory error = %v", err)
+	}
+	if got := string(mustReadTest(t, filepath.Join(foreign, "SKILL.md"))); got != "foreign\n" {
+		t.Fatalf("foreign symlink target changed: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(foreign, ".regesto-owned")); !os.IsNotExist(err) {
+		t.Fatalf("foreign symlink target was claimed: %v", err)
+	}
+}
+
+func TestInstallRefusesSymlinkedRenderedSkillPayload(t *testing.T) {
+	root, home, foreign := t.TempDir(), t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	writeTestFile(t, filepath.Join(root, "adapters", "skills", "sample", "SKILL.md"), "---\nname: sample\ndescription: Sample.\n---\n")
+	stage := filepath.Join(root, ".state", "integrations", "maker", "skills", "sample")
+	if err := os.MkdirAll(stage, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	canonicalRoot, err := CanonicalTarget(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stage, ".regesto-owned"), stageMarker(canonicalRoot, "maker", "sample"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	foreignFile := filepath.Join(foreign, "payload.md")
+	if err := os.WriteFile(foreignFile, []byte("foreign"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(foreignFile, filepath.Join(stage, "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadTestConfig(t, root, "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\nskills_dir = \""+filepath.Join(home, "maker", "skills")+"\"\n")
+	if _, err := Build(cfg, Options{}); err == nil || !strings.Contains(err.Error(), "symlinked rendered skill payload") {
+		t.Fatalf("symlinked payload error = %v", err)
+	}
+	if got := string(mustReadTest(t, foreignFile)); got != "foreign" {
+		t.Fatalf("foreign payload changed to %q", got)
+	}
+}
+
+func TestAnchoredRootCannotBeRedirectedAfterOpen(t *testing.T) {
+	base, foreign := t.TempDir(), t.TempDir()
+	canonicalBase, err := CanonicalTarget(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(canonicalBase, "target")
+	moved := filepath.Join(canonicalBase, "moved")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := openAnchoredRoot(target, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := os.Rename(target, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(foreign, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.WriteFile("payload", []byte("anchored"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(mustReadTest(t, filepath.Join(moved, "payload"))); got != "anchored" {
+		t.Fatalf("anchored payload = %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(foreign, "payload")); !os.IsNotExist(err) {
+		t.Fatalf("redirected root received payload: %v", err)
 	}
 }
 
@@ -725,7 +934,7 @@ func TestCrossSkillStageLinkIsPreservedWithoutMatchingOwnershipProof(t *testing.
 	if err := os.Remove(link); err != nil {
 		t.Fatal(err)
 	}
-	foreignTarget := filepath.Join(root, ".state", "skills", "regesto-write")
+	foreignTarget := filepath.Join(root, ".state", "integrations", "claude", "skills", "regesto-write")
 	if err := os.Symlink(foreignTarget, link); err != nil {
 		t.Fatal(err)
 	}
