@@ -29,6 +29,11 @@ var (
 	}
 )
 
+// ValidID reports whether id uses the canonical fact identity grammar. It is
+// shared with read-only protocol adapters so they never advertise an unsafe
+// resource URI for a malformed hand-written fact.
+func ValidID(id string) bool { return idPattern.MatchString(id) }
+
 // Input is the machine-facing write contract. Authority-owned fields are
 // intentionally absent so JSON input cannot forge them.
 type Input struct {
@@ -47,8 +52,11 @@ type Input struct {
 
 // Authority contains values only the invoking boundary may supply.
 type Authority struct {
-	Source string
-	Now    time.Time
+	Source        string
+	Now           time.Time
+	MaxFactBytes  int64
+	MaxStoreBytes int64
+	MaxFactCount  int
 }
 
 // PendingAction is a stable, map-free view of reconciliation work left for
@@ -133,6 +141,11 @@ func CreateFact(cfg *config.Config, proposed facts.Fact, authority Authority) (R
 	if err != nil {
 		return Result{}, err
 	}
+	releaseStore, err := acquireStoreLock(cfg)
+	if err != nil {
+		return Result{}, err
+	}
+	defer releaseStore()
 	f.RelPath = rel
 	release, err := acquireIDLock(cfg, f.ID)
 	if err != nil {
@@ -143,6 +156,9 @@ func CreateFact(cfg *config.Config, proposed facts.Fact, authority Authority) (R
 	existing, err := facts.LoadAll(cfg.KBRoot)
 	if err != nil {
 		return Result{}, err
+	}
+	if authority.MaxFactCount > 0 && len(existing)+1 > authority.MaxFactCount {
+		return Result{}, fmt.Errorf("canonical facts exceed %d entries", authority.MaxFactCount)
 	}
 	for _, old := range existing {
 		if old.ID == f.ID {
@@ -185,6 +201,18 @@ func CreateFact(cfg *config.Config, proposed facts.Fact, authority Authority) (R
 	}
 
 	data := render(f)
+	if authority.MaxFactBytes > 0 && int64(len(data)) > authority.MaxFactBytes {
+		return Result{}, fmt.Errorf("rendered fact exceeds %d bytes", authority.MaxFactBytes)
+	}
+	if authority.MaxStoreBytes > 0 {
+		existingBytes, err := canonicalStoreSize(cfg.KBRoot, existing)
+		if err != nil {
+			return Result{}, err
+		}
+		if int64(len(data)) > authority.MaxStoreBytes-existingBytes {
+			return Result{}, fmt.Errorf("canonical facts exceed %d bytes", authority.MaxStoreBytes)
+		}
+	}
 	// Parse our own serialization before it can reach disk. This catches a
 	// renderer/parser drift as a failed write rather than a corrupt fact.
 	parsed, err := facts.Parse(data, rel)
@@ -225,6 +253,31 @@ func CreateFact(cfg *config.Config, proposed facts.Fact, authority Authority) (R
 	}, nil
 }
 
+func canonicalStoreSize(kbRoot string, existing []facts.Fact) (int64, error) {
+	root, err := os.OpenRoot(kbRoot)
+	if err != nil {
+		return 0, err
+	}
+	defer root.Close()
+	var total int64
+	for _, fact := range existing {
+		info, err := root.Lstat(filepath.FromSlash(fact.RelPath))
+		if err != nil {
+			return 0, err
+		}
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return 0, fmt.Errorf("%s is a symlink or non-regular fact file", fact.RelPath)
+		}
+		if info.Size() > authorityRemaining(total) {
+			return 0, fmt.Errorf("canonical fact sizes overflow")
+		}
+		total += info.Size()
+	}
+	return total, nil
+}
+
+func authorityRemaining(total int64) int64 { return int64(^uint64(0)>>1) - total }
+
 // acquireIDLock serializes one fact identity across every scope and configured
 // machine sharing this KB filesystem. Atomic target publication protects a
 // path; this KB-wide lock also protects the schema's stronger global-ID
@@ -232,36 +285,88 @@ func CreateFact(cfg *config.Config, proposed facts.Fact, authority Authority) (R
 // writer leaves a visible lock and future
 // writes fail closed after a bounded wait instead of risking a duplicate.
 func acquireIDLock(cfg *config.Config, id string) (func(), error) {
-	dir := filepath.Join(cfg.KBRoot, ".state", "write-locks")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	return acquireWriteLock(cfg, id+".lock", fmt.Sprintf("write lock for id %q", id))
+}
+
+func acquireStoreLock(cfg *config.Config) (func(), error) {
+	return acquireWriteLock(cfg, "store.lock", "knowledge-store write lock")
+}
+
+func acquireWriteLock(cfg *config.Config, name, label string) (func(), error) {
+	root, err := openWriteLockRoot(cfg.KBRoot)
+	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(dir, id+".lock")
+	path := filepath.Join(cfg.KBRoot, ".state", "write-locks", name)
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		lock, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		lock, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err == nil {
 			if _, writeErr := fmt.Fprintf(lock, "%d\n", os.Getpid()); writeErr != nil {
 				lock.Close()
-				os.Remove(path)
+				root.Remove(name)
+				root.Close()
 				return nil, writeErr
 			}
 			if closeErr := lock.Close(); closeErr != nil {
-				os.Remove(path)
+				root.Remove(name)
+				root.Close()
 				return nil, closeErr
 			}
 			return func() {
-				_ = os.Remove(path)
+				_ = root.Remove(name)
+				_ = root.Close()
 			}, nil
 		}
 		if !errors.Is(err, os.ErrExist) {
+			root.Close()
 			return nil, err
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("write lock for id %q is still held at %s", id, path)
+			root.Close()
+			return nil, fmt.Errorf("%s is still held at %s", label, path)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func openWriteLockRoot(kbRoot string) (*os.Root, error) {
+	root, err := os.OpenRoot(kbRoot)
+	if err != nil {
+		return nil, err
+	}
+	for _, component := range []string{".state", "write-locks"} {
+		info, statErr := root.Lstat(component)
+		if os.IsNotExist(statErr) {
+			if err := root.Mkdir(component, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+				root.Close()
+				return nil, err
+			}
+			info, statErr = root.Lstat(component)
+		}
+		if statErr != nil {
+			root.Close()
+			return nil, statErr
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			root.Close()
+			return nil, fmt.Errorf("write lock component %q is a symlink or non-directory", component)
+		}
+		child, err := root.OpenRoot(component)
+		if err != nil {
+			root.Close()
+			return nil, err
+		}
+		opened, err := child.Stat(".")
+		if err != nil || !os.SameFile(info, opened) {
+			child.Close()
+			root.Close()
+			return nil, fmt.Errorf("write lock component %q changed while opening", component)
+		}
+		root.Close()
+		root = child
+	}
+	return root, nil
 }
 
 func validateAndPath(f facts.Fact) (string, error) {

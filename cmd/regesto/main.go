@@ -29,6 +29,8 @@ commands:
         print the resolved instance config as key=value lines
   write --source SOURCE [--dir D] --json-input [--json]
         validate and atomically create one fact from a JSON object on stdin
+  mcp
+        serve local Regesto resources and tools over MCP on stdin/stdout
   install [--dry-run] [--json]
         plan or apply integration skills, instructions, and hook registration
   hook <protocol>
@@ -117,6 +119,8 @@ func run(args []string) error {
 		return runShowConfig(cfg, rest[1:])
 	case "write":
 		return runWrite(cfg, rest[1:])
+	case "mcp":
+		return runMCP(cfg, rest[1:])
 	case "install":
 		return runInstall(cfg, rest[1:])
 	case "harvest":

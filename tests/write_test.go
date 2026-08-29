@@ -103,6 +103,85 @@ func TestWriteRejectsProjectDirectorySymlinkOutsideKB(t *testing.T) {
 	}
 }
 
+func TestWriteRejectsSymlinkedCanonicalFact(t *testing.T) {
+	cfg := normalizeInstance(t)
+	external := filepath.Join(t.TempDir(), "external.md")
+	raw := "---\nschema_version: 1\nid: fact-external\ntitle: External\ntype: fact\nscope: global\nsubject: writer\nrelation: symlink\ntopics: []\nstatus: active\nsource: human\ncreated: 2026-08-29T00:00:00Z\nmodified: 2026-08-29T00:00:00Z\n---\n\nExternal claim.\n"
+	if err := os.WriteFile(external, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(cfg.KBRoot, "knowledge", "facts", "global", "fact-external.md")
+	if err := os.Symlink(external, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := writeop.Create(cfg, validWriteInput("dec-after-symlink"), writeop.Authority{Source: "codex@testbox"}); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("symlinked canonical fact was not rejected: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.KBRoot, "knowledge", "facts", "global", "dec-after-symlink.md")); !os.IsNotExist(err) {
+		t.Fatalf("write proceeded after unsafe fact: %v", err)
+	}
+}
+
+func TestWriteRejectsSymlinkedLockRoot(t *testing.T) {
+	cfg := normalizeInstance(t)
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(cfg.KBRoot, ".state")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := writeop.Create(cfg, validWriteInput("dec-lock-symlink"), writeop.Authority{Source: "codex@testbox"}); err == nil || !strings.Contains(err.Error(), "write lock component") {
+		t.Fatalf("symlinked lock root was not rejected: %v", err)
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("lock write escaped KB: %v", entries)
+	}
+}
+
+func TestWriteStoreLimitIsAtomicAcrossDifferentIDs(t *testing.T) {
+	cfg := normalizeInstance(t)
+	inputs := []writeop.Input{validWriteInput("dec-capacity-a"), validWriteInput("dec-capacity-b")}
+	for i := range inputs {
+		inputs[i].Subject = inputs[i].ID
+		inputs[i].Body = strings.Repeat("x", 1200)
+	}
+	start := make(chan struct{})
+	errs := make(chan error, len(inputs))
+	for _, input := range inputs {
+		input := input
+		go func() {
+			<-start
+			_, err := writeop.Create(cfg, input, writeop.Authority{
+				Source: "codex@testbox", MaxFactBytes: 2000, MaxStoreBytes: 2000, MaxFactCount: 10,
+			})
+			errs <- err
+		}()
+	}
+	close(start)
+	var succeeded, limited int
+	for range inputs {
+		if err := <-errs; err == nil {
+			succeeded++
+		} else if strings.Contains(err.Error(), "canonical facts exceed 2000 bytes") {
+			limited++
+		} else {
+			t.Fatalf("unexpected concurrent write error: %v", err)
+		}
+	}
+	if succeeded != 1 || limited != 1 {
+		t.Fatalf("concurrent limited writes: succeeded=%d limited=%d", succeeded, limited)
+	}
+	all, err := facts.LoadAll(cfg.KBRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("published %d facts, want exactly one", len(all))
+	}
+}
+
 func TestWriteDuplicateIDNeverOverwrites(t *testing.T) {
 	cfg := normalizeInstance(t)
 	in := validWriteInput("dec-unique-write")

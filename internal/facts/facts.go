@@ -4,6 +4,7 @@ package facts
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -85,19 +86,48 @@ func IsConflict(name string) bool { return conflictPattern.MatchString(name) }
 // them explicitly.
 func LoadAll(kbRoot string) ([]Fact, error) {
 	factsDir := filepath.Join(kbRoot, "knowledge", "facts")
+	root, err := os.OpenRoot(kbRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
 	var out []Fact
-	err := filepath.WalkDir(factsDir, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(factsDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() || !strings.HasSuffix(d.Name(), ".md") || IsConflict(d.Name()) {
 			return nil
 		}
-		f, err := ParseFile(path)
+		rel, err := filepath.Rel(kbRoot, path)
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(kbRoot, path)
+		info, err := root.Lstat(rel)
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s is a symlink or non-regular fact file", path)
+		}
+		file, err := root.Open(rel)
+		if err != nil {
+			return err
+		}
+		opened, err := file.Stat()
+		if err != nil || !os.SameFile(info, opened) {
+			file.Close()
+			return fmt.Errorf("fact file %s changed while opening", path)
+		}
+		raw, readErr := io.ReadAll(file)
+		closeErr := file.Close()
+		if readErr != nil {
+			return readErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		f, err := Parse(raw, path)
 		if err != nil {
 			return err
 		}

@@ -418,12 +418,57 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 ## Milestone 9 — local stdio MCP
 
 - [ ] Implement stdlib JSON-RPC/MCP handshake, resources, tools, clean shutdown, and shared validation with no socket.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `dfa32c2`;
+  staged, unstaged, and untracked files none.
 - Scope/owners: `internal/mcp`, MCP CLI, MCP protocol tests/transcript.
+- High-risk surfaces: newline-delimited JSON-RPC framing and stdout purity,
+  initialize/initialized lifecycle ordering, request-id preservation,
+  notification silence, bounded malformed input, capability/schema accuracy,
+  resource URI traversal, fact identity ambiguity, tool error versus protocol
+  error semantics, write provenance/trust parity, and clean EOF shutdown.
 - Verify: MCP/JSONRPC tests; initialize→tools/list→tools/call→resources/read stdin transcript; race/full gate.
-- Skip list/findings carried (including dependency decision): ___
+- Skip list/findings carried (including dependency decision): the official MCP
+  lifecycle, tools, resources, and stdio transport are small enough to implement
+  confidently with `encoding/json` and buffered I/O under transcript tests, so
+  no SDK or module dependency is introduced. Raw Go race runs use isolated
+  `GOCACHE`/`GOPATH`; capability diagnostics and full documentation remain M10,
+  packaging/legacy-upgrade proof M11, and live-host evidence M12.
 - Review shards: protocol conformance; stdout/error framing and no-network posture; tool validation/tests.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- Review pass 1: accepted and fixed invalid UTF-8 normalization, unbounded
+  JSON nesting/store reads/response lines, protocol-extension over-rejection,
+  null cursor/meta acceptance, missing-resource-URI misclassification, raw
+  filesystem error disclosure, backend/not-found conflation, notification
+  side effects, unchecked/ambiguous resource identities, symlink escape/swap
+  reads, and ignored CLI arguments. The stdlib server now pins protocol
+  revision 2025-06-18, requires initialized operation,
+  preserves request ids, emits only bounded newline-delimited JSON-RPC, reads
+  canonical facts through rooted descriptor-verified limits, and exposes the
+  four planned tools plus live index/fact resources through shared operations.
+  Recorded success/error/lifecycle/extension/limit/URI/symlink/write tests and
+  all targeted re-reviews are clean. Focused tests and the full
+  formatting/vet/test/race/bash/no-network/diff gate passed with isolated Go
+  caches. Checkpoint `73badac` — `feat: add local stdio MCP adapter`.
+- Pass 2 baseline: checkpoint `73badac`; review the full milestone diff from
+  `dfa32c2`. Carry only isolated-cache requirements and the explicit M10
+  diagnostics/documentation, M11 packaging/legacy-upgrade proof, and M12
+  live-host boundaries; all pass-1 findings are closed.
+- Review pass 2: accepted and fixed false compatibility claims for older MCP
+  schemas/batching, invalid ping/initialized metadata, lossy empty-topic
+  rendering, approximate/per-ID-only capacity enforcement, unrooted canonical
+  fact reads and lock creation, and missing fact-count bounds. The server now
+  advertises only revision 2025-06-18; shared fact loading rejects symlinks and
+  verifies rooted descriptors; every validated writer holds a rooted KB-wide
+  store lock through load, exact rendered/store/count limits, and publication;
+  MCP writes pass 4 MiB fact, 8 MiB store, and 10,000-fact limits as
+  authority-owned constraints. Concurrent different-ID capacity, external fact
+  and lock-root symlink, exact render expansion, metadata, negotiation, and
+  empty-topic regressions are covered. All fresh reviewers and targeted
+  re-reviews are clean. Focused tests and the full
+  formatting/vet/test/race/bash/no-network/diff gate passed with isolated Go
+  caches. Remediation `4cab257` — `fix: harden MCP and shared write
+  boundaries`.
+- [x] Milestone 9 complete at reviewed checkpoint `4cab257`; final ledger-only
+  closure follows with no implementation changes.
 
 ## Milestone 10 — diagnostics and documentation
 
