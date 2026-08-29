@@ -142,7 +142,10 @@ native memory later), but the direct write is the fast path and the default.
 If what the user hands over is half-formed — a fragment, a hunch, no clear
 `(subject, relation)` yet — don't lose it and don't force it: capture it to
 `inbox/human@<machine>/` as a raw note and let lint normalize it on the next pass.
-A rough note in the inbox beats a wrong pair in `facts/`.
+That canonical namespace has an implicit supervised default, while an exact or
+pattern source policy can still quarantine it. Facts produced from it are stamped
+with the authoritative source `human`, not the inbox routing ID. A rough note in
+the inbox beats a wrong pair in `facts/`.
 
 ## Superseding
 
@@ -199,19 +202,37 @@ it itself.
 
 - `human` — authoritative, lands as `active`. **Never auto-superseded by an agent claim**
   — see Superseding.
-- `claude@*`, `codex@*` — trusted; captured from work you supervised. Lands as `active`.
-- `hermes@*` — **trust follows the channel, not the agent.** From the private,
-  single-user Telegram channel, if that is the only surface enabled, writes land as
-  `active` like any other agent's: the sender is you. As a compensating check, lint
-  lists every hermes write in its run summary — Hermes acts unattended, and content it
-  reads for you (forwarded mail, fetched links) is still third-party. If a channel
-  reachable by others is ever connected (email, WhatsApp, Signal, Discord, group
-  chats), writes from it are **quarantined**: never normalized, raw in
-  `inbox/hermes@<machine>/` — invisible to `regesto-search`, hooks, and `INDEX.md` — until a
-  human reviews and promotes them (by hand or via `regesto-promote`). A promoted claim
-  enters `facts/` as `active` and keeps `source: hermes@*` for provenance. Quarantined
-  must mean *invisible*: a planted claim that reaches a session's context before review
-  has already done its damage.
+- Agent capture trust is resolved from the configured integration surface, not a
+  product name or spelling of `source`. Before any rule applies, a capture must use
+  exactly `<integration>@<machine>` with nonempty parts, and its integration and
+  machine must equal the inbox directory's integration ID and machine. Malformed or
+  mismatched captures are quarantined.
+- Source policy resolves in this order: an exact `[source_policies]` entry; an exact
+  legacy `[trusted_sources]` entry; the longest matching trailing-`*`
+  `[source_policies]` prefix; the reserved `human@<machine>` inbox authority; the
+  configured integration's `default_trust`; then quarantine. `human` cannot be a
+  configured integration ID, and facts normalized from its inbox namespace are
+  stamped with source `human`. `[source_policies]` values are exactly `supervised`
+  or `quarantine`.
+  Its exact keys are complete `<integration>@<machine>` source IDs; its patterns have
+  one final `*`, such as `"hermes@studio-*" = "quarantine"`. Exact rules therefore
+  can explicitly quarantine a stale legacy approval, while legacy entries retain their
+  meaning whenever no exact source policy conflicts.
+- A configured supervised local integration (currently Claude Code and Codex) may
+  normalize its own captures. The legacy Hermes integration defaults to quarantine;
+  its private, single-user surface keeps its existing trust through the exact
+  `[trusted_sources]` entry. Unknown, custom, unattended, unconfigured, and empty
+  sources default to quarantine unless an explicit policy or configured trust says
+  otherwise. Give separate surfaces separate integration IDs (for example
+  `hermes-private` and `hermes-public`) even if they use the same profile, then assign
+  each its own default trust. This keeps provenance namespaces distinct without
+  changing the `source` schema.
+- A quarantined capture is never normalized: it stays raw in
+  `inbox/<integration>@<machine>/`, invisible to `regesto-search`, hooks, and
+  `INDEX.md`, until a human reviews and promotes it (by hand or via
+  `regesto-promote`). A promoted claim enters `facts/` as `active` and keeps its
+  source for provenance. Quarantined must mean *invisible*: a planted claim that
+  reaches a session's context before review has already done its damage.
 
 ## Inbox lifecycle
 
@@ -221,8 +242,8 @@ this schema, on any machine; lint validates them in place on its next pass.
 
 1. Harvest writes raw captures to `inbox/<agent>@<machine>/`.
 2. Lint normalizes each into a fact under `knowledge/facts/` — **except quarantined
-   captures** (writes from third-party-reachable channels — Trust), which it never
-   touches: they wait in the inbox until a human promotes them.
+   captures** (as resolved by the source policy in Trust), which it never touches:
+   they wait in the inbox until a human promotes them.
 3. The raw capture moves to `archive/inbox/<date>/` — not deleted, so a bad normalization
    can be re-run against the original.
 

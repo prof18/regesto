@@ -320,11 +320,19 @@ func instanceConfig(detected []string) string {
 # command = "~/bin/my-notifier" # receives: <title> <message>
 # renag_hours = "24"            # 0 to report each transition once and never nag
 
-# Sources trusted enough to normalise automatically. Trust follows the channel,
-# not the agent: a private single-user channel is you; anything a third party can
-# reach is not, and stays raw in the inbox until a human promotes it.
+# Legacy exact sources trusted enough to normalise automatically. A private
+# channel alone does not grant trust: the human records an exact source approval.
+# Unknown or shared surfaces stay raw in the inbox until a human promotes them.
 # [trusted_sources]
 # "hermes@studio" = "private single-user Telegram channel"
+
+# Source trust rules: exact entries beat legacy approvals; trailing-* patterns
+# apply after them and before integration defaults.
+# Keys are exact <integration>@<machine> IDs or one trailing-* prefix pattern;
+# values are exactly supervised or quarantine. Exact rules beat every other rule.
+# [source_policies]
+# "hermes@studio-public" = "quarantine"
+# "hermes-private@studio-*" = "supervised"
 
 # Install locations, if this machine differs from the vendor defaults
 # (~/.claude/skills, ~/.claude/CLAUDE.md, ~/.codex/skills, ~/.codex/AGENTS.md).

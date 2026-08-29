@@ -8,11 +8,12 @@
 // binary, so a bad or surprising response fails a check instead of landing in
 // knowledge/.
 //
-// Trust follows the channel, not the agent (SCHEMA.md, Trust). Captures from a
-// source the instance has not declared trusted are never normalised at all; they
-// stay raw in the inbox, invisible to search and hooks, until a human promotes
-// them. Quarantined has to mean invisible — a planted claim that reached a
-// session's context before review has already done its damage.
+// Trust follows the configured source-surface policy (SCHEMA.md, Trust):
+// integration defaults and exact source rules determine whether a capture can
+// be normalised. Quarantined captures stay raw in the inbox, invisible to
+// search and hooks, until a human promotes them. Quarantined has to mean
+// invisible — a planted claim that reached a session's context before review
+// has already done its damage.
 //
 // The default is deny because the safe direction is obvious: a trusted channel
 // wrongly quarantined costs one line of config, while an untrusted one wrongly
@@ -42,19 +43,14 @@ type Capture struct {
 	IsDiff bool
 }
 
-// Quarantined reports whether a capture must be left untouched for a human.
-//
-// Only channels reachable by someone other than the user are quarantined. The
-// installed agents write from the machine itself, so they are trusted like any
-// supervised work; hermes is the one whose trust depends on which surface it is
-// listening to, and that cannot be inferred from the capture alone.
-func (c Capture) Quarantined(trustedSources map[string]bool) bool {
-	if strings.HasPrefix(c.Agent, "hermes") {
-		// Trusted only if the instance has explicitly declared this hermes
-		// channel single-user. Absent that declaration, quarantine.
-		return !trustedSources[c.Source]
+// factSource preserves human authority for captures written through the
+// documented inbox/human@<machine>/ workflow. Other captures retain their
+// precise integration@machine provenance.
+func factSource(c Capture) string {
+	if c.Agent == "human" {
+		return "human"
 	}
-	return false
+	return c.Source
 }
 
 // Find lists unconsumed captures under inbox/, newest last so a run processes
@@ -167,7 +163,7 @@ func Prompt(c Capture, vocabulary []string, existingIDs []string, projects ...st
 	b.WriteString(strings.Join(existingIDs, ", "))
 	b.WriteString("\n\n")
 
-	fmt.Fprintf(&b, "## Capture from %s (%s)\n\n", c.Source, c.Path)
+	fmt.Fprintf(&b, "## Capture from %s (%s)\n\n", factSource(c), c.Path)
 	b.WriteString("```\n")
 	b.WriteString(c.Body)
 	if !strings.HasSuffix(c.Body, "\n") {
@@ -181,7 +177,7 @@ func Prompt(c Capture, vocabulary []string, existingIDs []string, projects ...st
 	b.WriteString("```regesto-fact\n---\nschema_version: 1\nid: <prefix>-<kebab-slug>\n")
 	b.WriteString("title: <one line, at most 80 chars>\ntype: decision|preference|fact|pattern\n")
 	b.WriteString("scope: global\nsubject: <term>\nrelation: <term>\ntopics: [a, b]\n")
-	b.WriteString("status: active\nsource: " + c.Source + "\n---\n\n<the claim>\n\n")
+	b.WriteString("status: active\nsource: " + factSource(c) + "\n---\n\n<the claim>\n\n")
 	b.WriteString("**Why:** <the reasoning>\n```\n\n")
 	b.WriteString("Id prefixes: dec- decision, pref- preference, fact- fact, pat- pattern.\n")
 	b.WriteString("Omit `created`/`modified`; they are stamped for you.\n")

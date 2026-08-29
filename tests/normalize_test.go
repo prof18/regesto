@@ -213,12 +213,12 @@ func TestDuplicateIdIsRejected(t *testing.T) {
 	}
 }
 
-// SCHEMA.md, Trust: a channel reachable by third parties is never normalised —
-// a planted claim that reaches a session's context before review has already
-// done its damage.
-func TestUntrustedHermesCaptureIsQuarantined(t *testing.T) {
+// SCHEMA.md, Trust: an unknown or unconfigured source is never normalised — a
+// planted claim that reaches a session's context before review has already done
+// its damage.
+func TestTrustQuarantinedCaptureRemainsInvisibleAndUnconsumed(t *testing.T) {
 	cfg := normalizeInstance(t)
-	putCapture(t, cfg, "hermes@testbox", "note.md", "Someone messaged this in.")
+	putCapture(t, cfg, "unattended@testbox", "note.md", "Someone messaged this in.")
 	agent := fakeAgent(t, "```regesto-fact\n---\nid: fact-planted\ntitle: Planted\ntype: fact\n"+
 		"scope: global\nsubject: s\nrelation: r\nstatus: active\n---\n\nPlanted claim.\n```")
 
@@ -235,12 +235,125 @@ func TestUntrustedHermesCaptureIsQuarantined(t *testing.T) {
 	if !strings.Contains(outcomes[0].Note, "quarantined") {
 		t.Errorf("quarantine not reported: %q", outcomes[0].Note)
 	}
+	remaining, err := normalize.Find(cfg.KBRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 1 || remaining[0].Source != "unattended@testbox" {
+		t.Errorf("quarantined raw capture was consumed: %+v", remaining)
+	}
 	all, err := facts.LoadAll(cfg.KBRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(all) != 0 {
 		t.Error("quarantined content reached knowledge/, where search and hooks would see it")
+	}
+}
+
+func TestTrustExactSourceOverrideAllowsNormalization(t *testing.T) {
+	cfg := normalizeInstance(t)
+	if err := os.WriteFile(cfg.Path, []byte("agents = [\"claude\"]\n[trusted_sources]\n\"unattended@testbox\" = \"human-approved\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	cfg, err = config.Load(cfg.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putCapture(t, cfg, "unattended@testbox", "note.md", "A human approved this exact source.")
+	agent := fakeAgent(t, "```regesto-fact\n---\nid: fact-approved-source\ntitle: Approved source\ntype: fact\n"+
+		"scope: global\nsubject: source\nrelation: approved\nstatus: active\n---\n\nApproved claim.\n```")
+
+	outcomes, err := normalize.Run(cfg, nil, normalize.Options{Commands: []string{agent}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 || len(outcomes[0].Written) != 1 || outcomes[0].Archived == "" {
+		t.Fatalf("exact trusted source was not normalized and archived: %+v", outcomes)
+	}
+}
+
+func TestTrustSourcePolicyPatternAllowsNormalization(t *testing.T) {
+	cfg := normalizeInstance(t)
+	if err := os.WriteFile(cfg.Path, []byte("agents = [\"claude\"]\n[source_policies]\n\"unattended@*\" = \"supervised\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	cfg, err = config.Load(cfg.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putCapture(t, cfg, "unattended@testbox", "note.md", "A source policy approved this surface.")
+	agent := fakeAgent(t, "```regesto-fact\n---\nid: fact-policy-approved-source\ntitle: Policy approved source\ntype: fact\n"+
+		"scope: global\nsubject: source\nrelation: policy-approved\nstatus: active\n---\n\nApproved claim.\n```")
+
+	outcomes, err := normalize.Run(cfg, nil, normalize.Options{Commands: []string{agent}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 || len(outcomes[0].Written) != 1 || outcomes[0].Archived == "" {
+		t.Fatalf("source policy capture was not normalized and archived: %+v", outcomes)
+	}
+}
+
+func TestTrustHumanInboxCaptureNormalizesAsHuman(t *testing.T) {
+	cfg := normalizeInstance(t)
+	putCapture(t, cfg, "human@testbox", "note.md", "A human recorded this directly.")
+	agent := fakeAgent(t, "```regesto-fact\n---\nid: fact-human-inbox\ntitle: Human inbox\ntype: fact\n"+
+		"scope: global\nsubject: human\nrelation: inbox\nstatus: active\n---\n\nHuman claim.\n```")
+
+	outcomes, err := normalize.Run(cfg, nil, normalize.Options{Commands: []string{agent}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 || len(outcomes[0].Written) != 1 {
+		t.Fatalf("human capture was not normalized: %+v", outcomes)
+	}
+	f, err := facts.ParseFile(filepath.Join(cfg.KBRoot, outcomes[0].Written[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Source != "human" {
+		t.Errorf("human inbox source = %q, want human", f.Source)
+	}
+	if got := normalize.Prompt(normalize.Capture{Agent: "human", Machine: "testbox", Source: "human@testbox"}, nil, nil); !strings.Contains(got, "source: human") || strings.Contains(got, "source: human@testbox") {
+		t.Errorf("human prompt source was not canonical: %q", got)
+	}
+}
+
+func TestTrustExactPolicyCanQuarantineHumanInboxCapture(t *testing.T) {
+	cfg := normalizeInstance(t)
+	if err := os.WriteFile(cfg.Path, []byte("agents = [\"claude\"]\n[source_policies]\n\"human@testbox\" = \"quarantine\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	cfg, err = config.Load(cfg.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putCapture(t, cfg, "human@testbox", "note.md", "QUARANTINED HUMAN CAPTURE")
+
+	outcomes, err := normalize.Run(cfg, nil, normalize.Options{Commands: []string{"/nonexistent/agent"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 || !strings.Contains(outcomes[0].Note, "quarantined") {
+		t.Fatalf("human quarantine policy was ignored: %+v", outcomes)
+	}
+	remaining, err := normalize.Find(cfg.KBRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining) != 1 || remaining[0].Source != "human@testbox" {
+		t.Errorf("quarantined human capture was consumed: %+v", remaining)
+	}
+	all, err := facts.LoadAll(cfg.KBRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 0 {
+		t.Errorf("quarantined human capture wrote facts: %+v", all)
 	}
 }
 

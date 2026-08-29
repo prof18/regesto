@@ -124,13 +124,43 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 3 — generalized source trust
 
-- [ ] Replace product-name trust conditionals with policy-driven quarantine/trust while preserving trusted sources and schema.
-- Scope/owners: `internal/normalize`, `internal/config`, normalize tests, `SCHEMA.md`.
+- [x] Replace product-name trust conditionals with policy-driven quarantine/trust while preserving trusted sources and schema.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `4b50ed3`;
+  staged, unstaged, and untracked files none.
+- Scope/owners: `internal/normalize`, `internal/config`, normalize tests,
+  `SCHEMA.md`, plus current DESIGN/setup/init trust claims found stale in review.
+- High-risk surfaces: default-deny behavior for unknown/unconfigured sources,
+  exact-source override precedence, legacy Claude/Codex/Hermes compatibility,
+  distinct integration IDs for multiple surfaces, quarantine invisibility, and
+  removing every product-name conditional without broadening trust.
 - Verify: `go test ./tests -run 'Normalize|Trust|Human'` plus full gate.
-- Skip list/findings carried: ___
+- Skip list/findings carried: raw Go race runs use isolated `GOCACHE`/`GOPATH`;
+  installation and hook registration remain M5/M6, while profile trust metadata
+  and exact legacy output are closed M2 contracts.
 - Review shards: trust resolver; normalization/index visibility; schema/compatibility tests.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- Review pass 1: accepted and fixed the initially omitted `[source_policies]`
+  exact/trailing-wildcard layer, strict config-load validation and duplicate
+  rejection, canonical agent/machine/source binding, deterministic precedence,
+  source-policy end-to-end coverage, and stale current trust claims. Exact
+  source policy beats legacy exact trust, which beats the longest pattern,
+  configured default, and final quarantine. All three reviewers and targeted
+  re-reviews are clean. Focused tests and the full formatting/vet/test/race/diff
+  gate passed with isolated Go caches. Checkpoint `0495f68` —
+  `feat: generalize source trust policy`.
+- Pass 2 baseline: checkpoint `0495f68`; review the full milestone diff from
+  `4b50ed3`. Carry only the isolated-cache environment note and later-milestone
+  installer/hook boundaries; all pass-1 findings are closed.
+- Review pass 2: accepted and fixed a quarantine bypass in `normalize
+  --show-prompt`, restored the documented `human@<machine>` raw-note workflow
+  without weakening human authority, reserved `human` against configured or
+  harvested integration impersonation, corrected trust-precedence comments and
+  schema text, replaced the stale fourth-agent adapter claim, and expanded focused
+  init/policy/CLI/end-to-end regressions. All three reviewers and targeted
+  re-reviews are clean. Focused tests and the full formatting/vet/test/race/diff
+  gate passed with isolated Go caches. Remediation `8d03c7b` —
+  `fix: close source trust policy gaps`.
+- [x] Milestone 3 complete at reviewed checkpoint `8d03c7b`; final ledger-only
+  closure follows with no implementation changes.
 
 ## Milestone 4 — stable JSON operations and validated writes
 

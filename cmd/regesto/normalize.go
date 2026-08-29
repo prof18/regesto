@@ -29,20 +29,27 @@ func runNormalize(cfg *config.Config, args []string) error {
 	}
 
 	if *showPrompt {
+		trust, err := normalize.ResolveTrustPolicy(cfg)
+		if err != nil {
+			return err
+		}
 		captures, err := normalize.Find(cfg.KBRoot)
 		if err != nil {
 			return err
 		}
-		if len(captures) == 0 {
-			fmt.Println("no captures in inbox/")
+		for _, capture := range captures {
+			if trust.Quarantined(capture) {
+				continue
+			}
+			var vocab, ids []string
+			for _, f := range all {
+				vocab = append(vocab, fmt.Sprintf("(%s, %s)", f.Subject, f.Relation))
+				ids = append(ids, f.ID)
+			}
+			fmt.Print(normalize.Prompt(capture, vocab, ids, lint.KnownProjects(cfg, all)...))
 			return nil
 		}
-		var vocab, ids []string
-		for _, f := range all {
-			vocab = append(vocab, fmt.Sprintf("(%s, %s)", f.Subject, f.Relation))
-			ids = append(ids, f.ID)
-		}
-		fmt.Print(normalize.Prompt(captures[0], vocab, ids, lint.KnownProjects(cfg, all)...))
+		fmt.Println("no eligible captures in inbox/")
 		return nil
 	}
 

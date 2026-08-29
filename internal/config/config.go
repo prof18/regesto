@@ -13,10 +13,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 )
 
 const FileName = "config.toml"
+
+var safeIntegrationID = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+// SourcePolicyRule is one validated source policy. Source is either an exact
+// <integration>@<machine> source or, when Pattern is true, the prefix before a
+// trailing wildcard. Rules are returned in deterministic source-key order.
+type SourcePolicyRule struct {
+	Source  string
+	Trust   string
+	Pattern bool
+}
 
 type Config struct {
 	// KBRoot is the knowledge-base root. Defaults to the directory
@@ -42,8 +55,9 @@ type Config struct {
 	// Shorthand for Section("projects").
 	Projects map[string]string
 	// Sections holds every `[table]` of string pairs in the file, so a new
-	// section is a config change rather than a parser change. Known
-	// sections: projects, skills_dirs, instructions.
+	// section is a config change rather than a parser change. Known sections
+	// include projects, skills_dirs, instructions, trusted_sources, and
+	// source_policies.
 	Sections map[string]map[string]string
 	// Path is where the config file was loaded from.
 	Path string
@@ -75,6 +89,63 @@ func (c *Config) Section(name string) map[string]string {
 		return s
 	}
 	return map[string]string{}
+}
+
+// SourcePolicyRules parses and validates the optional [source_policies] table.
+// Exact keys use <integration>@<machine>; patterns use one trailing * after a
+// valid integration and @, so integration@* deliberately covers every machine.
+func (c *Config) SourcePolicyRules() ([]SourcePolicyRule, error) {
+	section := c.Section("source_policies")
+	keys := make([]string, 0, len(section))
+	for source := range section {
+		keys = append(keys, source)
+	}
+	sort.Strings(keys)
+	rules := make([]SourcePolicyRule, 0, len(keys))
+	for _, source := range keys {
+		trust := section[source]
+		if trust != "supervised" && trust != "quarantine" {
+			return nil, fmt.Errorf("source_policies %q: value must be supervised or quarantine, got %q", source, trust)
+		}
+		if strings.Contains(source, "*") {
+			if strings.Count(source, "*") != 1 || !strings.HasSuffix(source, "*") {
+				return nil, fmt.Errorf("source_policies %q: pattern must contain exactly one trailing *", source)
+			}
+			prefix := strings.TrimSuffix(source, "*")
+			if !validSourcePolicyPrefix(prefix) {
+				return nil, fmt.Errorf("source_policies %q: pattern prefix must start with <integration>@", source)
+			}
+			rules = append(rules, SourcePolicyRule{Source: prefix, Trust: trust, Pattern: true})
+			continue
+		}
+		if !validSourcePolicyExact(source) {
+			return nil, fmt.Errorf("source_policies %q: exact source must be <integration>@<machine>", source)
+		}
+		rules = append(rules, SourcePolicyRule{Source: source, Trust: trust})
+	}
+	return rules, nil
+}
+
+// ParseSourceID validates the canonical <integration>@<machine> source shape.
+// Integration IDs use the same portable grammar as configured integrations;
+// machine names are nonempty and may not introduce a second namespace marker.
+func ParseSourceID(source string) (integration, machine string, ok bool) {
+	integration, machine, ok = strings.Cut(source, "@")
+	if !ok || !safeIntegrationID.MatchString(integration) || machine == "" || strings.Contains(machine, "@") {
+		return "", "", false
+	}
+	return integration, machine, true
+
+}
+
+func validSourcePolicyExact(source string) bool {
+	_, _, ok := ParseSourceID(source)
+	return ok
+}
+
+func validSourcePolicyPrefix(prefix string) bool {
+	integration, suffix, ok := strings.Cut(prefix, "@")
+	return ok && safeIntegrationID.MatchString(integration) && !strings.Contains(suffix, "@")
 }
 
 // Find locates the instance config, in order: REGESTO_CONFIG, then walking up
@@ -195,6 +266,11 @@ func Load(path string) (*Config, error) {
 			if strings.HasPrefix(v, "~") {
 				v = expandHome(v)
 			}
+			if section == "source_policies" {
+				if _, exists := cfg.Sections[section][key]; exists {
+					return nil, fmt.Errorf("%s:%d: duplicate source_policies key %q", path, lineNo+1, key)
+				}
+			}
 			cfg.Sections[section][key] = v
 		}
 	}
@@ -206,6 +282,9 @@ func Load(path string) (*Config, error) {
 		cfg.KBRoot = filepath.Dir(abs)
 	}
 	cfg.Machine, cfg.MachineSource = resolveMachine(cfg)
+	if _, err := cfg.SourcePolicyRules(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	return cfg, nil
 }
 

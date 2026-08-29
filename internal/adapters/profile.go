@@ -293,6 +293,12 @@ func Resolve(cfg *config.Config) ([]Agent, error) {
 	seen := map[string]bool{}
 	out := make([]Agent, 0, len(ids))
 	for _, id := range ids {
+		// `human` is the protocol's authoritative principal, not an agent
+		// integration. Allowing a configured/harvested integration to claim this
+		// ID would let its captures be stamped as human assertions.
+		if id == "human" {
+			return nil, fmt.Errorf("config integration id %q is reserved for human authority", id)
+		}
 		if seen[id] && !cfg.UsesLegacyAgents() {
 			return nil, fmt.Errorf("config lists integration %q more than once", id)
 		}

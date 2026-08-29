@@ -157,17 +157,16 @@ func Commands(override string, configured string) []string {
 // A capture whose candidates all fail is left in the inbox, so nothing is lost
 // and the next pass can retry it.
 func Run(cfg *config.Config, all []facts.Fact, opts Options) ([]Outcome, error) {
+	trust, err := ResolveTrustPolicy(cfg)
+	if err != nil {
+		return nil, err
+	}
 	captures, err := Find(cfg.KBRoot)
 	if err != nil {
 		return nil, err
 	}
 	if len(captures) == 0 {
 		return nil, nil
-	}
-
-	trusted := map[string]bool{}
-	for src := range cfg.Section("trusted_sources") {
-		trusted[src] = true
 	}
 
 	vocabulary, ids := inventory(all)
@@ -184,14 +183,9 @@ func Run(cfg *config.Config, all []facts.Fact, opts Options) ([]Outcome, error) 
 	for _, c := range captures {
 		out := Outcome{Capture: c}
 
-		if c.Quarantined(trusted) {
-			// Say what is known, not what is feared. The engine has established
-			// only that this source is undeclared; whether the channel is
-			// actually reachable by anyone else is a question it cannot answer,
-			// and stating it as fact sends people hunting a breach that may not
-			// exist — while hiding the one-line config that resolves it.
+		if trust.Quarantined(c) {
 			out.Note = fmt.Sprintf(
-				"quarantined — %s is not in [trusted_sources], so its captures are left raw for a human to promote", c.Source)
+				"quarantined — source policy leaves %s raw for a human to promote", c.Source)
 			outcomes = append(outcomes, out)
 			continue
 		}
@@ -328,7 +322,7 @@ func writeCandidate(cfg *config.Config, candidate string, c Capture, stamp strin
 	// reconciliation.
 	candidate = ensureField(candidate, "created", stamp)
 	candidate = ensureField(candidate, "modified", stamp)
-	candidate = ensureField(candidate, "source", c.Source)
+	candidate = ensureField(candidate, "source", factSource(c))
 	candidate = ensureField(candidate, "schema_version", "1")
 
 	f, err := facts.Parse([]byte(candidate), c.Path)

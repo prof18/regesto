@@ -272,9 +272,10 @@ the part no product ships.
 6. **Resolve** — sync-conflict copies
 7. **Commit**
 
-Normalisation treats sources per channel (§8): a private single-user channel normalises
-like any other agent; captures from channels a third party can reach are skipped entirely —
-quarantined in `inbox/`, invisible to search and hooks, until a human promotes them.
+Normalisation uses the configured source policy (§8), never an inferred channel label. A
+private single-user surface may be explicitly trusted, while unknown, unattended, or
+unconfigured sources quarantine by default — raw in `inbox/`, invisible to search and
+hooks, until a human promotes them.
 
 **Lint runs on one machine.** Capture happens everywhere; deciding what becomes a fact
 happens in one place, or two machines mint competing vocabulary for the same claim.
@@ -299,9 +300,11 @@ for basename collisions.
 Three vendors independently converging on a markdown memory file is good evidence the
 format is right. It is not a reason to let any of them own your knowledge.
 
-**Adding a fourth agent** is an adapter: a pointer block, an instruction, and a hook if the
-platform has one. Nothing in `knowledge/` changes. That is the entire point, and a new
-agent should be a pull request that touches only `internal/adapters` and `adapters/`.
+**Adding another agent** normally requires only a configured integration using the
+portable generic profile: its pointer block, instruction, optional hook, paths, and trust
+default are data rather than product-specific code. A pull request is reserved for a new
+optimised built-in profile whose platform semantics cannot be expressed by the generic
+contract. Nothing in `knowledge/` changes; that is the entire point.
 
 ---
 
@@ -314,15 +317,15 @@ base, reachable from the internet — and it still leaves some vendors out.
 **A chat-surface agent running on your own machine replaces it.** The machine makes
 outbound connections only: no tunnel, no open port, no public attack surface.
 
-**Trust follows the channel, not the agent.** A private, single-user channel is you, so its
-writes are trusted like any other agent's — with every such write listed in the run summary
-as a compensating check, because the agent acts unattended and content it reads for you
-(forwarded mail, fetched links) is still third-party. On a channel others can reach, anyone
-who can message you can attempt to plant false knowledge, so writes from those channels are
-**quarantined**: never normalised, raw in `inbox/`, invisible to search, hooks and the
-index, until a human promotes them. A planted claim that reached a session's context before
-review would defeat the quarantine, so quarantined must mean *invisible*, not merely
-flagged.
+**Trust belongs to a configured source surface, not an agent name or an asserted channel
+status.** A supervised integration may trust its own source; an unattended or shared surface
+should use a distinct integration ID and quarantine default. Exact source policies can
+approve or quarantine a known source, while unknown and malformed sources quarantine. This
+does not make a private-channel claim self-authenticating: a human records the policy.
+Quarantined captures are never normalised, remain raw in `inbox/`, and stay invisible to
+search, hooks, and the index until a human promotes them. A planted claim that reached a
+session's context before review would defeat the quarantine, so quarantined must mean
+*invisible*, not merely flagged.
 
 An always-on agent also means no quiet window for lint, which is why writes are atomic.
 

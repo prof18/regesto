@@ -42,7 +42,7 @@ func TestSchedulePathIncludesConfiguredCommandAndStableDefaults(t *testing.T) {
 	}
 }
 
-func TestIntegrationInitTemplateKeepsLegacyAgentsAndDocumentsGenericProfile(t *testing.T) {
+func TestTrustIntegrationInitTemplateKeepsLegacyAgentsAndDocumentsGenericProfile(t *testing.T) {
 	body := instanceConfig([]string{"claude", "codex"})
 	for _, want := range []string{
 		"agents = [\"claude\", \"codex\"]",
@@ -50,6 +50,9 @@ func TestIntegrationInitTemplateKeepsLegacyAgentsAndDocumentsGenericProfile(t *t
 		"# integrations = [\"my-agent\"]",
 		"[integrations.my-agent]",
 		"memory_kind = \"markdown-glob-v1\"",
+		"A private\n# channel alone does not grant trust",
+		"# [source_policies]",
+		"# \"hermes-private@studio-*\" = \"supervised\"",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("init template missing %q", want)

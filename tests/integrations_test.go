@@ -29,6 +29,10 @@ func loadConfigFixture(t *testing.T, name string) *config.Config {
 	return cfg
 }
 
+func trustCapture(agent, machine string) normalize.Capture {
+	return normalize.Capture{Agent: agent, Machine: machine, Source: agent + "@" + machine}
+}
+
 func TestLegacyBuiltInIntegrationDefaults(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -179,6 +183,11 @@ func TestIntegrationLegacyConfigTextOutput(t *testing.T) {
 }
 
 func TestLegacyTrustBehavior(t *testing.T) {
+	cfg := writeConfig(t, "agents = [\"claude\", \"codex\", \"hermes\"]\n")
+	policy, err := normalize.ResolveTrustPolicy(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		agent, source string
 		quarantined   bool
@@ -187,13 +196,18 @@ func TestLegacyTrustBehavior(t *testing.T) {
 		{agent: "codex", source: "codex@fixture-box"},
 		{agent: "hermes", source: "hermes@fixture-box", quarantined: true},
 	} {
-		c := normalize.Capture{Agent: tc.agent, Source: tc.source}
-		if got := c.Quarantined(map[string]bool{}); got != tc.quarantined {
+		c := trustCapture(tc.agent, "fixture-box")
+		if got := policy.Quarantined(c); got != tc.quarantined {
 			t.Errorf("%s quarantine = %v, want %v", tc.agent, got, tc.quarantined)
 		}
-		if tc.agent == "hermes" && c.Quarantined(map[string]bool{tc.source: true}) {
-			t.Error("explicitly trusted Hermes source remained quarantined")
-		}
+	}
+	trusted := writeConfig(t, "agents = [\"hermes\"]\n[trusted_sources]\n\"hermes@fixture-box\" = \"private\"\n")
+	policy, err = normalize.ResolveTrustPolicy(trusted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.Quarantined(trustCapture("hermes", "fixture-box")) {
+		t.Error("explicitly trusted Hermes source remained quarantined")
 	}
 }
 
@@ -509,7 +523,180 @@ func TestIntegrationUpgradeUsesProfileAwareNewVocabulary(t *testing.T) {
 }
 
 func TestTrustUnknownIntegrationTargetContract(t *testing.T) {
-	t.Skip("TODO(M3): unknown/custom integrations must default to quarantine")
+	generic := writeConfig(t, "integrations = [\"custom\"]\n")
+	policy, err := normalize.ResolveTrustPolicy(generic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !policy.Quarantined(trustCapture("custom", "fixture-box")) {
+		t.Fatal("custom integration without an explicit trust policy must quarantine")
+	}
+
+	cfg := writeConfig(t, "integrations = [\"custom\"]\n[integrations.custom]\nprofile = \"claude\"\n")
+	policy, err = normalize.ResolveTrustPolicy(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.Quarantined(trustCapture("custom", "fixture-box")) {
+		t.Fatal("custom integration using supervised profile should be trusted")
+	}
+	if !policy.Quarantined(trustCapture("unknown", "fixture-box")) {
+		t.Fatal("unknown integration must default to quarantine")
+	}
+	if !policy.Quarantined(trustCapture("claude", "fixture-box")) {
+		t.Fatal("source spelling must not inherit trust from another integration's profile")
+	}
+	if !policy.Quarantined(normalize.Capture{Agent: "", Machine: "fixture-box", Source: "@fixture-box"}) {
+		t.Fatal("empty integration id must default to quarantine")
+	}
+
+	isolated := writeConfig(t, "integrations = [\"private-hermes\", \"public-hermes\"]\n[integrations.private-hermes]\nprofile = \"hermes\"\ntrust = \"supervised\"\n[integrations.public-hermes]\nprofile = \"hermes\"\n")
+	policy, err = normalize.ResolveTrustPolicy(isolated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.Quarantined(trustCapture("private-hermes", "fixture-box")) {
+		t.Fatal("supervised surface should be trusted")
+	}
+	if !policy.Quarantined(trustCapture("public-hermes", "fixture-box")) {
+		t.Fatal("same profile must not grant trust to a separate integration surface")
+	}
+
+	override := writeConfig(t, "integrations = [\"unknown\"]\n[trusted_sources]\n\"unknown@fixture-box\" = \"human-approved\"\n\"unknown@other-box\" = \"human-approved\"\n\"unknown@*\" = \"not-a-wildcard\"\n")
+	policy, err = normalize.ResolveTrustPolicy(override)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.Quarantined(trustCapture("unknown", "fixture-box")) {
+		t.Fatal("exact trusted source must override quarantine")
+	}
+	if !policy.Quarantined(trustCapture("unknown", "fixture-box-extra")) {
+		t.Fatal("trusted_sources must not treat a source prefix as an override")
+	}
+	if !policy.Quarantined(trustCapture("unknown", "third-box")) {
+		t.Fatal("trusted_sources must not interpret wildcard-looking keys")
+	}
+}
+
+func TestTrustHumanIntegrationIDIsReserved(t *testing.T) {
+	for _, body := range []string{
+		"integrations = [\"human\"]\n[integrations.human]\nprofile = \"claude\"\n",
+		"agents = [\"human\"]\n",
+	} {
+		cfg := writeConfig(t, body)
+		if _, err := normalize.ResolveTrustPolicy(cfg); err == nil || !strings.Contains(err.Error(), "reserved for human authority") {
+			t.Fatalf("configured human integration was not rejected: %v", err)
+		}
+	}
+}
+
+func TestTrustSourcePoliciesPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		capture    normalize.Capture
+		quarantine bool
+	}{
+		{
+			name:    "exact policy beats pattern",
+			body:    "integrations = [\"unknown\"]\n[source_policies]\n\"unknown@*\" = \"quarantine\"\n\"unknown@fixture-box\" = \"supervised\"\n",
+			capture: trustCapture("unknown", "fixture-box"),
+		},
+		{
+			name:       "exact quarantine beats legacy trust",
+			body:       "agents = [\"claude\"]\n[trusted_sources]\n\"claude@fixture-box\" = \"legacy approval\"\n[source_policies]\n\"claude@fixture-box\" = \"quarantine\"\n",
+			capture:    trustCapture("claude", "fixture-box"),
+			quarantine: true,
+		},
+		{
+			name:    "legacy trust beats pattern",
+			body:    "integrations = [\"unknown\"]\n[trusted_sources]\n\"unknown@fixture-box\" = \"legacy approval\"\n[source_policies]\n\"unknown@*\" = \"quarantine\"\n",
+			capture: trustCapture("unknown", "fixture-box"),
+		},
+		{
+			name:       "longest matching pattern wins",
+			body:       "integrations = [\"unknown\"]\n[source_policies]\n\"unknown@*\" = \"quarantine\"\n\"unknown@fixture*\" = \"supervised\"\n\"unknown@fixture-box*\" = \"quarantine\"\n",
+			capture:    trustCapture("unknown", "fixture-box-2"),
+			quarantine: true,
+		},
+		{
+			name:    "pattern upgrades unknown source",
+			body:    "integrations = [\"unknown\"]\n[source_policies]\n\"unknown@*\" = \"supervised\"\n",
+			capture: trustCapture("unknown", "third-box"),
+		},
+		{
+			name:       "pattern downgrades supervised profile",
+			body:       "agents = [\"claude\"]\n[source_policies]\n\"claude@*\" = \"quarantine\"\n",
+			capture:    trustCapture("claude", "fixture-box"),
+			quarantine: true,
+		},
+		{
+			name:    "human source is supervised by default",
+			body:    "integrations = []\n",
+			capture: trustCapture("human", "fixture-box"),
+		},
+		{
+			name:       "exact policy quarantines human source",
+			body:       "integrations = []\n[source_policies]\n\"human@fixture-box\" = \"quarantine\"\n",
+			capture:    trustCapture("human", "fixture-box"),
+			quarantine: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			policy, err := normalize.ResolveTrustPolicy(writeConfig(t, tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := policy.Quarantined(tc.capture); got != tc.quarantine {
+				t.Errorf("quarantined = %v, want %v", got, tc.quarantine)
+			}
+		})
+	}
+}
+
+func TestTrustSourcePoliciesRejectMalformedRules(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, want string
+	}{
+		{"middle wildcard", "\"unknown@fi*xture\" = \"supervised\"", "exactly one trailing"},
+		{"multiple wildcards", "\"unknown@**\" = \"supervised\"", "exactly one trailing"},
+		{"missing integration", "\"@fixture-box\" = \"supervised\"", "exact source"},
+		{"invalid integration grammar", "\"Unknown@fixture-box\" = \"supervised\"", "exact source"},
+		{"missing machine", "\"unknown@\" = \"supervised\"", "exact source"},
+		{"invalid value", "\"unknown@fixture-box\" = \"trusted\"", "must be supervised or quarantine"},
+		{"invalid pattern namespace", "\"unknown*\" = \"supervised\"", "pattern prefix"},
+		{"duplicate source", "\"unknown@fixture-box\" = \"supervised\"\n\"unknown@fixture-box\" = \"quarantine\"", "duplicate source_policies key"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			body := "integrations = [\"unknown\"]\n[source_policies]\n" + tc.body + "\n"
+			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := config.Load(path)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestTrustMalformedCaptureNamespacesAreQuarantined(t *testing.T) {
+	policy, err := normalize.ResolveTrustPolicy(writeConfig(t, "agents = [\"claude\"]\n[trusted_sources]\n\"claude@fixture-box\" = \"legacy approval\"\n\"Bad ID@fixture-box\" = \"malformed legacy approval\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, capture := range []normalize.Capture{
+		{Agent: "", Machine: "fixture-box", Source: "claude@fixture-box"},
+		{Agent: "other", Machine: "fixture-box", Source: "claude@fixture-box"},
+		{Agent: "claude", Machine: "other-box", Source: "claude@fixture-box"},
+		{Agent: "claude", Machine: "", Source: "claude@"},
+		{Agent: "claude", Machine: "fixture-box", Source: "claude@fixture@box"},
+		{Agent: "Bad ID", Source: "Bad ID@fixture-box"},
+	} {
+		if !policy.Quarantined(capture) {
+			t.Errorf("malformed capture was trusted: %+v", capture)
+		}
+	}
 }
 
 // This pins parser/config compatibility only. The full zero-edit upgrade proof

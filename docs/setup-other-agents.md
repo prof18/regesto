@@ -70,6 +70,7 @@ change on their side.
 
 **Do not expose the knowledge base over the network to reach a phone.** That is a
 permanently listening service holding everything you know, and there is a better shape:
-run a chat-surface agent on your own machine, making outbound connections only. Trust then
-follows the channel — a private single-user channel is you; anything others can reach is
-quarantined until a human promotes it. [DESIGN.md §8](../DESIGN.md#8-phones).
+run a chat-surface agent on your own machine, making outbound connections only. Trust is
+then an explicit source policy: private status alone does not grant it; unknown or shared
+surfaces quarantine until a human records a supervised rule or promotes the capture.
+[DESIGN.md §8](../DESIGN.md#8-phones).
