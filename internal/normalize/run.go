@@ -11,6 +11,7 @@ import (
 
 	"github.com/prof18/regesto/internal/config"
 	"github.com/prof18/regesto/internal/facts"
+	writeop "github.com/prof18/regesto/internal/write"
 )
 
 // Options controls a normalisation pass.
@@ -317,14 +318,6 @@ func pruneEmptyDirs(stopAt, dir string) {
 // writeCandidate validates one proposed fact and writes it, returning the path
 // relative to the KB root.
 func writeCandidate(cfg *config.Config, candidate string, c Capture, stamp string, taken map[string]bool) (string, error) {
-	// Stamp the times here rather than trusting the model with them: a guessed
-	// date is the most common error in hand-written facts, and `modified` drives
-	// reconciliation.
-	candidate = ensureField(candidate, "created", stamp)
-	candidate = ensureField(candidate, "modified", stamp)
-	candidate = ensureField(candidate, "source", factSource(c))
-	candidate = ensureField(candidate, "schema_version", "1")
-
 	f, err := facts.Parse([]byte(candidate), c.Path)
 	if err != nil {
 		return "", fmt.Errorf("unparseable candidate from %s: %w", c.Path, err)
@@ -332,66 +325,16 @@ func writeCandidate(cfg *config.Config, candidate string, c Capture, stamp strin
 	if taken[f.ID] {
 		return "", fmt.Errorf("id %q already exists — candidate discarded", f.ID)
 	}
-	prefixes := map[string]string{"decision": "dec-", "preference": "pref-", "fact": "fact-", "pattern": "pat-"}
-	prefix, ok := prefixes[f.Type]
-	if !ok {
-		return "", fmt.Errorf("candidate %q has type %q, which is not a schema type", f.ID, f.Type)
+	now, err := time.Parse(time.RFC3339, stamp)
+	if err != nil {
+		return "", fmt.Errorf("invalid normalization stamp %q: %w", stamp, err)
 	}
-	if !strings.HasPrefix(f.ID, prefix) {
-		return "", fmt.Errorf("candidate %q has type %s but not the %q prefix", f.ID, f.Type, prefix)
-	}
-	if f.Subject == "" || f.Relation == "" {
-		return "", fmt.Errorf("candidate %q is missing subject or relation", f.ID)
-	}
-	// An agent-sourced claim may not be born superseded, and may not declare
-	// itself the winner of a contest it has not been through — reconciliation
-	// decides that (SCHEMA.md, Superseding).
-	if f.Status != facts.StatusActive && f.Status != facts.StatusProposed {
-		return "", fmt.Errorf("candidate %q has status %q; normalisation may only produce active or proposed", f.ID, f.Status)
-	}
-
-	dir := filepath.Join(cfg.KBRoot, "knowledge", "facts", "global")
-	rel := "knowledge/facts/global/" + f.ID + ".md"
-	if project := f.ProjectName(); project != "" {
-		dir = filepath.Join(cfg.KBRoot, "knowledge", "facts", "projects", project)
-		rel = "knowledge/facts/projects/" + project + "/" + f.ID + ".md"
-	} else if f.Scope != "global" {
-		return "", fmt.Errorf("candidate %q has scope %q, which is neither global nor project:<name>", f.ID, f.Scope)
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	target := filepath.Join(dir, f.ID+".md")
-	if _, err := os.Stat(target); err == nil {
-		return "", fmt.Errorf("%s already exists — candidate discarded", rel)
-	}
-	if err := os.WriteFile(target, []byte(candidate), 0o644); err != nil {
+	result, err := writeop.CreateFact(cfg, f, writeop.Authority{Source: factSource(c), Now: now})
+	if err != nil {
 		return "", err
 	}
 	taken[f.ID] = true
-	return rel, nil
-}
-
-// ensureField adds a frontmatter field when the candidate omitted it, and
-// overwrites it when present — the caller is authoritative for these.
-func ensureField(candidate, key, value string) string {
-	lines := strings.Split(candidate, "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-		return candidate
-	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			// Not found in the block: insert before the closing marker.
-			out := append([]string{}, lines[:i]...)
-			out = append(out, key+": "+value)
-			return strings.Join(append(out, lines[i:]...), "\n")
-		}
-		if k, _, ok := strings.Cut(lines[i], ":"); ok && strings.TrimSpace(k) == key {
-			lines[i] = key + ": " + value
-			return strings.Join(lines, "\n")
-		}
-	}
-	return candidate
+	return result.Path, nil
 }
 
 func inventory(all []facts.Fact) (vocabulary, ids []string) {

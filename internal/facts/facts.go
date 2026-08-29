@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -141,6 +142,7 @@ func Parse(raw []byte, label string) (Fact, error) {
 	}
 
 	f := Fact{}
+	seenKeys := map[string]bool{}
 	for i := 1; i < end; i++ {
 		line := strings.TrimSpace(lines[i])
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -151,6 +153,10 @@ func Parse(raw []byte, label string) (Fact, error) {
 			return Fact{}, fmt.Errorf("%s: bad frontmatter line %d: %q", path, i+1, line)
 		}
 		key = strings.TrimSpace(key)
+		if seenKeys[key] {
+			return Fact{}, fmt.Errorf("%s: duplicate frontmatter key %q on line %d", path, key, i+1)
+		}
+		seenKeys[key] = true
 		value = unquote(strings.TrimSpace(value))
 		switch key {
 		case "schema_version":
@@ -213,7 +219,15 @@ func (f Fact) ProjectName() string {
 func unquote(s string) string {
 	if len(s) >= 2 {
 		q := s[0]
-		if (q == '"' || q == '\'') && s[len(s)-1] == q {
+		if q == '"' && s[len(s)-1] == q {
+			if decoded, err := strconv.Unquote(s); err == nil {
+				return decoded
+			}
+			// Preserve the legacy tolerant reader for hand-written YAML escapes
+			// that are not also Go string escapes.
+			return s[1 : len(s)-1]
+		}
+		if q == '\'' && s[len(s)-1] == q {
 			return s[1 : len(s)-1]
 		}
 	}

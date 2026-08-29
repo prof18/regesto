@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -18,6 +19,7 @@ func runProject(cfg *config.Config, args []string) error {
 	dir := fs.String("dir", "", "directory to resolve from (default: cwd)")
 	scope := fs.Bool("scope", false, "print as a scope value, i.e. project:<name>")
 	verbose := fs.Bool("v", false, "also print how the name was resolved")
+	jsonOutput := fs.Bool("json", false, "print project resolution as JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -32,6 +34,14 @@ func runProject(cfg *config.Config, args []string) error {
 	}
 
 	r := project.Resolve(cfg, from)
+	if *jsonOutput {
+		return json.NewEncoder(os.Stdout).Encode(jsonProjectResponse{
+			SchemaVersion: jsonSchemaVersion,
+			Project:       r.Name,
+			Scope:         "project:" + r.Name,
+			Resolution:    jsonProjectResolution(r),
+		})
+	}
 	name := r.Name
 	if *scope {
 		name = "project:" + name

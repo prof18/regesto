@@ -4,6 +4,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -18,14 +19,16 @@ import (
 const usage = `usage: regesto [--config <path>] <command> [args]
 
 commands:
-  search [--subject S] [--relation R] [--scope SC] [--history] [terms...]
+  search [--json] [--subject S] [--relation R] [--scope SC] [--history] [terms...]
         query knowledge/facts/; superseded hidden unless --history
   index
         regenerate INDEX.md and knowledge/topics/ from knowledge/facts/
-  context [--dir D] [--project P] [--max-bytes N] [--vocabulary]
+  context [--json] [--dir D] [--project P] [--max-bytes N] [--vocabulary]
         compact SessionStart payload: what exists, scoped to the current project
-  config
+  config [--json]
         print the resolved instance config as key=value lines
+  write --source SOURCE [--dir D] --json-input [--json]
+        validate and atomically create one fact from a JSON object on stdin
   harvest [--dry-run] [-v]
         capture new native-memory writes into inbox/<agent>@<machine>/
   init [--dir D] [--machine NAME] [--examples] [--force]
@@ -44,7 +47,7 @@ commands:
         turn inbox captures into canonical facts
   lint [--fix] [--rebuild] [--quiet]
         validate knowledge/facts/ against SCHEMA.md and reconcile contradictions
-  project [--dir D] [--scope] [-v]
+  project [--json] [--dir D] [--scope] [-v]
         print the canonical project name for a directory
 `
 
@@ -99,6 +102,8 @@ func run(args []string) error {
 		return runContext(cfg, rest[1:])
 	case "config":
 		return runShowConfig(cfg, rest[1:])
+	case "write":
+		return runWrite(cfg, rest[1:])
 	case "harvest":
 		return runHarvest(cfg, rest[1:])
 	case "promote":
@@ -148,6 +153,7 @@ func runSearch(cfg *config.Config, args []string) error {
 	relation := fs.String("relation", "", "exact relation match")
 	scope := fs.String("scope", "", "global, project:<name>, or bare project name")
 	history := fs.Bool("history", false, "include status: superseded claims")
+	jsonOutput := fs.Bool("json", false, "print matching facts as JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -163,6 +169,9 @@ func runSearch(cfg *config.Config, args []string) error {
 		Terms:    fs.Args(),
 		History:  *history,
 	})
+	if *jsonOutput {
+		return json.NewEncoder(os.Stdout).Encode(jsonSearchResponse{SchemaVersion: jsonSchemaVersion, Results: jsonFacts(results)})
+	}
 	for _, f := range results {
 		fmt.Println(search.FormatLine(f))
 	}

@@ -88,8 +88,9 @@ was wrong.
 them, and the agent did not have to decide to look.
 
 **5. Record something.** Tell the agent "remember that migrations here are forward-only",
-or run `/regesto-write`. The fact lands in `knowledge/facts/`, schema-correct, with a
-`**Why:**` line.
+or run `/regesto-write`. The skill submits it through Regesto's validated write command, so
+the fact lands in `knowledge/facts/` with its schema metadata, path, and timestamps assigned
+by the tool, plus a `**Why:**` line.
 
 That is the whole loop. Everything below is optional.
 
@@ -108,8 +109,8 @@ somewhere uncommon, add its directory with `[schedule].extra_path` and run `sche
 again. Keeping this at the scheduler boundary also covers interpreters such as `node`; using
 absolute paths for `claude` or `codex` alone would not.
 
-Commands other than `init` and the six with a `bin/regesto-*` shim (`install`, `search`,
-`context`, `config`, `index`, `project`) resolve their instance from the working directory,
+Commands other than `init` and the seven with a `bin/regesto-*` shim (`install`, `search`,
+`context`, `config`, `index`, `project`, `write`) resolve their instance from the working directory,
 so run them from inside `~/regesto-kb` — or pass `--config ~/regesto-kb/config.toml` from
 anywhere else.
 
@@ -214,10 +215,15 @@ itself (`~/regesto-kb` by default) to remove the knowledge base.
 | `regesto promote` | a chat export → facts → archive |
 | `regesto project` | the canonical project name for a directory |
 | `regesto config` | the resolved instance config |
+| `regesto write` | validate and atomically record one fact from structured input |
 | `regesto init` | scaffold a new instance |
 | `regesto upgrade` | refresh an instance's engine-owned files after the engine changed |
 | `regesto schedule` | run harvest and cycle automatically |
 | `regesto version` | which engine this is |
+
+`search`, `context`, `project`, and `config` accept `--json` for stable
+machine-facing results. `write --source … --json-input --json` is the validated
+structured write boundary; its default output remains a concise relative path.
 
 ---
 

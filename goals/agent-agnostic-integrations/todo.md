@@ -164,13 +164,51 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 4 — stable JSON operations and validated writes
 
-- [ ] Extract shared validation/stamping/atomic writes; add stable JSON command forms without changing text output.
-- Scope/owners: `internal/write`, CLI write/search/context/project/config, normalize reuse, command tests.
-- Verify: focused Write/Search/Context/Project/Config tests and `go test -race ./...` plus full gate.
-- Skip list/findings carried: ___
-- Review shards: write validation/atomicity; CLI JSON compatibility; race/error tests.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- [x] Extract shared validation/stamping/atomic writes; add stable JSON command forms without changing text output.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `cb4b72b`;
+  staged, unstaged, and untracked files none.
+- Scope/owners: new `internal/write`; write/search/context/project/config CLI
+  operations and focused tests; normalization candidate-write reuse; current
+  write skill plus narrow README/SCHEMA claims. Installation, hooks, artifact
+  rendering, harvesting, MCP, and doctor remain later milestones.
+- High-risk surfaces: authoritative source/schema/timestamp stamping, duplicate
+  frontmatter keys and IDs, atomic no-replace publication under races, project
+  path containment, agent-versus-human reconciliation preview, JSON stdout
+  purity/schema stability, and byte-compatible default text output.
+- Verify: `go test ./tests -run 'Write|Search|Context|Project|Config'`; command
+  package JSON/text tests; `go test -race ./...`; full gate.
+- Skip list/findings carried: raw Go race runs use isolated `GOCACHE`/`GOPATH`;
+  pass-zero policy review found duplicate candidate frontmatter can currently
+  bypass normalization's first-key stamping, so shared writer migration and a
+  regression are required before M4 closes.
+- Review shards: shared validation/atomicity and normalize reuse; stable JSON/text
+  compatibility; write workflow/docs and race/error coverage.
+- Review pass 1: accepted and fixed duplicate-frontmatter authority bypasses,
+  noncanonical explicit sources, dropped `review_after`, duplicate JSON object
+  keys, nullable empty config IDs, and a machine-scoped global-ID race. The
+  shared writer now owns strict semantic validation, authoritative stamping,
+  project-safe placement, KB-wide ID serialization, atomic no-replace
+  publication, and human-contest reconciliation preview; normalize and promote
+  reuse it. Stable versioned JSON covers search/context/project/config/write,
+  default text stays compatible, and the write shim/workflow are packaged.
+  All three reviewers and targeted re-reviews are clean. Focused tests and the
+  full formatting/vet/test/race/bash/diff gate passed with isolated Go caches.
+  Checkpoint `e8ab6f5` — `feat: add validated JSON operations`.
+- Pass 2 baseline: checkpoint `e8ab6f5`; review the full milestone diff from
+  `cb4b72b`. Carry only the isolated-cache environment note and later-milestone
+  install/hook/render/harvest/MCP/doctor boundaries; all pass-1 findings are closed.
+- Review pass 2: accepted and fixed outside-KB symlink publication, unrelated
+  `supersedes` retirement, shared lock-directory cleanup races, and stale PATH
+  engine selection by the new checkout shim. Publication now uses Go's rooted
+  descriptor-relative filesystem operations, eliminating the residual
+  check/open race while retaining atomic no-replace links. KB-wide lock state is
+  documented, mismatched claim identities fail before publication, and a
+  checkout runs its matching source before release binaries. All fresh reviewers
+  and targeted re-reviews are clean. Focused tests and the full
+  formatting/vet/test/race/bash/diff gate passed with isolated Go caches.
+  Remediation `012ab66` — `fix: harden validated write boundaries`.
+- [x] Milestone 4 complete at reviewed checkpoint `012ab66`; final ledger-only
+  closure follows with no implementation changes.
 
 ## Milestone 5 — Go installation planning/application
 

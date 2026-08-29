@@ -28,7 +28,7 @@ var Adapters embed.FS
 // a stable path. The built binary is deliberately not among them: it is
 // per-platform, and an instance gets it from a release or a local build.
 //
-//go:embed bin/regesto-config bin/regesto-context bin/regesto-index bin/regesto-install bin/regesto-project bin/regesto-search
+//go:embed bin/regesto-config bin/regesto-context bin/regesto-index bin/regesto-install bin/regesto-project bin/regesto-search bin/regesto-write
 var Shims embed.FS
 
 // Schema is the fact contract. It ships in the engine as the spec and lands in

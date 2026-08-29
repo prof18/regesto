@@ -5,6 +5,7 @@ package tests
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -252,6 +253,7 @@ func TestInstanceFilesCoverTheInstanceSideEngine(t *testing.T) {
 		"bin/regesto-config",
 		"bin/regesto-project",
 		"bin/regesto-context",
+		"bin/regesto-write",
 		"bin/regesto-install",
 		"adapters/claude/hooks/session-start.sh",
 		"adapters/profiles/claude.json",
@@ -282,7 +284,7 @@ func TestInstanceFilesCoverTheInstanceSideEngine(t *testing.T) {
 // Hooks and shims are executed by agents and schedulers; a lost executable bit
 // makes the hook fail silently on every session start.
 func TestScriptsAreMarkedExecutable(t *testing.T) {
-	for _, p := range []string{"bin/regesto-search", "adapters/claude/hooks/session-start.sh"} {
+	for _, p := range []string{"bin/regesto-search", "bin/regesto-write", "adapters/claude/hooks/session-start.sh"} {
 		if !regesto.Executable(p) {
 			t.Errorf("%s should be executable", p)
 		}
@@ -291,6 +293,39 @@ func TestScriptsAreMarkedExecutable(t *testing.T) {
 		if regesto.Executable(p) {
 			t.Errorf("%s should not be executable", p)
 		}
+	}
+}
+
+func TestWriteShimPrefersCheckoutSourceOverStalePathEngine(t *testing.T) {
+	files, err := regesto.InstanceFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	shim := filepath.Join(root, "bin", "regesto-write")
+	writeAt(t, root, "bin/regesto-write", string(files["bin/regesto-write"]))
+	if err := os.Chmod(shim, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeAt(t, root, "go.mod", "module fixture\n")
+
+	tools := t.TempDir()
+	writeAt(t, tools, "go", "#!/bin/sh\nprintf 'source:%s\\n' \"$*\"\n")
+	writeAt(t, tools, "regesto", "#!/bin/sh\nprintf 'stale-path-engine\\n'\nexit 42\n")
+	for _, name := range []string{"go", "regesto"} {
+		if err := os.Chmod(filepath.Join(tools, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command(shim, "--source", "codex@testbox", "--json-input")
+	cmd.Env = append(os.Environ(), "PATH="+tools+string(os.PathListSeparator)+os.Getenv("PATH"))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("write shim: %v\n%s", err, out)
+	}
+	got := string(out)
+	if strings.Contains(got, "stale-path-engine") || !strings.Contains(got, "source:-C "+root+" run ./cmd/regesto --config "+filepath.Join(root, "config.toml")+" write") {
+		t.Fatalf("write shim did not prefer checkout source:\n%s", got)
 	}
 }
 

@@ -145,9 +145,11 @@ A skill is on-demand instructions in `<dir>/skills/<name>/SKILL.md` with YAML fr
 Only its `description` sits in context; the body loads when invoked. That fits the central
 rule of this design — keep the always-loaded layer tiny — better than any other mechanism.
 
-**`regesto-write`** — how to record a fact correctly: the frontmatter template, id naming,
-how to choose `subject`/`relation`, when to supersede rather than create, where the file
-goes by scope. `SCHEMA.md` rendered as an executable procedure.
+**`regesto-write`** — how to record a fact correctly: id naming, how to choose
+`subject`/`relation`, and when to supersede rather than create. It submits those semantic
+fields to the validated writer; the engine owns provenance, timestamps, schema metadata,
+path selection, atomic publication, and reconciliation preview. `SCHEMA.md` rendered as an
+executable procedure without asking an agent to hand-author authority fields.
 
 Its `description` is worded as **triggers, not a summary** — "use immediately when the user
 asks to remember something, a decision has been agreed, a preference stated, a correction

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Thin shim over `regesto write` — a stable path for skills to reach the
+# validated writer without assuming how the engine was installed.
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# A source checkout is authoritative for this newly introduced command: an
+# older release binary on PATH may not know it yet. Release-backed instances
+# have no go.mod and use their local or PATH engine as usual.
+if [[ -f "$root/go.mod" ]]; then
+  exec go -C "$root" run ./cmd/regesto --config "$root/config.toml" write "$@"
+fi
+if [[ -x "$root/bin/regesto" ]]; then
+  exec "$root/bin/regesto" --config "$root/config.toml" write "$@"
+fi
+if command -v regesto >/dev/null 2>&1; then
+  exec regesto --config "$root/config.toml" write "$@"
+fi
+printf '%s: no regesto engine found. Install it, or build one here with:\n  go build -o bin/regesto ./cmd/regesto\n' "$(basename "$0")" >&2
+exit 127

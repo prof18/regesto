@@ -28,7 +28,7 @@ func runShowConfig(cfg *config.Config, args []string) error {
 		return err
 	}
 	if *jsonOutput {
-		return json.NewEncoder(os.Stdout).Encode(resolvedConfig{KBRoot: cfg.KBRoot, Machine: cfg.Machine, MachineSource: cfg.MachineSource, LegacyAgents: cfg.UsesLegacyAgents(), IntegrationIDs: cfg.IntegrationIDs(), Integrations: resolved})
+		return json.NewEncoder(os.Stdout).Encode(resolvedConfig{SchemaVersion: jsonSchemaVersion, KBRoot: cfg.KBRoot, Machine: cfg.Machine, MachineSource: cfg.MachineSource, LegacyAgents: cfg.UsesLegacyAgents(), IntegrationIDs: append([]string{}, cfg.IntegrationIDs()...), Integrations: jsonIntegrations(resolved)})
 	}
 	fmt.Printf("kb_root=%s\n", cfg.KBRoot)
 	fmt.Printf("machine=%s\n", cfg.Machine)
@@ -56,10 +56,11 @@ func runShowConfig(cfg *config.Config, args []string) error {
 }
 
 type resolvedConfig struct {
-	KBRoot         string           `json:"kb_root"`
-	Machine        string           `json:"machine"`
-	MachineSource  string           `json:"machine_source"`
-	LegacyAgents   bool             `json:"legacy_agents"`
-	IntegrationIDs []string         `json:"integration_ids"`
-	Integrations   []adapters.Agent `json:"integrations"`
+	SchemaVersion  int               `json:"schema_version"`
+	KBRoot         string            `json:"kb_root"`
+	Machine        string            `json:"machine"`
+	MachineSource  string            `json:"machine_source"`
+	LegacyAgents   bool              `json:"legacy_agents"`
+	IntegrationIDs []string          `json:"integration_ids"`
+	Integrations   []jsonIntegration `json:"integrations"`
 }

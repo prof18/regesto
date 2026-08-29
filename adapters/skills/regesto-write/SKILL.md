@@ -17,11 +17,15 @@ system uses for the same repo and machine:
 
 ```
 {{kb_root}}/bin/regesto-project --scope    # scope:  project:<name>, run from the repo
-{{kb_root}}/bin/regesto-config             # machine=<name>, for source: and the inbox path
-date -u +%Y-%m-%dT%H:%M:%SZ                 # created: / modified:
+{{kb_root}}/bin/regesto-config             # machine=<name>, for source:
 ```
 
-Guessing the date is the most common error here: check it, never assume.
+Use your integration id plus that machine for `--source` (for example
+`claude@studio`). Never silently call an agent assertion `human`: that source is
+reserved for explicit human promotion or the documented `inbox/human@<machine>/`
+workflow.
+The validated command stamps `schema_version`, `created`, and `modified`; do not
+invent or supply them yourself.
 
 ## Invocation shapes
 
@@ -68,9 +72,9 @@ wrong `(subject, relation)` pair, which is silent corruption.
 
 5. **Choose `scope`**: `global` if the claim is true beyond one project (put the
    projects in `topics:` instead), otherwise the `project:<name>` that
-   `bin/regesto-project --scope` prints when run from the repo. Scope determines
-   the path: `knowledge/facts/global/<id>.md` or
-   `knowledge/facts/projects/<name>/<id>.md`.
+   `bin/regesto-project --scope` prints when run from the repo. You may instead
+   send `"scope": "project"` with `--dir <repo-dir>` and let Regesto resolve the
+   canonical project name. Regesto determines the output path.
 
 6. **Assign `id`**: `<prefix>-<kebab-slug>`, unique across the whole store —
    check `INDEX.md` first. Stable once written; never rename by hand.
@@ -79,42 +83,39 @@ wrong `(subject, relation)` pair, which is silent corruption.
    `(subject, relation)` (`bin/regesto-search --subject S --relation R`). If an
    existing claim is contradicted:
    - Add `supersedes: <old-id>` to the new file.
-   - If the old claim's `source` is `human` and you are an agent: the new
-     claim gets `status: proposed`; the old file is NOT touched — a human
-     resolves it (SCHEMA, "Resolving a review").
-   - Otherwise: new claim `status: active`; edit the old file's `status` to
-     `superseded` and bump its `modified`. **Never edit the old claim's
-     body** — the record of what was believed is the point.
+   - Do not edit the incumbent claim. The write result reports pending
+     reconciliation; an agent challenge to a human claim remains for human
+     review as SCHEMA's "Resolving a review" describes.
    - **Never delete anything.**
 
-8. **Write the file** with this frontmatter, then the claim body and a
-   `**Why:**` line:
+8. **Submit the strict JSON object** to the validated writer. It accepts only
+   `id`, `title`, `type`, `scope`, `subject`, `relation`, optional `topics`,
+   optional `status`/`supersedes`, `body`, and `why`. It creates the fact
+   atomically, chooses its canonical path, stamps protected metadata, and
+   returns JSON containing the relative path and reconciliation state.
 
-   ```markdown
-   ---
-   schema_version: 1
-   id: <prefix>-<kebab-slug>
-   title: <one line, ≤80 chars, what the claim asserts>
-   type: decision | preference | fact | pattern
-   scope: global | project:<name>
-   subject: <reused-or-new-term>
-   relation: <reused-or-new-term>
-   topics: [<topic-slugs, optional>]
-   status: active | proposed
-   supersedes: <old-id, only if superseding>
-   source: <agent>@<machine>   # you, e.g. claude@studio. `human` only when the
-                               # user asserted it themselves — that source is
-                               # never auto-superseded by an agent claim.
-   created:  <date -u output>
-   modified: <same as created for a new file>
-   ---
-
-   <The claim, stated plainly.>
-
-   **Why:** <the reasoning — this is what makes the fact worth keeping.>
+   ```sh
+   {{kb_root}}/bin/regesto-write --source <integration>@<machine> --json-input --json <<'JSON'
+   {
+     "id": "<prefix>-<kebab-slug>",
+     "title": "<one line, at most 80 chars>",
+     "type": "decision",
+     "scope": "global",
+     "subject": "<reused-or-new-term>",
+     "relation": "<reused-or-new-term>",
+     "topics": ["<optional-topic>"],
+     "status": "active",
+     "body": "<the claim, stated plainly>",
+     "why": "<the reasoning that makes it worth keeping>"
+   }
+   JSON
    ```
 
-9. **Confirm** to the user in one line: the id and path you wrote.
+   For `"scope": "project"`, add `--dir <repo-dir>`; do not guess the
+   canonical project name. Do not include `source`, `schema_version`,
+   `created`, or `modified` in the JSON object.
 
-Do not edit `INDEX.md` or `knowledge/topics/` — they are generated; the next
-`bin/regesto-index` run picks the new fact up.
+9. **Confirm** to the user in one line: the id and relative path returned.
+
+Do not edit `INDEX.md`, `knowledge/topics/`, or another claim by hand — they are
+generated or reconciled by the normal downstream pass.

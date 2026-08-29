@@ -26,6 +26,7 @@ adapters/                          per-provider glue: skills, hooks, instruction
 archive/                           raw sources. Immutable. Grepped, never loaded.
 bin/                               scripts: regesto-search, lint, index generation
 .state/<machine>/                  per-machine diff baselines. NOT synced.
+.state/write-locks/                local validated-write coordination. NOT synced.
 docs/                              design documents. NOT knowledge — ignore when consulting.
 ```
 
@@ -136,8 +137,10 @@ Agents record facts **at the moment they occur, without being asked**. The trigg
 - a recurring approach is settled on → `pat-`
 
 Record it then and there via `regesto-write` — not at the end of the session, and never wait
-for the user to say "note that down." A missed trigger is not fatal (harvest picks up
-native memory later), but the direct write is the fast path and the default.
+for the user to say "note that down." The skill submits the claim through Regesto's validated
+write interface, which owns the path, schema version, and timestamps and stamps the explicit
+source. A missed trigger is not fatal (harvest picks up native memory later), but the direct
+write is the fast path and the default.
 
 If what the user hands over is half-formed — a fragment, a hunch, no clear
 `(subject, relation)` yet — don't lose it and don't force it: capture it to

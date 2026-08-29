@@ -127,6 +127,73 @@ func TestNormalizeWritesValidFactAndStampsTimes(t *testing.T) {
 	}
 }
 
+func TestNormalizeCannotForgeAuthorityFields(t *testing.T) {
+	cfg := normalizeInstance(t)
+	putCapture(t, cfg, "claude@testbox", "note.md", "An agent proposed this.")
+	agent := fakeAgent(t, "```regesto-fact\n---\nschema_version: 999\nid: fact-authority-stamped\n"+
+		"title: Authority is stamped\ntype: fact\nscope: global\nsubject: writer\nrelation: authority\n"+
+		"status: active\nsource: human\ncreated: 2000-01-01T00:00:00Z\nmodified: 2099-01-01T00:00:00Z\n"+
+		"---\n\nThe model cannot choose provenance.\n```")
+
+	outcomes, err := normalize.Run(cfg, nil, normalize.Options{Commands: []string{agent}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 || len(outcomes[0].Written) != 1 {
+		t.Fatalf("candidate was not written: %+v", outcomes)
+	}
+	f, err := facts.ParseFile(filepath.Join(cfg.KBRoot, filepath.FromSlash(outcomes[0].Written[0])))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.SchemaVersion != "1" || f.Source != "claude@testbox" {
+		t.Errorf("model forged schema/source: %+v", f)
+	}
+	if f.Created == "2000-01-01T00:00:00Z" || f.Modified == "2099-01-01T00:00:00Z" || f.Created != f.Modified {
+		t.Errorf("model forged timestamps: %q / %q", f.Created, f.Modified)
+	}
+}
+
+func TestNormalizePreservesReviewAfter(t *testing.T) {
+	cfg := normalizeInstance(t)
+	putCapture(t, cfg, "claude@testbox", "note.md", "Review this later.")
+	agent := fakeAgent(t, "```regesto-fact\n---\nid: fact-review-later\ntitle: Review later\ntype: fact\n"+
+		"scope: global\nsubject: writer\nrelation: review-window\nstatus: active\nreview_after: 2027-01-15\n"+
+		"---\n\nReview this claim later.\n```")
+	outcomes, err := normalize.Run(cfg, nil, normalize.Options{Commands: []string{agent}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 || len(outcomes[0].Written) != 1 {
+		t.Fatalf("candidate was not written: %+v", outcomes)
+	}
+	f, err := facts.ParseFile(filepath.Join(cfg.KBRoot, filepath.FromSlash(outcomes[0].Written[0])))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.ReviewAfter != "2027-01-15" {
+		t.Fatalf("review_after was lost: %+v", f)
+	}
+}
+
+func TestNormalizeRejectsDuplicateAuthorityFields(t *testing.T) {
+	cfg := normalizeInstance(t)
+	putCapture(t, cfg, "claude@testbox", "note.md", "An ambiguous candidate.")
+	agent := fakeAgent(t, "```regesto-fact\n---\nid: fact-duplicate-source\ntitle: Duplicate source\n"+
+		"type: fact\nscope: global\nsubject: writer\nrelation: duplicate-source\nstatus: active\n"+
+		"source: claude@testbox\nsource: human\n---\n\nAmbiguous.\n```")
+	outcomes, err := normalize.Run(cfg, nil, normalize.Options{Commands: []string{agent}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcomes) != 1 || len(outcomes[0].Written) != 0 || len(outcomes[0].Rejected) == 0 {
+		t.Fatalf("duplicate authority key was not rejected: %+v", outcomes)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.KBRoot, "knowledge", "facts", "global", "fact-duplicate-source.md")); !os.IsNotExist(err) {
+		t.Fatalf("duplicate-key candidate reached disk: %v", err)
+	}
+}
+
 // The model proposes; the binary disposes.
 func TestInvalidCandidatesAreRejectedNotWritten(t *testing.T) {
 	cases := []struct {
