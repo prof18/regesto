@@ -1,0 +1,65 @@
+{
+  "stage": "interview",
+  "title": "Agent-agnostic integrations",
+  "goalSlug": "agent-agnostic-integrations",
+  "questions": [
+    {
+      "id": "support-contract",
+      "prompt": "What should Regesto mean by supporting an agent?",
+      "description": "Equal automatic behavior is impossible for hosts without hooks, local files, or extension APIs.",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Publish capability-based support levels: universal core access, portable discovery, deterministic hook integration, optional memory harvest, and manual import for closed hosts.",
+      "recommendedOptionIds": ["capability-levels"],
+      "options": [
+        {"id": "capability-levels", "label": "Capability levels"},
+        {"id": "full-parity", "label": "Require full parity"}
+      ],
+      "required": true
+    },
+    {
+      "id": "first-goal-scope",
+      "prompt": "What belongs in the first implementation goal?",
+      "description": "This determines whether the work is a documentation correction or a complete integration-platform migration.",
+      "answerMode": "multi-custom",
+      "recommendedAnswer": "Include the adapter contract, backward-compatible configuration, native installer, portable skills, generic trust policy, safe write/JSON APIs, local stdio MCP, the three working integrations, a custom-host path, documentation, and contract/E2E tests. Defer remote servers and proprietary cloud-memory connectors.",
+      "recommendedOptionIds": ["adapter-core", "installer", "portable-artifacts", "trust", "cli", "mcp", "existing-hosts", "generic-host", "docs-tests"],
+      "options": [
+        {"id": "adapter-core", "label": "Adapter contract"},
+        {"id": "installer", "label": "Native installer"},
+        {"id": "portable-artifacts", "label": "Portable skills/instructions"},
+        {"id": "trust", "label": "Generic trust policy"},
+        {"id": "cli", "label": "Safe CLI/JSON APIs"},
+        {"id": "mcp", "label": "Local stdio MCP"},
+        {"id": "existing-hosts", "label": "Claude/Codex/Hermes"},
+        {"id": "generic-host", "label": "Custom host support"},
+        {"id": "docs-tests", "label": "Docs and full tests"},
+        {"id": "cloud-connectors", "label": "Remote/cloud connectors"}
+      ],
+      "required": true
+    },
+    {
+      "id": "compatibility",
+      "prompt": "How strict should backward compatibility be?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Existing instances using agents, legacy override tables, source values, hooks, and manifests must continue to work without editing config.toml; new instances use the integration terminology and schema.",
+      "recommendedOptionIds": ["zero-edit"],
+      "options": [
+        {"id": "zero-edit", "label": "Zero-edit compatibility"},
+        {"id": "documented-migration", "label": "Manual migration allowed"}
+      ],
+      "required": true
+    },
+    {
+      "id": "preset-scope",
+      "prompt": "Which product integrations must be live-tested in this goal?",
+      "answerMode": "single-custom",
+      "recommendedAnswer": "Claude Code, Codex, and Hermes remain the required live regression matrix; a synthetic custom host proves extensibility. Additional product presets can land later without changing the core contract.",
+      "recommendedOptionIds": ["existing-plus-generic"],
+      "options": [
+        {"id": "existing-plus-generic", "label": "Existing three + generic"},
+        {"id": "many-presets", "label": "Many vendor presets now"}
+      ],
+      "required": true
+    }
+  ]
+}
