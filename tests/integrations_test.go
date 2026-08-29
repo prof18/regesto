@@ -313,7 +313,7 @@ func TestIntegrationProfileValidationErrorsAreActionable(t *testing.T) {
 		return writeConfig(t, "kb_root = \""+root+"\"\nintegrations = [\"synthetic\"]\n[integrations.synthetic]\nprofile = \"generic\"\n")
 	}
 	for _, tc := range []struct{ name, file, body, want string }{
-		{"kind", "bad", `{"schema_version":1,"id":"bad","display_name":"Bad","skills":{"targets":[]},"instructions":{"targets":[]},"memory":[{"kind":"sqlite"}],"default_trust":"quarantine"}`, "unknown memory kind"},
+		{"kind", "bad", `{"schema_version":1,"id":"bad","display_name":"Bad","skills":{"targets":[]},"instructions":{"targets":[]},"memory":[{"kind":"../sqlite"}],"default_trust":"quarantine"}`, "memory kind"},
 		{"path", "path", `{"schema_version":1,"id":"path","display_name":"Path","skills":{"targets":["/Users/someone/skills"],"variant":"portable"},"instructions":{"targets":[]},"memory":[{"kind":"none"}],"default_trust":"quarantine"}`, "home-relative"},
 		{"id", "wrong", `{"schema_version":1,"id":"different","display_name":"Wrong","skills":{"targets":[]},"instructions":{"targets":[]},"memory":[{"kind":"none"}],"default_trust":"quarantine"}`, "does not match"},
 		{"typo", "typo", `{"schema_version":1,"id":"typo","display_name":"Typo","skills":{"targets":[]},"instructions":{"targets":[]},"memory":[{"kind":"none"}],"default_trust":"quarantine","display_nam":"misspelled"}`, "unknown field"},
@@ -429,6 +429,7 @@ func TestIntegrationOverrideValidation(t *testing.T) {
 	for _, tc := range []struct{ name, body, want string }{
 		{"unknown-key", "integrations = [\"codex\"]\n[integrations.codex]\nskils_dir = \"/tmp/nope\"\n", "unknown override key"},
 		{"none-location", "integrations = [\"generic\"]\n[integrations.generic]\nmemory_location = \"/tmp/nope\"\n", "requires memory_kind markdown-glob-v1"},
+		{"relative-memory", "integrations = [\"generic\"]\n[integrations.generic]\nmemory_kind = \"markdown-glob-v1\"\nmemory_location = \"relative\"\n", "must be absolute or home-relative"},
 		{"unlisted", "integrations = [\"codex\"]\n[integrations.orphan]\nskills_dir = \"/tmp/nope\"\n", "not listed"},
 		{"invalid-id", "integrations = [\"bad/id\"]\n", "must match"},
 	} {

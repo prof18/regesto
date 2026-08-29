@@ -22,19 +22,23 @@ func runHarvest(cfg *config.Config, args []string) error {
 	}
 	total := 0
 	for _, r := range results {
+		label := r.Agent
+		if r.SourceID != "" {
+			label += "[" + r.SourceID + "]"
+		}
 		if r.Note != "" {
-			fmt.Printf("%-8s %s\n", r.Agent, r.Note)
+			fmt.Printf("%s %s\n", label, r.Note)
 		}
 		for _, c := range r.Captured {
-			fmt.Printf("%-8s captured %s\n", r.Agent, c)
+			fmt.Printf("%s captured %s\n", label, c)
 		}
 		if *verbose {
 			for _, s := range r.Skipped {
-				fmt.Printf("%-8s skipped  %s\n", r.Agent, s)
+				fmt.Printf("%s skipped  %s\n", label, s)
 			}
 		}
 		if r.Note == "" && len(r.Captured) == 0 {
-			fmt.Printf("%-8s scanned %d, nothing new\n", r.Agent, r.Scanned)
+			fmt.Printf("%s scanned %d, nothing new\n", label, r.Scanned)
 		}
 		total += len(r.Captured)
 	}

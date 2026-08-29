@@ -364,13 +364,56 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 8 — optional Markdown memory harvesting
 
-- [ ] Add typed declared memory sources, Markdown glob harvesting, explicit unsupported/none reporting, and legacy snapshots.
+- [x] Add typed declared memory sources, Markdown glob harvesting, explicit unsupported/none reporting, and legacy snapshots.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `3f46103`;
+  staged, unstaged, and untracked files none.
 - Scope/owners: profile model, `internal/harvest`, harvest CLI, harvest tests.
+- High-risk surfaces: unknown/none capability observability, multiple or
+  overlapping source globs, stable legacy snapshot/blob keys, symlinked or
+  non-regular vendor entries, first-run baselines, dry-run inertness, and
+  vendor-store read-only behavior.
 - Verify: Harvest/Memory/Integration tests plus full gate.
-- Skip list/findings carried: ___
+- Skip list/findings carried: raw Go race runs use isolated
+  `GOCACHE`/`GOPATH`; stdio MCP remains M9, capability diagnostics/full product
+  documentation M10, packaging/zero-edit legacy proof M11, and live-host
+  evidence M12. Existing `.state/<machine>/<legacy-id>.json` snapshots and
+  `.state/<machine>/<legacy-id>/last/` blobs must remain authoritative.
 - Review shards: source typing/safety; diff/snapshot compatibility; generic integration tests.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- Review pass 1: accepted and fixed declaration-order-dependent overlap
+  ownership, source-less CLI output, and silently ignored declared symlink
+  roots. Harvest now dispatches every typed source; reports `none`, missing,
+  and unsupported kinds; preserves the first source's legacy snapshot/blob
+  namespace; gives additional sources stable hashed namespaces; retains full
+  per-source baselines while deduplicating publication by resolved file and
+  persisted content; follows only an explicitly declared root symlink while
+  skipping nested symlinks/non-regular entries; rejects unsafe state namespace
+  components and path-key collisions; and labels CLI results by stable source
+  id. Generic, multiple, overlapping/reordered/re-added, legacy-snapshot,
+  symlink, dry-run, and command-output cases have focused coverage. All three
+  reviewers and targeted re-reviews are clean. The full
+  formatting/vet/test/race/bash/diff gate passed with isolated Go caches.
+  Checkpoint `3307002` — `feat: harvest declared memory sources`.
+- Pass 2 baseline: checkpoint `3307002`; review the full milestone diff from
+  `3f46103`. Carry only isolated-cache requirements and the explicit M9 MCP,
+  M10 diagnostics/documentation, M11 packaging/legacy-upgrade proof, and M12
+  live-host boundaries; all pass-1 findings are closed.
+- Review pass 2: accepted and fixed knowledge-base/source overlap that could
+  harvest Regesto's own state; unstable relative integration memory paths;
+  parent-symlink aliases that could defeat overlap deduplication; `.state` or
+  `inbox` output symlinks/races that could write into a vendor tree; and a
+  candidate-file swap that could read through an outside symlink. Harvest now
+  preflights every resolved source for all integrations before mutation,
+  resolves legacy relative locations against the KB while requiring stable new
+  locations, canonicalizes source identities, anchors all KB reads/writes under
+  component-verified `os.Root` descriptors, publishes state atomically, and
+  verifies an opened Markdown file's identity before reading it. Direct and
+  symlinked overlap, output-root alias, relative-path, nested-alias, and
+  file-swap regressions are covered. All fresh reviewers and targeted
+  re-reviews are clean. Formatting, vet, focused/full tests, race tests, shell
+  syntax, and diff checks passed with isolated Go caches. Remediation
+  `1cd55d7` — `fix: harden memory harvest boundaries`.
+- [x] Milestone 8 complete at reviewed checkpoint `1cd55d7`; final ledger-only
+  closure follows with no implementation changes.
 
 ## Milestone 9 — local stdio MCP
 

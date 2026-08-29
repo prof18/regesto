@@ -43,9 +43,8 @@ type Agent struct {
 	// SettingsFile is where hooks are registered, empty for agents that
 	// have no hook mechanism.
 	SettingsFile string `json:"settings_file"`
-	// MemoryGlob matches the agent's native memory directories, which
-	// harvest reads and diffs (PLAN 2.a). Claude Code keeps one per project,
-	// so this is a glob rather than a path.
+	// MemoryGlob is the legacy compatibility projection of the first declared
+	// markdown-glob-v1 source. New harvesting consumes MemorySources directly.
 	MemoryGlob string `json:"memory_glob"`
 	// MaxCaptureBytes skips native files larger than this. It is a guard
 	// against a pathological file, not a content filter — skipping a capture

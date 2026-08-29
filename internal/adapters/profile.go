@@ -227,8 +227,8 @@ func validateProfile(p Profile, source, fileID string) error {
 	}
 	noneMemory := 0
 	for _, m := range p.Memory {
-		if !oneOf(m.Kind, "markdown-glob-v1", "none") {
-			return fmt.Errorf("%s: unknown memory kind %q", source, m.Kind)
+		if !safeID.MatchString(m.Kind) {
+			return fmt.Errorf("%s: memory kind %q must match %s", source, m.Kind, safeID.String())
 		}
 		if m.Kind == "markdown-glob-v1" && m.Location == "" {
 			return fmt.Errorf("%s: markdown-glob-v1 memory needs a location", source)
@@ -374,12 +374,20 @@ func resolveProfile(cfg *config.Config, id string, p Profile, values map[string]
 		}
 	}
 	if v := values["memory_kind"]; v != "" {
-		if !oneOf(v, "markdown-glob-v1", "none") {
-			return a, fmt.Errorf("integration %q: unknown memory_kind %q", id, v)
+		if !safeID.MatchString(v) {
+			return a, fmt.Errorf("integration %q: memory_kind %q must match %s", id, v, safeID.String())
 		}
-		a.MemorySources = []MemorySource{{Kind: v, Location: expandHome(values["memory_location"])}}
+		location, err := expandIntegrationMemoryLocation(id, values["memory_location"])
+		if err != nil {
+			return a, err
+		}
+		a.MemorySources = []MemorySource{{Kind: v, Location: location}}
 	}
-	if v := values["memory_location"]; v != "" {
+	if v := values["memory_location"]; v != "" && values["memory_kind"] == "" {
+		location, err := expandIntegrationMemoryLocation(id, v)
+		if err != nil {
+			return a, err
+		}
 		var matches []int
 		for i, source := range a.MemorySources {
 			if source.Kind == "markdown-glob-v1" {
@@ -392,7 +400,7 @@ func resolveProfile(cfg *config.Config, id string, p Profile, values map[string]
 		if len(matches) != 1 {
 			return a, fmt.Errorf("integration %q: memory_location is ambiguous across %d markdown sources; set memory_kind", id, len(matches))
 		}
-		a.MemorySources[matches[0]].Location = expandHome(v)
+		a.MemorySources[matches[0]].Location = location
 	}
 	if v := values["trust"]; v != "" {
 		if !oneOf(v, "supervised", "quarantine") {
@@ -440,6 +448,9 @@ func applyLegacyOverrides(cfg *config.Config, a *Agent) {
 	}
 	if v := cfg.Section("memory_dirs")[a.Name]; v != "" {
 		a.MemoryGlob = expandHome(v)
+		if !filepath.IsAbs(a.MemoryGlob) {
+			a.MemoryGlob = filepath.Join(cfg.KBRoot, a.MemoryGlob)
+		}
 		a.MemorySources = []MemorySource{{Kind: "markdown-glob-v1", Location: a.MemoryGlob}}
 	}
 }
@@ -471,6 +482,9 @@ func setNewHookSettings(a *Agent, settings string) error {
 
 func validateResolvedMemory(id string, memory []MemorySource) error {
 	for _, source := range memory {
+		if !safeID.MatchString(source.Kind) {
+			return fmt.Errorf("integration %q: memory kind %q must match %s", id, source.Kind, safeID.String())
+		}
 		switch source.Kind {
 		case "markdown-glob-v1":
 			if source.Location == "" {
@@ -483,6 +497,17 @@ func validateResolvedMemory(id string, memory []MemorySource) error {
 		}
 	}
 	return nil
+}
+
+func expandIntegrationMemoryLocation(id, location string) (string, error) {
+	if location == "" {
+		return "", nil
+	}
+	expanded := expandHome(location)
+	if !filepath.IsAbs(expanded) {
+		return "", fmt.Errorf("integration %q: memory_location %q must be absolute or home-relative (~/...)", id, location)
+	}
+	return expanded, nil
 }
 
 func validateIntegrationOverrideKeys(id string, values map[string]string) error {
