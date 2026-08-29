@@ -239,6 +239,30 @@ func TestManifestRoundTrips(t *testing.T) {
 	}
 }
 
+func TestManifestSaveDoesNotFollowFinalSymlink(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	external := filepath.Join(outside, "manifest")
+	writeAt(t, outside, "manifest", "outside\n")
+	if err := os.Symlink(external, filepath.Join(root, manifest.FileName)); err != nil {
+		t.Fatal(err)
+	}
+	in := &manifest.Manifest{
+		Engine:  "v2",
+		Written: time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC),
+		Files:   map[string]string{"SCHEMA.md": manifest.Sum([]byte("schema\n"))},
+	}
+	if err := manifest.Save(root, in); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(external); err != nil || string(got) != "outside\n" {
+		t.Fatalf("external manifest changed: body=%q err=%v", got, err)
+	}
+	info, err := os.Lstat(filepath.Join(root, manifest.FileName))
+	if err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("saved manifest is not a regular file: info=%v err=%v", info, err)
+	}
+}
+
 // init and upgrade write the same set. Two lists would drift, and the symptom
 // would be a file init creates that no upgrade ever maintains.
 func TestInstanceFilesCoverTheInstanceSideEngine(t *testing.T) {

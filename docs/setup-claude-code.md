@@ -11,18 +11,20 @@ regesto init --dir ~/regesto-kb --examples
 ~/regesto-kb/bin/regesto-install
 ```
 
-`regesto-install` is idempotent, backs up every file it edits, and takes `--dry-run`. It
-does four things:
+`regesto-install` is a compatibility shim over `regesto install`. Installation is
+idempotent, backs up every host file it edits, and takes `--dry-run` (plus `--json` for a
+versioned machine-readable plan). The Go installer does three things:
 
-1. **Builds or finds the engine.** A binary, never `go run` — the hook runs on every
-   session start, and the difference is ~50ms against ~900ms.
-2. **Renders and links the skills** into `~/.claude/skills/`: `regesto-search`,
+1. **Renders and links the skills** into `~/.claude/skills/`: `regesto-search`,
    `regesto-write`, `regesto-promote`.
-3. **Registers the `SessionStart` hook** in `~/.claude/settings.json`, appending to any
+2. **Registers the `SessionStart` hook** in `~/.claude/settings.json`, appending to any
    hooks already there.
-4. **Appends the knowledge-base section** to `~/.claude/CLAUDE.md`, between
+3. **Appends the knowledge-base section** to `~/.claude/CLAUDE.md`, between
    `regesto:section:start` / `:end` markers so it can be updated later without touching
    the rest of the file.
+
+In an engine source checkout, the compatibility shim also builds the real binary before a
+non-dry install. Release-backed instances already have an engine and simply forward to it.
 
 Then open a session in a project. Its facts should be in context before you type anything.
 
@@ -71,7 +73,7 @@ Check, in order:
 ```bash
 ~/regesto-kb/bin/regesto-config         # is the instance the one you think it is?
 ~/regesto-kb/bin/regesto-context        # does it print anything at all?
-jq '.hooks.SessionStart' ~/.claude/settings.json
+python3 -m json.tool ~/.claude/settings.json
 ```
 
 The hook is written to **never fail a session start**: if anything goes wrong it exits 0
@@ -86,10 +88,11 @@ the model to repeat it, in an isolated session that does not touch your global c
 claude -p --settings /tmp/probe-settings.json 'repeat the sentinel you were given'
 ```
 
-### `jq not found`
+### Settings JSON is invalid
 
-`regesto-install` refuses to edit `settings.json` without `jq` and prints the JSON to add
-by hand. Install `jq` and re-run; nothing else in the system needs it.
+The installer parses and merges `settings.json` in Go; it has no `jq` dependency. If the
+file is malformed, planning fails before making any change. Repair the JSON and re-run
+`regesto install --dry-run` to inspect the exact canonical target and backup action.
 
 ### Facts land under two different project names
 

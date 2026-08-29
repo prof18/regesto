@@ -93,12 +93,42 @@ func Save(root string, m *Manifest) error {
 		fmt.Fprintf(&b, "%s  %s\n", m.Files[p], p)
 	}
 
-	final := filepath.Join(root, FileName)
-	tmp := final + ".tmp"
-	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
+	instance, err := os.OpenRoot(root)
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, final)
+	defer instance.Close()
+	base := fmt.Sprintf(".%s.tmp.%d", strings.TrimPrefix(FileName, "."), time.Now().UnixNano())
+	for attempt := 0; attempt < 100; attempt++ {
+		tmp := fmt.Sprintf("%s.%d", base, attempt)
+		file, err := instance.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if os.IsExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := file.WriteString(b.String()); err != nil {
+			file.Close()
+			instance.Remove(tmp)
+			return err
+		}
+		if err := file.Sync(); err != nil {
+			file.Close()
+			instance.Remove(tmp)
+			return err
+		}
+		if err := file.Close(); err != nil {
+			instance.Remove(tmp)
+			return err
+		}
+		if err := instance.Rename(tmp, FileName); err != nil {
+			instance.Remove(tmp)
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("could not create temporary manifest in %s", root)
 }
 
 // Sum is the hash recorded for a file's contents.

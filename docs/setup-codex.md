@@ -67,9 +67,9 @@ ls -l ~/.codex/skills/
 regesto config | grep codex
 ```
 
-Install skips an agent whose parent directory does not exist on this machine, on the
-assumption it is not installed here. Create `~/.codex/` first, or point
-`[skills_dirs].codex` at wherever yours lives.
+Install creates a configured skills directory when it is missing. If the links are not
+listed, inspect the complete resolved plan with `regesto install --dry-run`; for a custom
+location, point `[skills_dirs].codex` at wherever yours lives.
 
 ### Facts written by Codex have the wrong project
 

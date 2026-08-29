@@ -29,6 +29,8 @@ commands:
         print the resolved instance config as key=value lines
   write --source SOURCE [--dir D] --json-input [--json]
         validate and atomically create one fact from a JSON object on stdin
+  install [--dry-run] [--json]
+        plan or apply integration skills, instructions, and hook registration
   harvest [--dry-run] [-v]
         capture new native-memory writes into inbox/<agent>@<machine>/
   init [--dir D] [--machine NAME] [--examples] [--force]
@@ -104,6 +106,8 @@ func run(args []string) error {
 		return runShowConfig(cfg, rest[1:])
 	case "write":
 		return runWrite(cfg, rest[1:])
+	case "install":
+		return runInstall(cfg, rest[1:])
 	case "harvest":
 		return runHarvest(cfg, rest[1:])
 	case "promote":

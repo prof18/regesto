@@ -212,13 +212,55 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 5 — Go installation planning/application
 
-- [ ] Implement plan/apply/instructions/skills/hooks installers; reduce shim; preserve ownership, backups, dry-run, idempotence.
-- Scope/owners: `internal/install`, install/upgrade CLI, `bin/regesto-install`, install tests.
+- [x] Implement plan/apply/instructions/skills/hooks installers; reduce shim; preserve ownership, backups, dry-run, idempotence.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `1f1b687`;
+  staged, unstaged, and untracked files none.
+- Scope/owners: new `internal/install`; install/upgrade CLI;
+  `bin/regesto-install`; focused installer tests. Engine build and PATH linking
+  remain compatibility-shim responsibilities because an executing `regesto
+  install` already has an engine; hook payload translation and uncertain Hermes
+  YAML mutation remain M6, and portable host overlays remain M7.
+- High-risk surfaces: missing-target canonicalization through symlinked
+  ancestors, target swaps between plan/apply, shared instruction grouping and
+  conflicts, marker replacement without foreign-content loss, adjacent backups,
+  foreign skill ownership, rendered-stage pruning, JSON stability, complete
+  inert dry-runs, and zero-change second installs.
 - Verify: `go test ./tests -run 'Install|Upgrade|Manifest'`; `go test -race ./...`; temporary-HOME dry-run/second-install checks; full gate.
-- Skip list/findings carried: ___
-- Review shards: mutation/backup ownership; manifest/upgrade; dry-run/idempotence tests.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- Skip list/findings carried: raw Go race runs use isolated
+  `GOCACHE`/`GOPATH`; protocol-owned hook payloads and Hermes YAML registration
+  are M6, portable artifact variants are M7, and v0.3.1 end-to-end packaging is
+  M11.
+- Review shards: mutation/canonicalization/backup ownership; rendered-skill and
+  hook ownership plus shim portability; CLI/upgrade, dry-run, and idempotence.
+- Review pass 1: accepted and fixed target-swap races with rooted filesystem
+  operations and immediate rechecks; cross-kind canonical-target conflicts;
+  unproved rendered-stage pruning/adoption (including empty directories);
+  changed generated content and ownership markers between plan/apply; first-pass
+  stale skill/link cleanup; executable hook validation and legacy hook routing;
+  checkout PATH-link disclosure and no-Go fallback. The Go planner now describes
+  every mutation, groups shared instruction/settings targets deterministically,
+  preserves foreign paths, creates collision-safe adjacent backups, and applies
+  idempotently. All three reviewers and targeted re-reviews are clean. Focused
+  tests and the full formatting/vet/test/race/bash/diff gate passed with isolated
+  Go caches. Checkpoint `32d0cde` — `feat: add safe Go installation plans`.
+- Pass 2 baseline: checkpoint `32d0cde`; review the full milestone diff from
+  `1f1b687`. Carry only the isolated-cache environment note and the explicit M6
+  hook-payload/Hermes-YAML, M7 portable-overlay, and M11 packaging boundaries;
+  all pass-1 findings are closed.
+- Review pass 2: accepted and fixed upgrade mutation escape through symlinked
+  instance paths, collision-prone/umask-truncated backups, final-manifest symlink
+  publication, insufficient ownership proof for cross-skill stage links, and
+  filename-dependent marker ordering. Upgrade instance and manifest writes are
+  now rooted and atomically published, backups are exclusive and preserve exact
+  modes, link replacement requires same-skill proof, and markers precede every
+  payload. A raised retry-sequencing concern was closed by direct verification:
+  new-engine bytes classify `Current` before old hashes are consulted and prior
+  removals classify `Missing`. All fresh reviewers and targeted re-reviews are
+  clean. Focused tests and the full formatting/vet/test/race/bash/diff gate
+  passed with isolated Go caches. Remediation `c24314d` — `fix: harden installer
+  ownership boundaries`.
+- [x] Milestone 5 complete at reviewed checkpoint `c24314d`; final ledger-only
+  closure follows with no implementation changes.
 
 ## Milestone 6 — protocol-owned hooks
 

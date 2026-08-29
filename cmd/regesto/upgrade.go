@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -14,6 +14,7 @@ import (
 	regesto "github.com/prof18/regesto"
 	"github.com/prof18/regesto/internal/adapters"
 	"github.com/prof18/regesto/internal/config"
+	regestoinstall "github.com/prof18/regesto/internal/install"
 	"github.com/prof18/regesto/internal/manifest"
 	"github.com/prof18/regesto/internal/version"
 )
@@ -135,12 +136,15 @@ func runUpgrade(cfg *config.Config, args []string) error {
 
 	if *dry {
 		fmt.Printf("\ndry run — %d file(s) would change, %d would be removed, %d left alone.\n", written, removed, kept)
-		fmt.Println("The adapters would then be reinstalled and the scheduled jobs repointed if needed.")
+		fmt.Println("\n── adapters ──")
+		plan, err := regestoinstall.Build(cfg, regestoinstall.Options{})
+		if err != nil {
+			return err
+		}
+		printInstallPlan(plan, true)
+		fmt.Printf("%d adapter change(s) planned. Scheduled jobs would be repointed if needed.\n", plan.Changes())
 		fmt.Println("Nothing was written.")
 		return nil
-	}
-	if err := manifest.Save(cfg.KBRoot, next); err != nil {
-		return err
 	}
 	fmt.Printf("\n%d file(s) updated, %d removed, %d left alone.\n", written, removed, kept)
 
@@ -150,6 +154,12 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	// which change just because the sources did. Leaving those to the user meant
 	// an upgrade that silently did nothing an agent could see.
 	if err := reinstallAdapters(cfg); err != nil {
+		return err
+	}
+	// Record the engine checkpoint only after the refreshed artifacts installed
+	// successfully. If host application fails, the next upgrade can safely
+	// classify and retry the already-written instance files.
+	if err := manifest.Save(cfg.KBRoot, next); err != nil {
 		return err
 	}
 	return repointSchedule(cfg)
@@ -195,21 +205,23 @@ func noteNewAgents(cfg *config.Config) {
 		strings.Join(missing, ", "), vocabulary)
 }
 
-// reinstallAdapters runs the instance's own install script, which was itself
-// just refreshed — so an engine that changes how installing works takes effect
-// on the same upgrade that ships the change.
+// reinstallAdapters calls the same Go planner/applicator as `regesto install`.
+// Upgrade has already refreshed the instance templates, so the plan observes
+// the just-installed artifact sources without shell config parsing.
 func reinstallAdapters(cfg *config.Config) error {
-	script := filepath.Join(cfg.KBRoot, "bin", "regesto-install")
-	if _, err := os.Stat(script); err != nil {
-		fmt.Printf("\nskipping adapter install — %s is not there\n", script)
-		return nil
-	}
 	fmt.Println("\n── adapters ──")
-	cmd := exec.Command(script)
-	cmd.Dir = cfg.KBRoot
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("bin/regesto-install failed: %w", err)
+	plan, err := regestoinstall.Build(cfg, regestoinstall.Options{})
+	if err != nil {
+		return err
+	}
+	printInstallPlan(plan, false)
+	result, err := regestoinstall.Apply(plan)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%d adapter change(s) applied.\n", result.Applied)
+	for _, path := range result.Backups {
+		fmt.Printf("  backup %s\n", path)
 	}
 	return nil
 }
@@ -277,16 +289,61 @@ func repointSchedule(cfg *config.Config) error {
 // so it is impossible to miss. Only reached under --force, which is the one path
 // that can destroy someone's edit.
 func backupFile(root, rel string) (string, error) {
-	src := filepath.Join(root, filepath.FromSlash(rel))
-	body, err := os.ReadFile(src)
+	instance, name, err := openInstanceRoot(root, rel)
 	if err != nil {
 		return "", err
 	}
-	dest := src + ".regesto-backup." + time.Now().UTC().Format("20060102150405")
-	if err := os.WriteFile(dest, body, 0o644); err != nil {
+	defer instance.Close()
+	info, err := instance.Lstat(name)
+	if err != nil {
 		return "", err
 	}
-	return dest, nil
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("refuse to back up non-regular instance file %s", rel)
+	}
+	body, err := instance.ReadFile(name)
+	if err != nil {
+		return "", err
+	}
+	base := name + ".regesto-backup." + time.Now().UTC().Format("20060102T150405.000000000Z")
+	for attempt := 0; attempt < 100; attempt++ {
+		candidate := base
+		if attempt > 0 {
+			candidate = fmt.Sprintf("%s.%d", base, attempt)
+		}
+		backup, err := instance.OpenFile(candidate, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
+		if os.IsExist(err) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		if err := backup.Chmod(info.Mode().Perm()); err != nil {
+			backup.Close()
+			instance.Remove(candidate)
+			return "", err
+		}
+		if _, err := backup.Write(body); err != nil {
+			backup.Close()
+			instance.Remove(candidate)
+			return "", err
+		}
+		if err := backup.Sync(); err != nil {
+			backup.Close()
+			instance.Remove(candidate)
+			return "", err
+		}
+		if err := backup.Close(); err != nil {
+			instance.Remove(candidate)
+			return "", err
+		}
+		absoluteRoot, err := filepath.Abs(root)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(absoluteRoot, candidate), nil
+	}
+	return "", fmt.Errorf("could not create a unique backup beside %s", rel)
 }
 
 // removeInstanceFile deletes a withdrawn file and any directories it leaves
@@ -298,14 +355,18 @@ func backupFile(root, rel string) (string, error) {
 // skill offered to every agent. Only empty directories are removed, so anything
 // the user put alongside keeps its home.
 func removeInstanceFile(root, rel string) error {
-	dest := filepath.Join(root, filepath.FromSlash(rel))
-	if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
+	instance, name, err := openInstanceRoot(root, rel)
+	if err != nil {
 		return err
 	}
-	dir := filepath.Dir(dest)
-	for dir != root && strings.HasPrefix(dir, root+string(filepath.Separator)) {
+	defer instance.Close()
+	if err := instance.Remove(name); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	dir := filepath.Dir(name)
+	for dir != "." {
 		// Fails harmlessly and stops the walk as soon as one is not empty.
-		if err := os.Remove(dir); err != nil {
+		if err := instance.Remove(dir); err != nil {
 			return nil
 		}
 		dir = filepath.Dir(dir)
@@ -314,17 +375,67 @@ func removeInstanceFile(root, rel string) error {
 }
 
 func writeInstanceFile(root, rel string, body []byte) error {
-	dest := filepath.Join(root, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	instance, name, err := openInstanceRoot(root, rel)
+	if err != nil {
 		return err
+	}
+	defer instance.Close()
+	parent := filepath.Dir(name)
+	if parent != "." {
+		if err := instance.MkdirAll(parent, 0o755); err != nil {
+			return err
+		}
 	}
 	mode := os.FileMode(0o644)
 	if regesto.Executable(rel) {
 		mode = 0o755
 	}
-	if err := os.WriteFile(dest, body, mode); err != nil {
+	tmp, tmpName, err := createInstanceTemp(instance, parent, mode)
+	if err != nil {
 		return err
 	}
-	// WriteFile does not change the mode of a file that already exists.
-	return os.Chmod(dest, mode)
+	defer instance.Remove(tmpName)
+	if _, err := tmp.Write(body); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return instance.Rename(tmpName, name)
+}
+
+func openInstanceRoot(root, rel string) (*os.Root, string, error) {
+	if !fs.ValidPath(filepath.ToSlash(rel)) {
+		return nil, "", fmt.Errorf("invalid instance path %q", rel)
+	}
+	instance, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, "", err
+	}
+	return instance, filepath.FromSlash(rel), nil
+}
+
+func createInstanceTemp(instance *os.Root, parent string, mode os.FileMode) (*os.File, string, error) {
+	base := fmt.Sprintf(".regesto-upgrade-%d", time.Now().UnixNano())
+	for attempt := 0; attempt < 100; attempt++ {
+		candidate := filepath.Join(parent, fmt.Sprintf("%s-%d", base, attempt))
+		file, err := instance.OpenFile(candidate, os.O_RDWR|os.O_CREATE|os.O_EXCL, mode)
+		if os.IsExist(err) {
+			continue
+		}
+		if err == nil {
+			if chmodErr := file.Chmod(mode); chmodErr != nil {
+				file.Close()
+				instance.Remove(candidate)
+				return nil, "", chmodErr
+			}
+		}
+		return file, candidate, err
+	}
+	return nil, "", fmt.Errorf("could not create a temporary instance file in %s", parent)
 }

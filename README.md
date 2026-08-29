@@ -76,6 +76,8 @@ facts to imitate. Drop `--examples` for an empty one.
 ```bash
 ~/regesto-kb/bin/regesto-install --dry-run   # see what it would touch
 ~/regesto-kb/bin/regesto-install
+# Equivalent once the engine can resolve this instance:
+regesto --config ~/regesto-kb/config.toml install --dry-run --json
 ```
 
 Skills are symlinked into each agent, the `SessionStart` hook is registered (Claude Code),
@@ -207,6 +209,7 @@ itself (`~/regesto-kb` by default) to remove the knowledge base.
 |---|---|
 | `regesto search` | query facts by subject, relation, scope or free text |
 | `regesto context` | the payload the `SessionStart` hook injects |
+| `regesto install` | plan or apply skills, instructions and hook registration |
 | `regesto index` | rebuild `INDEX.md` and `knowledge/topics/` |
 | `regesto lint` | validate against `SCHEMA.md`, reconcile contradictions |
 | `regesto harvest` | capture native-memory writes into `inbox/` |
