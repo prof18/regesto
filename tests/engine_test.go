@@ -6,12 +6,38 @@ package tests
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/prof18/regesto/internal/config"
 )
+
+// buildStandaloneEngine produces the same shape as a release/package-manager
+// build: one executable, outside the knowledge-base instance, with no source
+// tree beside it. Upgrade tests use this instead of `go run`, whose temporary
+// executable is deliberately unsuitable for schedules and can hide an
+// engine/instance coupling.
+func buildStandaloneEngine(t *testing.T) string {
+	t.Helper()
+	engineDir := t.TempDir()
+	engine := filepath.Join(engineDir, "regesto")
+	cmd := exec.Command("go", "build", "-trimpath", "-ldflags", "-X github.com/prof18/regesto/internal/version.stamped=test-m11", "-o", engine, "./cmd/regesto")
+	cmd.Dir = repoRoot(t)
+	cmd.Env = append(os.Environ(), "GOTELEMETRY=off")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build standalone engine: %v\n%s", err, out)
+	}
+	info, err := os.Stat(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Fatalf("built engine is not executable: %v", info.Mode())
+	}
+	return engine
+}
 
 func engineInstance(t *testing.T) *config.Config {
 	t.Helper()

@@ -12,8 +12,8 @@ import (
 	"github.com/prof18/regesto/internal/adapters"
 )
 
-func planManualHook(p *Plan, agent adapters.Agent, hook adapters.Hook) (Item, error) {
-	command, event, err := protocolHookCommand(p.KBRoot, hook.Protocol)
+func planManualHook(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoot string) (Item, error) {
+	command, event, err := protocolHookCommand(p.KBRoot, sourceRoot, hook.Protocol)
 	if err != nil {
 		return Item{}, fmt.Errorf("integration %q: %w", agent.Name, err)
 	}
@@ -43,11 +43,11 @@ func planManualHook(p *Plan, agent adapters.Agent, hook adapters.Hook) (Item, er
 	}, nil
 }
 
-func planHermesHook(p *Plan, agent adapters.Agent, hook adapters.Hook) ([]Item, error) {
+func planHermesHook(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoot string) ([]Item, error) {
 	if hook.Settings == "" {
 		return nil, fmt.Errorf("integration %q: Hermes registrar has no config target", agent.Name)
 	}
-	executable, _, err := protocolHookCommand(p.KBRoot, hook.Protocol)
+	executable, _, err := protocolHookCommand(p.KBRoot, sourceRoot, hook.Protocol)
 	if err != nil {
 		return nil, fmt.Errorf("integration %q: %w", agent.Name, err)
 	}
@@ -147,7 +147,7 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
-func protocolHookCommand(root, protocol string) (command, event string, err error) {
+func protocolHookCommand(root, sourceRoot, protocol string) (command, event string, err error) {
 	var relative string
 	switch protocol {
 	case "claude-session-start-v1":
@@ -158,7 +158,8 @@ func protocolHookCommand(root, protocol string) (command, event string, err erro
 		return "", "", fmt.Errorf("unsupported hook protocol %q", protocol)
 	}
 	command = filepath.Join(root, relative)
-	info, statErr := os.Stat(command)
+	source := filepath.Join(sourceRoot, relative)
+	info, statErr := os.Stat(source)
 	if statErr != nil {
 		return "", "", fmt.Errorf("hook executable %s is unavailable: %w", command, statErr)
 	}

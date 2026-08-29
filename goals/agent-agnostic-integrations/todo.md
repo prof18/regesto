@@ -530,13 +530,78 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 11 — upgrade proof and packaging
 
-- [ ] Extend CI/fixtures for v0.3.1 zero-edit upgrade, dry-run/install/doctor/MCP, and package result.
+- [x] Extend CI/fixtures for v0.3.1 zero-edit upgrade, dry-run/install/doctor/MCP, and package result.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `dd644b3`;
+  staged, unstaged, and untracked files none.
 - Scope/owners: upgrade/engine tests, CI workflow, changelog.
+- High-risk surfaces: byte-preserving legacy config; historical manifest hash
+  attribution; dry-run inertness across instance and HOME; upgrade ownership and
+  executable modes; adapter reinstallation into an isolated HOME; compiled
+  engine/instance separation; line-delimited MCP stdout; CI shell portability;
+  and release-note/version conventions.
 - Verify: full gate and standalone temporary-HOME proof from plan; inspect failures before cleanup.
-- Skip list/findings carried: ___
+- Skip list/findings carried: use isolated Go caches under the sandbox; live
+  product behavior remains M12. No test or CI command may read or modify the
+  real HOME. The standalone proof keeps its temporary directory for inspection
+  until all checks finish.
 - Review shards: migration/ownership; CI and packaging; standalone proof/release docs.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- Pre-pass-1 state: committed historical package bytes and manifest hashes now
+  back a compiled-engine v0.3.1 upgrade regression. It snapshots the instance
+  and isolated HOME around dry-runs, applies the upgrade, proves config bytes,
+  current package contents, modes, manifest ownership, rendered host artifacts,
+  doctor JSON, and MCP JSONL, then proves repeat inertness. Standalone CI now
+  covers temporary-HOME install dry-run/apply/no-op, doctor, and MCP. Upgrade
+  dry-run plans adapter rendering from the running engine's packaged sources,
+  matching the real post-refresh order instead of rejecting historical skills.
+- Initial verification: fixture hashes validate against the v0.3.1 tag; the
+  focused compiled-upgrade regression passed; formatting, vet, all normal and
+  race tests, explicit shell syntax, and diff checks passed with isolated Go
+  caches. The plan's standalone proof passed and remains inspectable at
+  `/private/tmp/regesto-m11-proof.gACPD5`.
+- Review pass 1: checkpoint `364d8ad` (`test: prove standalone legacy
+  upgrades`) received three fresh-context audits. Accepted and fixed a dry-run
+  source view that substituted packaged bytes even where real upgrade would
+  preserve an edited adapter; a historical fixture whose own manifest was not
+  asserted before migration; executable-only rather than exact package-mode
+  checks; an environment-dependent doctor inventory assertion; an incomplete
+  release-artifact gate; and release wording that did not distinguish CI's
+  dry-run from the compiled fixture's applied upgrade. Dry-run now builds a
+  temporary post-upgrade adapter tree by refreshing/removing only
+  manifest-authorized paths and threads that source root through profiles,
+  skills, hooks, and instructions while keeping real host targets. A modified
+  portable-skill regression proves dry-run/apply agreement and preservation.
+  The release tarball smoke now runs isolated-HOME install
+  dry-run/apply/no-op, doctor, MCP, and actual v0.3.1 apply/repeat with config
+  byte checks. All targeted re-reviews are clean. The exact standalone workflow
+  and release-tarball smoke passed at retained directories
+  `/private/tmp/regesto-m11-ci-20260829-43104-uqjkn3` and
+  `/private/tmp/regesto-m11-release-20260829-44753-59oy4d`; formatting, vet,
+  focused/full tests, race tests, explicit shell syntax, and diff checks passed
+  with isolated Go caches. Remediation `128e29c` — `fix: close standalone
+  upgrade proof gaps`.
+- Pass 2 baseline: remediation checkpoint `128e29c` (`fix: close standalone
+  upgrade proof gaps`); review the full M11 diff from `dd644b3` with all pass-1
+  regressions active. Carry only isolated-cache requirements and the explicit
+  M12 live-host boundary; all pass-1 findings are closed.
+- Review pass 2: accepted and fixed release proof that established internal
+  idempotence without comparing the applied v0.3.1 result to the release
+  package; shallow MCP assertions that did not identify tools, resources, or a
+  served payload; doctor checks that proved only configured ids; and no exact
+  tar inventory assertion. The release smoke now requires one executable in
+  the archive, byte-identical deterministic doctor reports with current
+  capabilities/artifacts/trust, the exact four MCP tools plus index resource
+  content, and every manifest-owned legacy byte/mode/hash to equal a fresh
+  instance from the same stamped tarball. It also verifies the installed legacy
+  links and single instruction sections. The compiled fixture mirrors MCP
+  surface/payload checks and includes the historical empty knowledge layout.
+  All three fresh reviewers and targeted re-reviews are clean. The exact
+  strengthened tarball smoke passed at
+  `/private/tmp/regesto-m11-release-p2-20260829-68725-qm5370`; formatting, vet,
+  full and race tests, current and fixture shell syntax, and diff checks passed
+  with isolated Go caches. Remediation `528d91e` — `test: strengthen release
+  package proof`.
+- [x] Milestone 11 complete at reviewed checkpoint `528d91e`; final ledger-only
+  closure follows with no implementation changes.
 
 ## Milestone 12 — live regression matrix
 

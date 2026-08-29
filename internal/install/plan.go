@@ -52,11 +52,19 @@ type Options struct {
 	InstructionSections map[string][]byte
 	EngineLink          string
 	EngineTarget        string
+	// SourceRoot separates engine-owned adapter sources from their real render
+	// and host targets. Upgrade dry-runs point it at a temporary post-upgrade
+	// view; ordinary installs leave it empty and read from KBRoot.
+	SourceRoot string
 }
 
 // Build returns the complete install plan without modifying the filesystem.
 func Build(cfg *config.Config, opts Options) (*Plan, error) {
-	agents, err := adapters.Resolve(cfg)
+	sourceRoot := opts.SourceRoot
+	if sourceRoot == "" {
+		sourceRoot = cfg.KBRoot
+	}
+	agents, err := adapters.ResolveFrom(cfg, sourceRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -65,10 +73,10 @@ func Build(cfg *config.Config, opts Options) (*Plan, error) {
 	if err := planEngineLink(p, opts); err != nil {
 		return nil, err
 	}
-	if err := planSkills(p, agents); err != nil {
+	if err := planSkills(p, agents, sourceRoot); err != nil {
 		return nil, err
 	}
-	if err := planHooks(p, agents, cfg.UsesLegacyAgents()); err != nil {
+	if err := planHooks(p, agents, cfg.UsesLegacyAgents(), sourceRoot); err != nil {
 		return nil, err
 	}
 	if err := planInstructions(p, agents, opts); err != nil {

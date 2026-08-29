@@ -1,0 +1,6 @@
+# Boundary fixture for an instance scaffolded by v0.3.1.
+machine = "fixture-box"
+agents = ["claude", "codex"]
+
+[projects]
+"aurora-2" = "aurora"

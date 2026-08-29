@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Thin shim over `regesto index` (decision 0.11) — a stable path for hooks
+# and jobs. All instance values come from config.toml, not from this script.
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The engine, in order of preference: built into this instance, installed on
+# PATH (a release or a Homebrew tap), or run from source if this instance is
+# also an engine checkout. --config is always passed, so any of the three
+# resolves the same instance.
+if [[ -x "$root/bin/regesto" ]]; then
+  exec "$root/bin/regesto" --config "$root/config.toml" index "$@"
+fi
+if command -v regesto >/dev/null 2>&1; then
+  exec regesto --config "$root/config.toml" index "$@"
+fi
+if [[ ! -f "$root/go.mod" ]]; then
+  printf '%s: no regesto engine found. Install it, or build one here with:\n  go build -o bin/regesto ./cmd/regesto\n' "$(basename "$0")" >&2
+  exit 127
+fi
+exec go -C "$root" run ./cmd/regesto --config "$root/config.toml" index "$@"

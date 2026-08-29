@@ -52,11 +52,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/bin"
-          tar -xzf "dist/regesto_${VERSION}_linux_amd64.tar.gz" -C "$RUNNER_TEMP/bin"
+          archive="dist/regesto_${VERSION}_linux_amd64.tar.gz"
+          [ "$(tar -tzf "$archive")" = "regesto" ] || { echo "release archive must contain exactly regesto"; exit 1; }
+          tar -xzf "$archive" -C "$RUNNER_TEMP/bin"
+          test -f "$RUNNER_TEMP/bin/regesto" -a -x "$RUNNER_TEMP/bin/regesto"
+          [ "$(find "$RUNNER_TEMP/bin" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = "1" ]
           # On PATH, because that is how a release is installed and how an
           # instance's shims are meant to find it — an instance carries no
           # binary of its own.
           export PATH="$RUNNER_TEMP/bin:$PATH"
+          export HOME="$RUNNER_TEMP/home"
+
+          mkdir -p "$HOME/.claude/projects/release/memory" "$HOME/.codex/memories"
+          printf '%s\n' 'claude release preface' > "$HOME/.claude/CLAUDE.md"
+          printf '%s\n' 'codex release preface' > "$HOME/.codex/AGENTS.md"
 
           got="$(regesto version)"
           echo "reports: $got"
@@ -65,6 +74,129 @@ jobs:
           regesto init --dir "$RUNNER_TEMP/kb" --machine ci --examples
           "$RUNNER_TEMP/kb/bin/regesto-index"
           "$RUNNER_TEMP/kb/bin/regesto-search" --scope aurora | grep -q dec-http-port-8080
+
+          cp "$HOME/.claude/CLAUDE.md" "$RUNNER_TEMP/release-claude-before.md"
+          cp "$HOME/.codex/AGENTS.md" "$RUNNER_TEMP/release-codex-before.md"
+          regesto --config "$RUNNER_TEMP/kb/config.toml" install --dry-run --json > "$RUNNER_TEMP/release-install-dry.json"
+          cmp "$HOME/.claude/CLAUDE.md" "$RUNNER_TEMP/release-claude-before.md"
+          cmp "$HOME/.codex/AGENTS.md" "$RUNNER_TEMP/release-codex-before.md"
+          test ! -e "$HOME/.claude/settings.json"
+          test ! -e "$HOME/.claude/skills/regesto-search"
+          test ! -e "$RUNNER_TEMP/kb/.state/integrations"
+          regesto --config "$RUNNER_TEMP/kb/config.toml" install --json > "$RUNNER_TEMP/release-install.json"
+          regesto --config "$RUNNER_TEMP/kb/config.toml" install --dry-run --json > "$RUNNER_TEMP/release-install-current.json"
+          regesto --config "$RUNNER_TEMP/kb/config.toml" doctor --json > "$RUNNER_TEMP/release-doctor.json"
+          regesto --config "$RUNNER_TEMP/kb/config.toml" doctor --json > "$RUNNER_TEMP/release-doctor-repeat.json"
+          cmp "$RUNNER_TEMP/release-doctor.json" "$RUNNER_TEMP/release-doctor-repeat.json"
+
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"release-smoke","version":"1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            '{"jsonrpc":"2.0","id":3,"method":"resources/list","params":{}}' \
+            '{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"regesto://index"}}' \
+            | regesto --config "$RUNNER_TEMP/kb/config.toml" mcp > "$RUNNER_TEMP/release-mcp.jsonl"
+
+          legacy="$RUNNER_TEMP/legacy-v0.3.1"
+          legacy_home="$RUNNER_TEMP/legacy-home"
+          cp -R tests/fixtures/v0.3.1-instance "$legacy"
+          chmod +x \
+            "$legacy/bin/regesto-config" \
+            "$legacy/bin/regesto-context" \
+            "$legacy/bin/regesto-index" \
+            "$legacy/bin/regesto-install" \
+            "$legacy/bin/regesto-project" \
+            "$legacy/bin/regesto-search" \
+            "$legacy/adapters/claude/hooks/session-start.sh"
+          mkdir -p "$legacy_home/.claude" "$legacy_home/.codex"
+          printf '%s\n' 'claude legacy preface' > "$legacy_home/.claude/CLAUDE.md"
+          printf '%s\n' 'codex legacy preface' > "$legacy_home/.codex/AGENTS.md"
+          cp "$legacy/config.toml" "$RUNNER_TEMP/legacy-config-before.toml"
+          HOME="$legacy_home" regesto --config "$legacy/config.toml" upgrade --dry-run > "$RUNNER_TEMP/legacy-upgrade-dry.txt"
+          cmp "$legacy/config.toml" "$RUNNER_TEMP/legacy-config-before.toml"
+          HOME="$legacy_home" regesto --config "$legacy/config.toml" upgrade > "$RUNNER_TEMP/legacy-upgrade.txt"
+          cmp "$legacy/config.toml" "$RUNNER_TEMP/legacy-config-before.toml"
+          HOME="$legacy_home" regesto --config "$legacy/config.toml" upgrade --dry-run > "$RUNNER_TEMP/legacy-upgrade-current.txt"
+          grep -q '0 file(s) would change, 0 would be removed' "$RUNNER_TEMP/legacy-upgrade-current.txt"
+
+          python3 - "$RUNNER_TEMP/release-install-dry.json" "$RUNNER_TEMP/release-install.json" "$RUNNER_TEMP/release-install-current.json" "$RUNNER_TEMP/release-doctor.json" "$RUNNER_TEMP/release-mcp.jsonl" "$legacy" "$RUNNER_TEMP/kb" "$legacy_home" "$VERSION" <<'PY'
+          import hashlib
+          import json
+          import os
+          import stat
+          import sys
+
+          dry, applied, current, doctor, transcript, legacy, initialized, legacy_home, version = sys.argv[1:]
+          with open(dry, encoding="utf-8") as stream:
+              dry_report = json.load(stream)
+          assert dry_report["dry_run"] is True and "result" not in dry_report
+          with open(applied, encoding="utf-8") as stream:
+              applied_report = json.load(stream)
+          assert applied_report["result"]["applied"] > 0
+          with open(current, encoding="utf-8") as stream:
+              current_report = json.load(stream)
+          assert all(item["action"] in {"current", "skip", "manual"} for item in current_report["plan"]["items"])
+          with open(doctor, encoding="utf-8") as stream:
+              doctor_report = json.load(stream)
+          configured = {item["id"]: item for item in doctor_report["integrations"] if item["configured"]}
+          assert set(configured) == {"claude", "codex"}
+          for item in configured.values():
+              assert item["status"] == "ok"
+              assert item["capabilities"]["skills"]["status"] == "ok"
+              assert item["capabilities"]["instructions"]["status"] == "ok"
+              assert item["capabilities"]["trust"]["status"] == "ok"
+              assert all(artifact["action"] == "current" for artifact in item["artifacts"])
+          assert configured["claude"]["capabilities"]["hooks"][0]["status"] == "ok"
+          assert configured["codex"]["capabilities"]["hooks"][0]["status"] == "unsupported"
+          assert all(check["status"] == "ok" for check in doctor_report["checks"])
+          with open(transcript, encoding="utf-8") as stream:
+              messages = [json.loads(line) for line in stream]
+          assert [message["id"] for message in messages] == [1, 2, 3, 4]
+          assert all(message["jsonrpc"] == "2.0" and "result" in message for message in messages)
+          assert messages[0]["result"]["protocolVersion"] == "2025-06-18"
+          assert [tool["name"] for tool in messages[1]["result"]["tools"]] == [
+              "regesto_search", "regesto_get_fact", "regesto_resolve_project", "regesto_write_fact"
+          ]
+          assert messages[2]["result"]["resources"][0]["uri"] == "regesto://index"
+          assert "# INDEX" in messages[3]["result"]["contents"][0]["text"]
+
+          def read_manifest(root):
+              engine = None
+              files = {}
+              with open(os.path.join(root, ".regesto-manifest"), encoding="utf-8") as stream:
+                  for line in stream:
+                      line = line.strip()
+                      if not line or line.startswith("#"):
+                          continue
+                      key, value = line.split(None, 1)
+                      if key == "engine":
+                          engine = value
+                      elif key != "written":
+                          files[value] = key
+              return engine, files
+
+          legacy_engine, legacy_files = read_manifest(legacy)
+          initialized_engine, initialized_files = read_manifest(initialized)
+          assert legacy_engine == version == initialized_engine
+          assert set(legacy_files) == set(initialized_files)
+          for relative, digest in legacy_files.items():
+              legacy_path = os.path.join(legacy, relative)
+              initialized_path = os.path.join(initialized, relative)
+              with open(legacy_path, "rb") as stream:
+                  legacy_body = stream.read()
+              with open(initialized_path, "rb") as stream:
+                  initialized_body = stream.read()
+              assert legacy_body == initialized_body
+              assert hashlib.sha256(legacy_body).hexdigest() == digest
+              assert stat.S_IMODE(os.stat(legacy_path).st_mode) == stat.S_IMODE(os.stat(initialized_path).st_mode)
+
+          assert os.path.islink(os.path.join(legacy_home, ".claude/skills/regesto-search"))
+          assert os.path.islink(os.path.join(legacy_home, ".codex/skills/regesto-search"))
+          with open(os.path.join(legacy_home, ".claude/CLAUDE.md"), encoding="utf-8") as stream:
+              assert stream.read().count("<!-- regesto:section:start -->") == 1
+          with open(os.path.join(legacy_home, ".codex/AGENTS.md"), encoding="utf-8") as stream:
+              assert stream.read().count("<!-- regesto:section:start -->") == 1
+          PY
 
       # A release publishes what CHANGELOG.md says about it, and will not publish
       # without it. Generated commit lists are written for whoever maintains the

@@ -26,7 +26,13 @@ type instructionGroup struct {
 }
 
 func planInstructions(p *Plan, agents []adapters.Agent, opts Options) error {
-	shared, err := os.ReadFile(filepath.Join(p.KBRoot, "adapters", "instructions", "regesto-section.md"))
+	sourceRoot := opts.SourceRoot
+	if sourceRoot == "" {
+		sourceRoot = p.KBRoot
+	}
+	var shared []byte
+	var err error
+	shared, err = os.ReadFile(filepath.Join(sourceRoot, "adapters", "instructions", "regesto-section.md"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			shared, err = regesto.Adapters.ReadFile("adapters/instructions/regesto-section.md")

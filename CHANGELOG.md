@@ -4,6 +4,51 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — `release.yml` reads it from here and refuses to publish a tag
 that has no section, so this file cannot fall behind.
 
+## 0.4.0
+
+**Integrations are now capability-driven instead of hardcoded to Claude Code and
+Codex.** A declarative profile describes detection, skills, instructions, hooks,
+native-memory sources, and default trust. Built-in profiles cover Claude Code,
+Codex, Hermes, and a generic local integration; additional local profiles can be
+added without changing the engine. Existing `agents = [...]` configuration remains
+supported byte for byte, while new instances use `integrations = [...]`.
+
+`regesto install` now plans and applies those profiles through the Go engine. Its
+versioned JSON dry-run reports canonical targets, ownership, current and intended
+state, backups, and the exact action before anything is written. Shared skill or
+instruction targets are reconciled once, generated artifacts carry ownership
+markers, hooks are registered through declared protocols, and symlink or path
+escapes are refused.
+
+**Every integration gets portable Regesto skills.** Claude keeps its tailored
+variant while Codex, Hermes, and generic integrations receive the same search,
+write, and promote workflows through stable instance shims. Instruction blocks
+use bounded markers, preserve host-owned text, and can be installed into more than
+one declared target without duplicating content.
+
+Native Markdown memory can now be harvested from every declared source with a
+separate persisted baseline. Overlapping declarations deduplicate publication,
+legacy snapshots still load, untrusted sources remain quarantined, and all reads
+and writes stay within descriptor-verified roots. No proprietary cloud-memory
+connector or network transport was added.
+
+**A local stdio MCP server exposes Regesto resources and tools.** `regesto mcp`
+implements the 2025-06-18 initialize lifecycle, tools, resources, bounded JSON-RPC
+framing, and clean EOF shutdown using the same validation and trust rules as the
+CLI. It listens on no socket and writes only protocol messages to stdout.
+
+`regesto doctor [--integration ID] [--json]` provides deterministic, read-only
+diagnostics for detection, installed artifacts, capabilities, memory, and trust,
+with concrete remediation. The documentation now includes a profile-derived
+capability matrix and setup recipes for Claude Code, Codex, Hermes, generic local
+tools, and MCP clients.
+
+The release gate now builds the engine away from its knowledge-base instance and
+drives init, inert install dry-run, install, doctor, lint, upgrade, and an MCP
+handshake inside a disposable HOME. A committed v0.3.1 package fixture also proves
+that the current binary upgrades historical engine-owned files and manifests while
+leaving the legacy config untouched.
+
 ## 0.3.1
 
 **Scheduled cycles can now find normalisers installed outside macOS's system paths.**

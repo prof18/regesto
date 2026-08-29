@@ -18,7 +18,7 @@ type hookGroup struct {
 	commands  []string
 }
 
-func planHooks(p *Plan, agents []adapters.Agent, legacy bool) error {
+func planHooks(p *Plan, agents []adapters.Agent, legacy bool, sourceRoot string) error {
 	groups := map[string]*hookGroup{}
 	for _, agent := range agents {
 		hooks := append([]adapters.Hook(nil), agent.Hooks...)
@@ -30,7 +30,7 @@ func planHooks(p *Plan, agents []adapters.Agent, legacy bool) error {
 			case "none", "":
 				continue
 			case "manual":
-				item, err := planManualHook(p, agent, hook)
+				item, err := planManualHook(p, agent, hook, sourceRoot)
 				if err != nil {
 					return err
 				}
@@ -38,7 +38,7 @@ func planHooks(p *Plan, agents []adapters.Agent, legacy bool) error {
 					return err
 				}
 			case "hermes-config-yaml-v1":
-				items, err := planHermesHook(p, agent, hook)
+				items, err := planHermesHook(p, agent, hook, sourceRoot)
 				if err != nil {
 					return err
 				}
@@ -62,7 +62,7 @@ func planHooks(p *Plan, agents []adapters.Agent, legacy bool) error {
 				}
 				g.declared = append(g.declared, hook.Settings)
 				g.owners = append(g.owners, agent.Name)
-				command, _, err := protocolHookCommand(p.KBRoot, hook.Protocol)
+				command, _, err := protocolHookCommand(p.KBRoot, sourceRoot, hook.Protocol)
 				if err != nil {
 					return fmt.Errorf("integration %q: %w", agent.Name, err)
 				}

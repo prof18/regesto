@@ -52,6 +52,7 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	noteNewAgents(cfg)
 
 	changes := manifest.Plan(cfg.KBRoot, engine, m)
+	removals := manifest.PlanRemovals(cfg.KBRoot, engine, m)
 	var written, removed, kept int
 	// Start from what was already recorded, so a file this engine no longer
 	// ships keeps its entry rather than silently losing its provenance.
@@ -100,7 +101,7 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	// Files a previous engine wrote here and this one no longer ships. Left in
 	// place, the installer keeps rendering and linking them, so a retired skill
 	// goes on instructing agents after the engine disowned it.
-	for _, c := range manifest.PlanRemovals(cfg.KBRoot, engine, m) {
+	for _, c := range removals {
 		switch {
 		case c.Status == manifest.Missing:
 			// Already gone; just stop tracking it.
@@ -137,7 +138,12 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	if *dry {
 		fmt.Printf("\ndry run — %d file(s) would change, %d would be removed, %d left alone.\n", written, removed, kept)
 		fmt.Println("\n── adapters ──")
-		plan, err := regestoinstall.Build(cfg, regestoinstall.Options{})
+		sourceRoot, err := upgradePlanSourceRoot(cfg.KBRoot, changes, removals, *force)
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(sourceRoot)
+		plan, err := regestoinstall.Build(cfg, regestoinstall.Options{SourceRoot: sourceRoot})
 		if err != nil {
 			return err
 		}
@@ -163,6 +169,73 @@ func runUpgrade(cfg *config.Config, args []string) error {
 		return err
 	}
 	return repointSchedule(cfg)
+}
+
+// upgradePlanSourceRoot constructs the adapter source tree that will exist
+// immediately before a real upgrade calls reinstallAdapters. It starts with
+// the instance's current sources, substitutes only files this upgrade is
+// authorized to refresh, and removes only files it is authorized to retire.
+// That distinction matters for edited sources: a dry-run must not claim it will
+// render packaged bytes when the real upgrade will preserve the user's copy.
+func upgradePlanSourceRoot(root string, changes, removals []manifest.Change, force bool) (string, error) {
+	shadow, err := os.MkdirTemp("", "regesto-upgrade-plan-")
+	if err != nil {
+		return "", err
+	}
+	cleanup := func(cause error) (string, error) {
+		if removeErr := os.RemoveAll(shadow); removeErr != nil {
+			return "", fmt.Errorf("%v; clean temporary upgrade source: %w", cause, removeErr)
+		}
+		return "", cause
+	}
+
+	sourceAdapters := filepath.Join(root, "adapters")
+	shadowAdapters := filepath.Join(shadow, "adapters")
+	if _, err := os.Stat(sourceAdapters); err == nil {
+		if err := os.CopyFS(shadowAdapters, os.DirFS(sourceAdapters)); err != nil {
+			return cleanup(fmt.Errorf("copy adapter sources for upgrade plan: %w", err))
+		}
+		if err := filepath.WalkDir(sourceAdapters, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			relative, err := filepath.Rel(sourceAdapters, path)
+			if err != nil {
+				return err
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			return os.Chmod(filepath.Join(shadowAdapters, relative), info.Mode().Perm())
+		}); err != nil {
+			return cleanup(fmt.Errorf("preserve adapter source modes for upgrade plan: %w", err))
+		}
+	} else if os.IsNotExist(err) {
+		if err := os.MkdirAll(shadowAdapters, 0o755); err != nil {
+			return cleanup(err)
+		}
+	} else {
+		return cleanup(err)
+	}
+
+	for _, change := range changes {
+		if !strings.HasPrefix(change.Path, "adapters/") || (!change.Status.Writable() && !force) {
+			continue
+		}
+		if err := writeInstanceFile(shadow, change.Path, change.Body); err != nil {
+			return cleanup(fmt.Errorf("stage upgraded adapter source %s: %w", change.Path, err))
+		}
+	}
+	for _, removal := range removals {
+		if !strings.HasPrefix(removal.Path, "adapters/") || (!removal.Status.Removable() && !force) {
+			continue
+		}
+		if err := removeInstanceFile(shadow, removal.Path); err != nil {
+			return cleanup(fmt.Errorf("stage retired adapter source %s: %w", removal.Path, err))
+		}
+	}
+	return shadow, nil
 }
 
 // noteNewAgents flags a known agent that is present on this machine but

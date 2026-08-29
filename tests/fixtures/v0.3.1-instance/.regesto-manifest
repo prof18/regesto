@@ -1,0 +1,19 @@
+# Written by `regesto init` and `regesto upgrade`. Machine-written — do not edit.
+# Records the engine that last wrote the files below and what they held then,
+# so an upgrade can tell an untouched file from one you changed on purpose.
+
+engine v0.3.1
+written 2026-08-01T00:00:00Z
+
+499bb396b8fc7d7e5b116b446618cef8800adce6b33157147153977fa741e92c  adapters/claude/hooks/session-start.sh
+77f12748646da4ed4bb9e298b94a3a295852e1ed93afc317a2241e50e011ad2b  adapters/instructions/regesto-section.md
+f6e6b872e4d797eead64c593d7ecf7d4f01f5369b3c5c16df59a8b077f09a17f  adapters/skills/regesto-promote/SKILL.md
+e38b5177d6e2e8728a640fba2d300b348f92e4d6c609f219e20fc359eed60379  adapters/skills/regesto-search/SKILL.md
+1d0cbd9aab415178d610fcc2f11a42b04e5cc9cdb9e9d6e5ead0379fc5909b09  adapters/skills/regesto-write/SKILL.md
+26d8b0e1976cd84c34a0c926c938191fc25547fc9d8b2e13b82e0c748eaf0279  bin/regesto-config
+2f47f6267b212fad71e56757d9a31f405fb4efb4c349bab8c78946c845b6ca6d  bin/regesto-context
+475b2c3cb3cd0fb55dd2bb7ad44438d5dd062ebad61db2d6f5aeaa05b1c35be9  bin/regesto-index
+b155b7978eeb22ceb63437a3fc4a4b36dc11dacb7c4c310539305639117bbfba  bin/regesto-install
+75a1511434df50746f69c6971fb521128a03279ff64cd4976539228e4950afd2  bin/regesto-project
+2ed6f66adb14f1c26923719bb11e60fcd1ee518f9fecd66e6fa2506b67ff21dd  bin/regesto-search
+bcd6996c1f1375a6825de551843970fb9bc7a6351f8795831c08ab92c1a9711d  SCHEMA.md

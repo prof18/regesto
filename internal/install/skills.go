@@ -43,8 +43,8 @@ type integrationRender struct {
 	sources        []skillSource
 }
 
-func planSkills(p *Plan, agents []adapters.Agent) error {
-	portable, err := loadPortableSkills(p.KBRoot)
+func planSkills(p *Plan, agents []adapters.Agent, sourceRoot string) error {
+	portable, err := loadPortableSkills(sourceRoot)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func planSkills(p *Plan, agents []adapters.Agent) error {
 		if variant == "" {
 			variant = "portable"
 		}
-		sources, err := renderSkillVariant(p.KBRoot, agent, variant, portable)
+		sources, err := renderSkillVariant(p.KBRoot, sourceRoot, agent, variant, portable)
 		if err != nil {
 			return err
 		}
@@ -108,8 +108,8 @@ func planSkills(p *Plan, agents []adapters.Agent) error {
 	})
 }
 
-func loadPortableSkills(kbRoot string) ([]skillSource, error) {
-	root := filepath.Join(kbRoot, "adapters", "skills")
+func loadPortableSkills(sourceRoot string) ([]skillSource, error) {
+	root := filepath.Join(sourceRoot, "adapters", "skills")
 	var sourceFS fs.FS = os.DirFS(root)
 	dir := "."
 	instanceSource := true
@@ -362,12 +362,12 @@ func parsePortableYAMLScalar(raw string) (string, error) {
 	return raw, nil
 }
 
-func renderSkillVariant(kbRoot string, agent adapters.Agent, variant string, portable []skillSource) ([]skillSource, error) {
+func renderSkillVariant(kbRoot, sourceRoot string, agent adapters.Agent, variant string, portable []skillSource) ([]skillSource, error) {
 	out := cloneSkillSources(portable)
 	if variant == "portable" {
 		return renderSkillSources(out, kbRoot), nil
 	}
-	manifest, overlayFS, overlayDir, err := loadSkillVariant(kbRoot, variant)
+	manifest, overlayFS, overlayDir, err := loadSkillVariant(sourceRoot, variant)
 	if err != nil {
 		return nil, fmt.Errorf("integration %q: %w", agent.Name, err)
 	}
@@ -428,8 +428,8 @@ func renderSkillVariant(kbRoot string, agent adapters.Agent, variant string, por
 	return renderSkillSources(out, kbRoot), nil
 }
 
-func loadSkillVariant(kbRoot, variant string) (skillVariant, fs.FS, string, error) {
-	instanceDir := filepath.Join(kbRoot, "adapters", "variants", variant)
+func loadSkillVariant(sourceRoot, variant string) (skillVariant, fs.FS, string, error) {
+	instanceDir := filepath.Join(sourceRoot, "adapters", "variants", variant)
 	var sourceFS fs.FS = os.DirFS(instanceDir)
 	dir := "."
 	body, err := fs.ReadFile(sourceFS, "variant.json")

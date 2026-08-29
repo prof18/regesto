@@ -701,8 +701,8 @@ func TestTrustMalformedCaptureNamespacesAreQuarantined(t *testing.T) {
 	}
 }
 
-// This pins parser/config compatibility only. The full zero-edit upgrade proof
-// for a v0.3.1-style instance is intentionally deferred to milestone 11.
+// This pins parser/config compatibility directly; upgrade_test.go separately
+// drives the same legacy syntax through the committed v0.3.1 package fixture.
 func TestIntegrationV031LegacyConfigFixture(t *testing.T) {
 	cfg := loadConfigFixture(t, "legacy-v0.3.1.toml")
 	if strings.Join(cfg.Agents, ",") != "claude,codex" {

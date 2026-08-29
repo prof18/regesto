@@ -278,7 +278,15 @@ func oneOf(v string, choices ...string) bool {
 // Legacy unknown agents deliberately remain empty, preserving the old warning
 // path; only new-vocabulary unknown integrations inherit the generic template.
 func Resolve(cfg *config.Config) ([]Agent, error) {
-	profiles, err := Profiles(cfg.KBRoot)
+	return ResolveFrom(cfg, cfg.KBRoot)
+}
+
+// ResolveFrom resolves config targets while loading declarative profiles from
+// profileRoot. Normal installs use the instance itself. Upgrade dry-runs use a
+// temporary post-upgrade source view so their adapter plan matches the files a
+// real upgrade would retain, refresh, or remove without mutating the instance.
+func ResolveFrom(cfg *config.Config, profileRoot string) ([]Agent, error) {
+	profiles, err := Profiles(profileRoot)
 	if err != nil {
 		return nil, err
 	}

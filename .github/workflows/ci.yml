@@ -51,16 +51,46 @@ jobs:
           cache: true
 
       - name: build the engine somewhere else entirely
-        run: go build -o "$RUNNER_TEMP/bin/regesto" ./cmd/regesto
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          go build -o "$RUNNER_TEMP/bin/regesto" ./cmd/regesto
 
       - name: scaffold and drive an instance with it
         run: |
           set -euo pipefail
           export PATH="$RUNNER_TEMP/bin:$PATH"
+          export HOME="$RUNNER_TEMP/home"
           kb="$RUNNER_TEMP/kb"
+
+          # Detection and installer targets belong to this disposable HOME.
+          # Creating both instruction files also proves that install edits host
+          # content in place instead of replacing it wholesale.
+          mkdir -p "$HOME/.claude/projects/ci/memory" "$HOME/.codex/memories"
+          printf '%s\n' 'claude host preface' > "$HOME/.claude/CLAUDE.md"
+          printf '%s\n' 'codex host preface' > "$HOME/.codex/AGENTS.md"
 
           regesto version
           regesto init --dir "$kb" --machine ci --examples
+
+          cp "$HOME/.claude/CLAUDE.md" "$RUNNER_TEMP/claude-before.md"
+          cp "$HOME/.codex/AGENTS.md" "$RUNNER_TEMP/codex-before.md"
+          regesto --config "$kb/config.toml" install --dry-run --json > "$RUNNER_TEMP/install-dry.json"
+          cmp "$HOME/.claude/CLAUDE.md" "$RUNNER_TEMP/claude-before.md"
+          cmp "$HOME/.codex/AGENTS.md" "$RUNNER_TEMP/codex-before.md"
+          test ! -e "$HOME/.claude/settings.json"
+          test ! -e "$HOME/.claude/skills/regesto-search"
+          test ! -e "$HOME/.codex/skills/regesto-search"
+          test ! -e "$kb/.state/integrations"
+
+          regesto --config "$kb/config.toml" install --json > "$RUNNER_TEMP/install.json"
+          regesto --config "$kb/config.toml" install --dry-run --json > "$RUNNER_TEMP/install-current.json"
+          test -L "$HOME/.claude/skills/regesto-search"
+          test -L "$HOME/.codex/skills/regesto-search"
+          grep -q '<!-- regesto:section:start -->' "$HOME/.claude/CLAUDE.md"
+          grep -q '<!-- regesto:section:start -->' "$HOME/.codex/AGENTS.md"
+          grep -q 'claude host preface' "$HOME/.claude/CLAUDE.md"
+          grep -q 'codex host preface' "$HOME/.codex/AGENTS.md"
+          regesto --config "$kb/config.toml" doctor --json > "$RUNNER_TEMP/doctor.json"
 
           # The instance must work through its own shims, with this checkout
           # nowhere on the path.
@@ -70,6 +100,43 @@ jobs:
           "$kb/bin/regesto-context" --dir "$kb" | grep -q 'Knowledge base'
           regesto --config "$kb/config.toml" lint
           regesto --config "$kb/config.toml" upgrade --dry-run
+
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"standalone-ci","version":"1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            '{"jsonrpc":"2.0","id":3,"method":"resources/list","params":{}}' \
+            | regesto --config "$kb/config.toml" mcp > "$RUNNER_TEMP/mcp.jsonl"
+
+          python3 - "$RUNNER_TEMP/install-dry.json" "$RUNNER_TEMP/install.json" "$RUNNER_TEMP/install-current.json" "$RUNNER_TEMP/doctor.json" "$RUNNER_TEMP/mcp.jsonl" <<'PY'
+          import json
+          import sys
+
+          dry, applied, current, doctor, transcript = sys.argv[1:]
+          with open(dry, encoding="utf-8") as stream:
+              dry_report = json.load(stream)
+          assert dry_report["schema_version"] == 1 and dry_report["dry_run"] is True
+          assert "result" not in dry_report
+
+          with open(applied, encoding="utf-8") as stream:
+              applied_report = json.load(stream)
+          assert applied_report["dry_run"] is False
+          assert applied_report["result"]["applied"] > 0
+
+          with open(current, encoding="utf-8") as stream:
+              current_report = json.load(stream)
+          assert all(item["action"] in {"current", "skip", "manual"} for item in current_report["plan"]["items"])
+
+          with open(doctor, encoding="utf-8") as stream:
+              doctor_report = json.load(stream)
+          assert doctor_report["schema_version"] == 1
+          assert {item["id"] for item in doctor_report["integrations"] if item["configured"]} == {"claude", "codex"}
+
+          with open(transcript, encoding="utf-8") as stream:
+              messages = [json.loads(line) for line in stream]
+          assert [message["id"] for message in messages] == [1, 2, 3]
+          assert all(message["jsonrpc"] == "2.0" and "result" in message for message in messages)
+          PY
 
           # A superseded example fact must not surface in a normal search.
           if "$kb/bin/regesto-search" --scope aurora | grep -q dec-http-port-8000; then
