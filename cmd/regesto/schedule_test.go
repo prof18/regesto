@@ -42,11 +42,11 @@ func TestSchedulePathIncludesConfiguredCommandAndStableDefaults(t *testing.T) {
 	}
 }
 
-func TestTrustIntegrationInitTemplateKeepsLegacyAgentsAndDocumentsGenericProfile(t *testing.T) {
+func TestTrustIntegrationInitTemplateUsesCanonicalVocabularyAndDocumentsGenericProfile(t *testing.T) {
 	body := instanceConfig([]string{"claude", "codex"})
 	for _, want := range []string{
-		"agents = [\"claude\", \"codex\"]",
-		"Replace or remove the generated agents = [...] line above first",
+		"integrations = [\"claude\", \"codex\"]",
+		"generated integrations = [...]",
 		"# integrations = [\"my-agent\"]",
 		"[integrations.my-agent]",
 		"memory_kind = \"markdown-glob-v1\"",
@@ -58,8 +58,8 @@ func TestTrustIntegrationInitTemplateKeepsLegacyAgentsAndDocumentsGenericProfile
 			t.Errorf("init template missing %q", want)
 		}
 	}
-	if strings.Contains(body, "\nintegrations = [") {
-		t.Error("init template must not create integrations alongside legacy agents")
+	if strings.Contains(body, "\nagents = [") {
+		t.Error("new init template must not emit the legacy agents vocabulary")
 	}
 }
 

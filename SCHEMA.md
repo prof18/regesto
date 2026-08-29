@@ -221,12 +221,11 @@ it itself.
   one final `*`, such as `"hermes@studio-*" = "quarantine"`. Exact rules therefore
   can explicitly quarantine a stale legacy approval, while legacy entries retain their
   meaning whenever no exact source policy conflicts.
-- A configured supervised local integration (currently Claude Code and Codex) may
-  normalize its own captures. The legacy Hermes integration defaults to quarantine;
-  its private, single-user surface keeps its existing trust through the exact
-  `[trusted_sources]` entry. Unknown, custom, unattended, unconfigured, and empty
-  sources default to quarantine unless an explicit policy or configured trust says
-  otherwise. Give separate surfaces separate integration IDs (for example
+- A configured integration whose resolved profile or override defaults to `supervised`
+  may normalize its own captures. Product identity does not grant trust: built-in and
+  custom integrations follow the same precedence, and unknown, unattended,
+  unconfigured, and empty sources quarantine unless an explicit policy or configured
+  trust says otherwise. Give separate surfaces separate integration IDs (for example
   `hermes-private` and `hermes-public`) even if they use the same profile, then assign
   each its own default trust. This keeps provenance namespaces distinct without
   changing the `source` schema.

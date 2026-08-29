@@ -1,15 +1,20 @@
 # Setup — Hermes Agent
 
-Hermes consultation is **hook-enforced on the first turn**. Regesto registers a
-`pre_llm_call` hook that returns `{"context":"..."}` once per session; later calls return
-the host-valid no-op object `{}`.
+See the canonical [agent integration matrix](agent-integration.md) for profile metadata,
+capability status, and the distinction between fixture-tested and live-host evidence.
+
+When its declared registration and allowlist are current, Hermes consultation is
+**hook-enforced on the first turn**. The registered `pre_llm_call` hook returns
+`{"context":"..."}` once per session; later calls return the host-valid no-op object `{}`.
+If install reports a manual YAML merge, that guarantee begins only after the recipe has
+been applied and `regesto doctor --integration hermes` reports the hook current.
 
 ## Install
 
 Include `hermes` in the instance configuration, then inspect and apply the plan:
 
 ```toml
-agents = ["hermes"]
+integrations = ["hermes"]
 ```
 
 ```bash
@@ -63,6 +68,7 @@ The Claude probe emits plain context. The first Hermes probe emits either a comp
 probe emits exactly `{}`. Malformed input and operational failures also exit zero with
 host-valid empty output. Diagnostics go to stderr and never contaminate protocol stdout.
 
-The payload, framing, session-bound, registrar, and allowlist behavior are covered by
-automated fixtures and contract tests. A live Hermes-host validation remains a separate
-release-checklist step.
+The payload, framing, session-bound behavior, registrar, and allowlist integration are
+tested by automated fixtures and contract tests. That is the tested Hermes integration
+boundary. A dated live Hermes-host validation is separate release evidence and is never
+implied by those fixtures.

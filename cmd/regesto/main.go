@@ -33,6 +33,8 @@ commands:
         serve local Regesto resources and tools over MCP on stdin/stdout
   install [--dry-run] [--json]
         plan or apply integration skills, instructions, and hook registration
+  doctor [--integration ID] [--json]
+        diagnose integration detection, artifacts, capabilities, memory, and trust
   hook <protocol>
         translate one host hook payload on stdin using host-valid framing
   harvest [--dry-run] [-v]
@@ -123,6 +125,8 @@ func run(args []string) error {
 		return runMCP(cfg, rest[1:])
 	case "install":
 		return runInstall(cfg, rest[1:])
+	case "doctor":
+		return runDoctor(cfg, rest[1:])
 	case "harvest":
 		return runHarvest(cfg, rest[1:])
 	case "promote":

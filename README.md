@@ -80,16 +80,25 @@ facts to imitate. Drop `--examples` for an empty one.
 regesto --config ~/regesto-kb/config.toml install --dry-run --json
 ```
 
-Skills are symlinked into each integration, the declared hook is registered or shown as an
-exact preservation-safe manual recipe, and a short pointer section is appended to the
-instructions file. Claude uses `SessionStart`; Hermes uses first-turn `pre_llm_call` JSON
-framing. It backs up anything it edits and is safe to re-run. This runs for every integration
-in `agents` or `integrations` in `config.toml`, which
+For each configured integration, install acts only on capabilities its resolved profile
+declares: skills targets are linked, instructions targets receive the pointer section,
+and hooks are registered or shown as exact preservation-safe manual recipes. A missing
+capability is reported as unsupported rather than guessed. The built-in Claude profile
+uses `SessionStart`; Hermes uses first-turn `pre_llm_call` JSON framing. Install backs up
+anything it edits and is safe to re-run. It evaluates every integration in `agents` or
+`integrations` in `config.toml`, which
 `init` already set to whichever it found installed on this machine — edit it if that guess
 was wrong.
 
-**4. Open a session in a project.** Its facts are already in context — you did not ask for
-them, and the agent did not have to decide to look.
+Run `regesto --config ~/regesto-kb/config.toml doctor` to see detected integrations,
+installed and pending artifacts, hook registration, memory availability, trust defaults,
+and exact remediation without changing either the instance or host files.
+
+**4. Open a session in a project.** With a current declared startup hook, its facts are
+already in context — you did not ask for them, and the agent did not decide to look. A
+hookless integration with declared skills and instructions targets receives those advisory
+paths instead; a profile with no such targets needs configured generic paths, MCP, or
+manual promotion.
 
 **5. Record something.** Tell the agent "remember that migrations here are forward-only",
 or run `/regesto-write`. The skill submits it through Regesto's validated write command, so
@@ -184,11 +193,11 @@ A file a release **retires** is removed, but only where it is byte for byte what
 recorded writing. Edit it and it becomes yours: kept, reported, and no longer tracked.
 Anything with no recorded hash is never touched at all.
 
-Then it finishes the job: re-renders the skills, relinks them into every agent, drops the
-ones that were retired, refreshes the instructions section and the hook, and repoints the
-scheduled jobs if they name an engine that is no longer the one serving this instance. A
-skill added or withdrawn by a release reaches your agents from this one command — nothing
-else to run.
+Then it finishes the job for each declared capability: re-renders and relinks configured
+skills, drops retired owned skills, refreshes configured instructions and hook
+registrations, and repoints scheduled jobs if they name an engine that is no longer the
+one serving this instance. A skill added or withdrawn by a release reaches integrations
+with skills targets from this one command — nothing else to run.
 
 ## Uninstalling
 
@@ -199,11 +208,11 @@ own outright. Reverse it by hand:
 cd ~/regesto-kb && regesto schedule uninstall   # stops the launchd jobs, if you ran `schedule install`
 ```
 
-Then remove the three things `regesto-install` touched: the `SessionStart` entry under
-`.hooks` in `~/.claude/settings.json`, the block between the `regesto:section:start` /
-`:end` markers in your instructions file, and the `regesto-search` / `regesto-write` /
-`regesto-promote` symlinks in each agent's skills directory. Delete the instance directory
-itself (`~/regesto-kb` by default) to remove the knowledge base.
+Then inspect `regesto install --dry-run --json` for the declared host targets. Remove the
+Regesto hook registration and any separate host allowlist entry, the block between the
+`regesto:section:start` / `:end` markers in each instructions file, and the Regesto skill
+links in each skills directory. Preserve unrelated settings and links. Delete the instance
+directory itself (`~/regesto-kb` by default) to remove the knowledge base.
 
 ## Commands
 
@@ -213,6 +222,8 @@ itself (`~/regesto-kb` by default) to remove the knowledge base.
 | `regesto context` | the payload the `SessionStart` hook injects |
 | `regesto install` | plan or apply skills, instructions and hook registration |
 | `regesto hook <protocol>` | translate one Claude/Hermes hook payload with exact host framing |
+| `regesto doctor` | read-only integration, artifact, capability, memory, and trust diagnostics |
+| `regesto mcp` | serve local resources and validated tools over MCP stdio; no network listener |
 | `regesto index` | rebuild `INDEX.md` and `knowledge/topics/` |
 | `regesto lint` | validate against `SCHEMA.md`, reconcile contradictions |
 | `regesto harvest` | capture native-memory writes into `inbox/` |
@@ -227,7 +238,7 @@ itself (`~/regesto-kb` by default) to remove the knowledge base.
 | `regesto schedule` | run harvest and cycle automatically |
 | `regesto version` | which engine this is |
 
-`search`, `context`, `project`, and `config` accept `--json` for stable
+`search`, `context`, `project`, `config`, and `doctor` accept `--json` for stable
 machine-facing results. `write --source … --json-input --json` is the validated
 structured write boundary; its default output remains a concise relative path.
 
@@ -237,16 +248,21 @@ structured write boundary; its default output remains a concise relative path.
 
 | Agent | Consultation | Setup |
 |---|---|---|
-| Claude Code | **hook-enforced** — deterministic | [docs/setup-claude-code.md](docs/setup-claude-code.md) |
-| Hermes Agent | **hook-enforced on the first turn** — deterministic | [docs/setup-hermes.md](docs/setup-hermes.md) |
+| Claude Code | deterministic when the declared startup hook is current | [docs/setup-claude-code.md](docs/setup-claude-code.md) |
+| Hermes Agent | deterministic on the first turn when registration and allowlist are current | [docs/setup-hermes.md](docs/setup-hermes.md) |
 | Codex CLI | skills + instructions | [docs/setup-codex.md](docs/setup-codex.md) |
-| Others | skills + instructions | [docs/setup-other-agents.md](docs/setup-other-agents.md) |
+| Others | profile-dependent: configured skills/instructions, MCP, or manual promotion | [docs/setup-other-agents.md](docs/setup-other-agents.md) |
 
-Claude Code's `SessionStart` hook and Hermes Agent's `pre_llm_call` hook inject context
-before the model can respond, so consultation is guaranteed on those paths. Codex and
-generic integrations rely on skills plus always-loaded instructions, where consultation
-is likely rather than enforced. That difference is real and this project would rather
-state it than paper over it.
+The declared Claude `SessionStart` and Hermes `pre_llm_call` protocols inject context
+before the model can respond, so consultation is guaranteed when their registrations are
+current. The built-in Codex profile, and generic integrations configured with skills and
+instructions targets, use those advisory paths; consultation is likely rather than
+enforced. That difference is real and this project would rather state it than paper over
+it.
+
+The canonical [agent integration matrix](docs/agent-integration.md) is mechanically checked
+against the profile metadata. It also gives a standalone generic-host recipe and separates
+automated protocol/installer evidence from dated live-host validation.
 
 Adding a reusable agent preset is normally a declarative profile under
 `adapters/profiles/`; a one-off host can be configured entirely in `config.toml`. Tested

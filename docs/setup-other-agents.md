@@ -1,21 +1,22 @@
 # Setup — other agents
 
-Three built-in adapters ship today: `claude`, `codex`, and `hermes`. Hermes has a tested
-protocol boundary and installer, while validation against a live Hermes host remains on
-the release checklist. See [setup-hermes.md](setup-hermes.md) for its exact registration
-and probe commands. Anything else can use the generic profile with configured paths; a
-reusable product preset is a small declarative profile.
+The canonical [agent integration matrix](agent-integration.md) lists every built-in profile,
+declared capability, consultation guarantee, and evidence boundary. Three product presets
+ship today: `claude`, `codex`, and `hermes`. Anything else can use the generic profile with
+configured paths; a reusable product preset is a small declarative profile.
 
 ## Adding one
 
-An integration profile declares four capability groups:
+An integration profile declares these capabilities:
 
 | | |
 |---|---|
-| skills directory | where `<name>/SKILL.md` is discovered |
-| instructions file | the always-loaded file the pointer section is appended to |
-| settings file | where a hook is registered, if the platform has hooks |
-| native memory | the files `regesto harvest` diffs, if it has any |
+| detection | path signals used by init; path and command signals used by diagnostics |
+| skills | one or more Agent Skills targets and a portable or tested host variant |
+| instructions | one or more always-loaded targets, plus whether Regesto may create them |
+| hooks | a host payload protocol, preservation-safe registrar, and settings target |
+| native memory | one or more typed sources that `regesto harvest` diffs |
+| trust and exclusions | the default capture policy and files that must not be harvested |
 
 For a reusable preset, add `adapters/profiles/<id>.json`. Use the `portable` skills variant
 unless the host has a tested optimization. An optional append-only variant belongs under
@@ -42,10 +43,16 @@ supported protocol plus `manual` registrar; installation prints the exact event/
 recipe instead of guessing a settings format. Legacy `agents` and override tables remain
 accepted for existing configurations.
 
+Run `regesto doctor --integration someagent` after installation. It reports configured and
+detected state separately, every planned or current artifact, unsupported capabilities,
+memory availability, effective default trust inputs, and an actionable repair command. It
+does not write host files or harvest snapshots.
+
 ## Agents with no local files at all
 
-Chat apps — the Claude and ChatGPT desktop and mobile apps — cannot participate
-automatically. There is nothing on disk to read and no way to inject context.
+Some desktop, mobile, or web chat clients expose neither local integration files nor MCP.
+Those clients cannot participate automatically: there is nothing local to install and no
+supported way to inject context.
 
 The path for those is manual and deliberate: export the conversation, then
 

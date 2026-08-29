@@ -472,13 +472,61 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 10 — diagnostics and documentation
 
-- [ ] Add `doctor`, canonical capability matrix, product recipes, Hermes documentation, and profile-checked claims.
+- [x] Add `doctor`, canonical capability matrix, product recipes, Hermes documentation, and profile-checked claims.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `7ea861a`;
+  staged, unstaged, and untracked files none. The personal knowledge base has
+  no recorded claim governing doctor or integration-documentation behavior.
 - Scope/owners: doctor CLI; README/DESIGN/CONTRIBUTING/SCHEMA; docs and init template.
+- High-risk surfaces: distinguishing configured/detected/installed/tested and
+  deterministic/probabilistic behavior; filesystem checks without mutation;
+  custom/generic profile remediation; hook registration versus protocol
+  availability; memory missing/none/unsupported reporting; trust-policy
+  precedence; canonical matrix drift from profile declarations; product recipe
+  cross-links; and claims about closed hosts or live validation.
 - Verify: Doctor/Docs/Profile tests; stale-claim `rg`; full gate.
-- Skip list/findings carried: ___
+- Skip list/findings carried: raw Go race runs use isolated `GOCACHE`/`GOPATH`;
+  v0.3.1 standalone packaging proof remains M11 and live Claude/Codex/Hermes
+  host evidence remains M12. Documentation may call a protocol/fixture tested
+  only when it says so, and may call a product live-tested only after M12.
 - Review shards: diagnostic accuracy; capability matrix/recipe consistency; documentation terminology.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- Pre-pass-1 state: implementation adds the read-only, versioned `doctor`
+  report and CLI; deterministic capability/artifact/memory/trust diagnostics;
+  canonical profile-derived documentation matrix; standalone generic and MCP
+  recipe; product cross-links; canonical new-instance configuration vocabulary;
+  and focused filesystem-inertness, repeatability, filter, matrix, recipe, and
+  init-template tests. Legacy `agents` parsing and fixtures remain unchanged.
+- Initial verification: `go test ./tests -run 'Doctor|Docs|Profile'` passed;
+  the stale-claim search has no match; formatting, vet, all normal and race
+  tests, explicit shell syntax checks, and `git diff --check` passed with
+  isolated Go caches.
+- Review pass 1: checkpoint `7e1dbde` (`feat: add integration diagnostics
+  and matrix`) received three fresh-context audits. Accepted and fixed omitted
+  detected-but-unconfigured profiles; global and filtered plan-error poisoning;
+  unsupported-only success; blank legacy-unknown trust; multi-hook status
+  fan-out; missing text trust/remedies; mismatched new-config/legacy override
+  examples; unconditional product-name guarantees; an invalid custom-profile
+  recipe; matrix exclusion/set drift; path-versus-command detection wording;
+  inactive empty `integrations`; incomplete host-path inertness; and missing
+  malformed/unsupported memory regressions. The report now falls back to
+  per-integration plans after a global failure, publishes full trust precedence,
+  and keeps unsupported/unmanaged states actionable. Focused tests and the full
+  formatting/vet/test/race/bash/diff gate passed with isolated Go caches;
+  remediation checkpoint follows.
+- Pass 2 baseline: remediation checkpoint `c92253b` (`fix: close
+  integration diagnostic gaps`); review the full M10 diff from `7ea861a` with
+  all pass-1 regressions active.
+- Review pass 2: accepted and fixed harvest-incompatible direct/symlink memory
+  overlap being reported healthy; same-protocol hooks with different settings
+  cross-associating; and remaining unconditional hook, Codex, generic-target,
+  quickstart, and upgrade language. Doctor now canonicalizes the KB and memory
+  roots before applying the same overlap refusal as harvest, while hook
+  association falls back to protocol only for settings-less hooks. Direct,
+  symlink, and same-protocol regressions pass. All three targeted re-reviews are
+  clean; focused checks and the full formatting/vet/test/race/bash/diff gate
+  passed with isolated Go caches. Remediation `35a0772` — `fix: align
+  diagnostics with capability boundaries`.
+- [x] Milestone 10 complete at reviewed checkpoint `35a0772`; final ledger-only
+  closure follows with no implementation changes.
 
 ## Milestone 11 — upgrade proof and packaging
 

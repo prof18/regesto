@@ -104,9 +104,9 @@ func runInit(args []string) error {
 
 	detected := adapters.Detect()
 	if len(detected) > 0 {
-		fmt.Printf("  agents  %s (detected) → config.toml\n", strings.Join(detected, ", "))
+		fmt.Printf("  integrations  %s (detected) → config.toml\n", strings.Join(detected, ", "))
 	} else {
-		fmt.Println("  agents  none detected — set `agents` in config.toml once you have one")
+		fmt.Println("  integrations  none detected — set `integrations` in config.toml once you have one")
 	}
 	if err := writeIfAbsent(root, config.FileName, instanceConfig(detected)); err != nil {
 		return err
@@ -270,12 +270,12 @@ func instanceConfig(detected []string) string {
 # Everything machine- or person-specific lives here, never in the engine. Run
 # ` + "`regesto config`" + ` to see what these resolve to.
 
-# Agents to install adapters for and harvest from. init detected these as
-# present on this machine — edit freely. An agent listed here that is not
-# present is skipped rather than being an error; one present but not listed
-# here just goes unmanaged, which is why ` + "`regesto upgrade`" + ` mentions it if a
-# later release adds an adapter for something already on your machine.
-` + agentsLine(detected) + `
+# Integrations to install and harvest. init detected these as present on this
+# machine — edit freely. A configured integration may be absent on a particular
+# machine; ` + "`regesto doctor`" + ` reports configured and detected state separately.
+# An integration present but not listed remains unmanaged, which is why
+# ` + "`regesto upgrade`" + ` mentions newly detected profiles.
+` + integrationsLine(detected) + `
 
 # Machine identity is NOT set here. This file sits at the KB root, which a sync
 # client replicates, so a value here would be identical on every machine — while
@@ -334,17 +334,16 @@ func instanceConfig(detected []string) string {
 # "hermes@studio-public" = "quarantine"
 # "hermes-private@studio-*" = "supervised"
 
-# Install locations, if this machine differs from the vendor defaults
-# (~/.claude/skills, ~/.claude/CLAUDE.md, ~/.codex/skills, ~/.codex/AGENTS.md).
-# Symlinked targets are handled automatically.
+# Legacy install-location tables remain accepted for existing configurations. New
+# configurations should use [integrations.<id>] below so one declarative profile owns
+# skills, instructions, hooks, memory, exclusions, detection, and trust together.
 # [skills_dirs]
 # claude = "~/.agents/skills"
 # [instructions]
 # claude = "~/.dotfiles/AGENTS.md"
 
-# New configurations may use [integrations.<id>] and the portable generic
-# profile. Replace or remove the generated agents = [...] line above first —
-# config.toml deliberately rejects both vocabularies together.
+# Add a custom host with the portable generic profile. The generated integrations = [...]
+# line above is the canonical vocabulary; add the custom ID to that list.
 # integrations = ["my-agent"]
 # [integrations.my-agent]
 # skills_dir = "~/.my-agent/skills"
@@ -352,6 +351,7 @@ func instanceConfig(detected []string) string {
 # memory_kind = "markdown-glob-v1"
 # memory_location = "~/.my-agent/memory"
 # trust = "quarantine"
+# Diagnose resolved targets without writing: regesto doctor --integration my-agent
 
 # Files never captured from native memory, comma-separated globs. This is the
 # control for "not content"; size is only a proxy for it, and a poor one.
@@ -370,18 +370,18 @@ func instanceConfig(detected []string) string {
 `
 }
 
-// agentsLine renders the `agents = [...]` config line, or a commented-out
-// empty one when nothing was detected — so the file still parses and the
-// reason it does nothing is visible at a glance rather than a bare `[]`.
-func agentsLine(detected []string) string {
+// integrationsLine renders the canonical `integrations = [...]` config line.
+// Keep the empty list active so a new no-detection instance still uses the new
+// vocabulary rather than accidentally falling through to legacy mode.
+func integrationsLine(detected []string) string {
 	if len(detected) == 0 {
-		return "# agents = []   # no known agent detected on this machine — add yours here"
+		return "integrations = []   # no known integration detected — add yours here"
 	}
 	quoted := make([]string, len(detected))
 	for i, a := range detected {
 		quoted[i] = `"` + a + `"`
 	}
-	return "agents = [" + strings.Join(quoted, ", ") + "]"
+	return "integrations = [" + strings.Join(quoted, ", ") + "]"
 }
 
 const gitignoreTemplate = `# macOS noise

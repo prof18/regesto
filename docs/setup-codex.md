@@ -1,18 +1,22 @@
 # Setup — Codex CLI
 
-Codex has no hook that can inject text before the first prompt, so consultation here rests
-on **skills plus instructions**: likely, not guaranteed. Everything else — the same facts,
-the same schema, the same `regesto-write` procedure — is identical to Claude Code.
+See the canonical [agent integration matrix](agent-integration.md) for profile metadata,
+capability status, and consultation guarantees.
+
+The built-in `codex` profile declares no hook that injects text before the first prompt,
+so consultation through that profile rests on **skills plus instructions**: likely, not
+guaranteed. Everything else — the same facts, schema, and `regesto-write` procedure — is
+shared with the other integrations.
 
 ## Install
 
-`regesto init` already added `codex` to `agents` in `config.toml` if `~/.codex` existed on
+`regesto init` already added `codex` to `integrations` in `config.toml` if `~/.codex` existed on
 this machine at the time. Add it yourself otherwise, or if this instance predates that
 detection:
 
 ```toml
 # config.toml
-agents = ["claude", "codex"]
+integrations = ["claude", "codex"]
 ```
 
 ```bash
@@ -20,8 +24,9 @@ agents = ["claude", "codex"]
 ```
 
 This links the shipped portable skills into `~/.codex/skills/` and appends the
-knowledge-base section to `~/.codex/AGENTS.md`. No hook is registered — Codex has no
-settings file for one, and install skips that step rather than warning about it.
+knowledge-base section to `~/.codex/AGENTS.md`. No hook is registered because the built-in
+profile declares none; install treats that capability as unsupported rather than guessing
+a settings format.
 
 If both agents share one instructions file (a symlink into a dotfiles repo, say), install
 notices they resolve to the same path and appends the section once.
@@ -65,7 +70,12 @@ regesto config | grep codex
 
 Install creates a configured skills directory when it is missing. If the links are not
 listed, inspect the complete resolved plan with `regesto install --dry-run`; for a custom
-location, point `[skills_dirs].codex` at wherever yours lives.
+location, configure the resolved integration directly:
+
+```toml
+[integrations.codex]
+skills_dir = "~/.my-codex/skills"
+```
 
 ### Facts written by Codex have the wrong project
 

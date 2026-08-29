@@ -33,13 +33,17 @@ as if someone has forked their copy, because someone has.
 ## Adding an agent
 
 Prefer a declarative integration profile under `adapters/profiles/<id>.json`; it can
-declare skills, instructions, settings, hooks, and memory capabilities without adding a
-Go vendor table. Use the portable skills variant unless the host has a tested optimization.
+declare detection, skills, instructions, hooks, memory, exclusion, and trust capabilities
+without adding a Go vendor table. Use the portable skills variant unless the host has a tested optimization.
 Host-specific append-only skill variants live under `adapters/variants/<variant>/`, and a
 host-facing hook wrapper belongs under `adapters/<profile>/hooks/` while protocol
 translation and registrar implementations live in `internal/install`. Add adapter and
 render tests asserting that defaults remain under `$HOME`, contain no personal path
-element, and do not leak a host optimization into another integration.
+element, and do not leak a host optimization into another integration. Update the
+generated-checked profile table and evidence notes in
+`docs/agent-integration.md`, then link that matrix from any new product setup page. Add
+doctor coverage for missing, current, manual, and unsupported capabilities; diagnostics
+must stay read-only.
 
 A one-off host needs no engine change: configure the generic profile and its actual paths
 in the instance's `config.toml`.

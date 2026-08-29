@@ -1,8 +1,12 @@
 # Setup — Claude Code
 
-Claude Code is one of the supported agents where consultation is **guaranteed** rather
-than likely. Its hook injects text into the model's context before the first prompt. The
-hook does the lookup; the model does not get a choice.
+See the canonical [agent integration matrix](agent-integration.md) for profile metadata,
+capability status, and the distinction between fixture-tested and live-host evidence.
+
+When its declared `SessionStart` hook is registered, consultation is **deterministic**:
+the hook injects text into the model's context before the first prompt. The guarantee
+comes from that installed capability, not from the Claude product name. The hook does the
+lookup; the model does not get a choice.
 
 ## Install
 
@@ -45,15 +49,13 @@ That exact text is what the hook feeds Claude Code at session start.
 Everything lives in your instance's `config.toml`; the engine hardcodes nothing.
 
 ```toml
-agents = ["claude"]
+integrations = ["claude"]
 
 # Only if this machine differs from the vendor defaults.
-[skills_dirs]
-claude = "~/.agents/skills"
-[instructions]
-claude = "~/.dotfiles/AGENTS.md"
-[settings_files]
-claude = "~/.claude/settings.json"
+[integrations.claude]
+skills_dir = "~/.agents/skills"
+instructions_file = "~/.dotfiles/AGENTS.md"
+settings_file = "~/.claude/settings.json"
 ```
 
 `regesto config` prints what these resolve to. If something installed in the wrong place,

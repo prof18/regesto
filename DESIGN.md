@@ -11,11 +11,10 @@ Section numbers are stable, because code comments cite them.
 
 **This is not a memory system. It is a knowledge base that agents consult.**
 
-The distinction is load-bearing. A native agent memory file — Claude Code's, Codex's,
-Hermes's — is a *working-set cache*. It is bounded (a couple of hundred lines, or a hard
-character cap), and the agent is actively instructed to prune stale entries to stay under
-it. It is lossy **by design**. That is correct behaviour for a cache and wrong behaviour
-for knowledge.
+The distinction is load-bearing. A native agent memory file is a *working-set cache*.
+Hosts may bound, rewrite, or prune it, and none expose the append-only history contract
+Regesto requires. It is lossy **by design**. That is correct behaviour for a cache and
+wrong behaviour for knowledge.
 
 A knowledge base is the opposite: it accumulates, nothing is ever deleted, and superseded
 claims stay on disk marked `status: superseded` so the history of a decision survives.
@@ -34,7 +33,7 @@ And its three operations:
 | Karpathy | Here | Who runs it |
 |---|---|---|
 | Ingest | `regesto harvest`, `regesto promote` | A job on every machine |
-| Query | **Consult** — before acting | The agent, enforced by a hook |
+| Query | **Consult** — before acting | The declared hook when available; otherwise the agent follows instructions |
 | Lint | `regesto cycle`: normalize, supersede, rebuild | One machine |
 
 Everything else is in service of those three.
@@ -103,20 +102,21 @@ model acknowledges information and never calls the retrieval tool; the instructi
 the product, and the tools alone are not enough. Even with guidance, compliance is
 probabilistic.
 
-For Claude Code you can do better than instructions. Two hooks inject their stdout
-directly into the model's context:
+For a host with a tested pre-model hook, Regesto can do better than instructions. The
+profile declares a protocol and registrar; the protocol adapter translates the host's
+payload and emits host-valid context framing. The built-in deterministic paths are:
 
 | Hook | Fires | Output behaviour |
 |---|---|---|
-| `SessionStart` | startup, resume, clear, compact, fork | stdout added as context before the first prompt |
-| `UserPromptSubmit` | every prompt, before the model processes it | stdout added as context alongside the prompt |
+| Claude `SessionStart` | startup, resume, clear, compact, fork | stdout added as context before the first prompt |
+| Hermes `pre_llm_call` | first call for a session | JSON `context` added before the first model turn |
 
 That makes retrieval **deterministic**. The hook does the lookup; the model does not get a
 choice about whether to consult.
 
-- `SessionStart` → inject the index plus the facts scoped to this repo. Cheap, once per
-  session, and the agent starts already knowing what exists. This is what `regesto
-  context` prints.
+- `SessionStart` and the first Hermes `pre_llm_call` → inject the index plus facts scoped
+  to this repo. Cheap, once per session, and the agent starts already knowing what exists.
+  This is what `regesto context` prints before protocol framing.
 - `UserPromptSubmit` → a *cheap* keyword match against the index, injecting only matching
   fact ids and one-line summaries. Not a full search on every keystroke. Not implemented:
   build it once you have seen what you actually query.
@@ -124,8 +124,12 @@ choice about whether to consult.
 Note the inversion: **the hook retrieves, the agent reads.** That sidesteps the compliance
 problem entirely for the surface where most of the work happens.
 
-Agents without a hook mechanism fall back to instructions plus skills. Weaker, and worth
-being honest about: consultation is *guaranteed* on Claude Code and *likely* elsewhere.
+Integrations without a declared hook mechanism use declared skills and instructions where
+those targets exist; otherwise they need configured generic targets, local MCP, or manual
+promotion. Those paths are weaker. Where consultation is deterministic, the guarantee
+comes from a successfully registered hook, not from a recognized product name. The
+profile-driven matrix and evidence boundary are documented in
+[docs/agent-integration.md](docs/agent-integration.md).
 
 **One caveat on scope.** "Consult before doing anything" is too broad. Firing retrieval on
 every trivial prompt is expensive and trains you to ignore the noise. Scope it to tasks
@@ -194,9 +198,10 @@ Three limits worth knowing:
   has stale results by turn 20 — which is why a per-prompt hook still earns its place.
 - **Descriptions drive discovery.** Only portable `name` and `description` metadata is
   required at startup, so the description leads with the trigger and concrete use case.
-- **Dynamic context injection is non-portable.** It lives only in the declared `claude`
-  append variant under `adapters/variants/`; portable integrations receive the common
-  procedure byte-for-byte, and render tests prevent cross-profile leakage.
+- **Dynamic pre-execution skill injection is a profile variant.** The built-in `claude`
+  profile selects that append variant under `adapters/variants/`; portable integrations
+  receive the common procedure byte-for-byte, and render tests prevent cross-profile
+  leakage.
 
 ---
 
@@ -288,12 +293,12 @@ happens in one place, or two machines mint competing vocabulary for the same cla
 
 | Agent | Native store | Scope | Consultation |
 |---|---|---|---|
-| Claude Code | per-project memory directory | per git repo | **hook-enforced** |
+| Claude Code | per-project memory directory | per git repo | deterministic when startup hook is current |
 | Codex CLI | global memory directory | global | instructions + skills |
-| Hermes | global memory directory | global, hard char cap | instructions + skills |
-| Chat apps | vendor-internal | — | manual promotion only |
+| Hermes | declared markdown memory directory | global | deterministic when hook and allowlist are current |
+| Host without local files or MCP | vendor-internal | — | manual promotion only |
 
-Claude Code's is the only per-project store, and its directory name derives from the
+Of the built-in profiles, Claude Code's is the only per-project store, and its directory name derives from the
 absolute repo path — so the same project fragments across clones and across machines. The
 adapter normalises all of them onto one canonical project name, derived from the git
 remote's basename, with a hand-kept map in the instance config for remote-less repos and
@@ -428,8 +433,9 @@ foundation, **1** consultation, **2** the lint loop, **3** phones, **4** this ex
 
 ## 12. Honest trade-offs
 
-**It is not zero-infrastructure.** It needs a hook and a periodic job. Mitigation: every
-layer degrades gracefully. Hook breaks → you still grep. Lint breaks → facts still
+**The fully automatic path is not zero-infrastructure.** Deterministic consultation needs
+a supported hook, and automatic capture needs a periodic job. Every layer degrades
+gracefully. Hook breaks → you still grep. Lint breaks → facts still
 accumulate in `inbox/`. Nothing is ever *only* in a generated artifact.
 
 **Generated pages and the index can drift** if lint fails silently. They are regenerable

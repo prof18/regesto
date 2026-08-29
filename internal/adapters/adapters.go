@@ -113,9 +113,9 @@ func excludes(cfg *config.Config, agent string, def []string) []string {
 	return out
 }
 
-// KnownAgents returns the names this engine ships vendor defaults for,
+// KnownAgents returns the profile IDs this engine can detect automatically,
 // sorted. It is the set `regesto init` checks for on the machine, and the set
-// `regesto upgrade` compares a live instance's `agents` against to notice one
+// `regesto upgrade` compares a live instance's integrations against to notice one
 // it did not exist to detect when the instance was created.
 func KnownAgents() []string {
 	profiles, err := embeddedProfiles()
@@ -133,12 +133,11 @@ func KnownAgents() []string {
 	return out
 }
 
-// Detect reports which known agents are present on this machine: the parent
-// of their vendor-default skills directory exists. This is the same check
-// bin/regesto-install performs before installing (skip if that directory is
-// absent) — run here too so `regesto init` can propose an `agents` list that
-// already matches the machine instead of a fixed pair, and so `regesto
-// upgrade` can notice an agent that showed up after the instance was created.
+// Detect reports which known integrations are present on this machine using
+// their declarative path signals. Run here so `regesto init` can propose an
+// `integrations` list that already matches the machine instead of a fixed pair,
+// and so `regesto upgrade` can notice an agent that showed up after the instance
+// was created.
 func Detect() []string {
 	profiles, err := embeddedProfiles()
 	if err != nil {
