@@ -1,7 +1,9 @@
 # Setup — other agents
 
-Two adapters ship today, `claude` and `codex`. A third, `hermes`, has vendor defaults but
-has not been run against a live install. Anything else needs an adapter, which is small.
+Three built-in adapters ship today: `claude`, `codex`, and `hermes`. Hermes has a tested
+protocol boundary and installer, while validation against a live Hermes host remains on
+the release checklist. See [setup-hermes.md](setup-hermes.md) for its exact registration
+and probe commands. Anything else needs an adapter, which is small.
 
 ## Adding one
 

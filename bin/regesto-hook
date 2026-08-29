@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Thin shim over `regesto hook` — the stable protocol boundary adapter wrappers
+# invoke. It never parses host JSON; that behavior belongs to the Go engine.
+set -euo pipefail
+root="${REGESTO_KB_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+if [[ -x "$root/bin/regesto" ]]; then
+  exec "$root/bin/regesto" --config "$root/config.toml" hook "$@"
+fi
+if [[ -f "$root/go.mod" ]] && command -v go >/dev/null 2>&1; then
+  exec go -C "$root" run ./cmd/regesto --config "$root/config.toml" hook "$@"
+fi
+if command -v regesto >/dev/null 2>&1; then
+  exec regesto --config "$root/config.toml" hook "$@"
+fi
+printf '%s: no regesto engine found. Install it, or build one here with:\n  go build -o bin/regesto ./cmd/regesto\n' "$(basename "$0")" >&2
+exit 127

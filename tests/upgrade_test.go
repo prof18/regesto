@@ -277,9 +277,11 @@ func TestInstanceFilesCoverTheInstanceSideEngine(t *testing.T) {
 		"bin/regesto-config",
 		"bin/regesto-project",
 		"bin/regesto-context",
+		"bin/regesto-hook",
 		"bin/regesto-write",
 		"bin/regesto-install",
 		"adapters/claude/hooks/session-start.sh",
+		"adapters/hermes/hooks/pre-llm.sh",
 		"adapters/profiles/claude.json",
 		"adapters/profiles/codex.json",
 		"adapters/profiles/hermes.json",
@@ -308,7 +310,7 @@ func TestInstanceFilesCoverTheInstanceSideEngine(t *testing.T) {
 // Hooks and shims are executed by agents and schedulers; a lost executable bit
 // makes the hook fail silently on every session start.
 func TestScriptsAreMarkedExecutable(t *testing.T) {
-	for _, p := range []string{"bin/regesto-search", "bin/regesto-write", "adapters/claude/hooks/session-start.sh"} {
+	for _, p := range []string{"bin/regesto-search", "bin/regesto-write", "bin/regesto-hook", "adapters/claude/hooks/session-start.sh", "adapters/hermes/hooks/pre-llm.sh"} {
 		if !regesto.Executable(p) {
 			t.Errorf("%s should be executable", p)
 		}

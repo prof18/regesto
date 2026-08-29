@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 
 	"github.com/prof18/regesto/internal/adapters"
@@ -30,18 +29,24 @@ func planHooks(p *Plan, agents []adapters.Agent, legacy bool) error {
 			switch hook.Registrar {
 			case "none", "":
 				continue
-			case "manual", "hermes-config-yaml-v1":
-				p.Items = append(p.Items, Item{
-					ID:              "hook-manual:" + agent.Name + ":" + hook.Protocol,
-					Kind:            "hook",
-					Action:          "manual",
-					Owners:          []string{agent.Name},
-					DeclaredTargets: nonempty(hook.Settings),
-					CurrentState:    "automatic registration unavailable in this milestone",
-					IntendedState:   hook.Registrar + " registration for " + hook.Protocol,
-					BackupAction:    "none",
-					DryRun:          "manual registration required; no file will be rewritten",
-				})
+			case "manual":
+				item, err := planManualHook(p, agent, hook)
+				if err != nil {
+					return err
+				}
+				if err := appendSharedHookItem(p, item); err != nil {
+					return err
+				}
+			case "hermes-config-yaml-v1":
+				items, err := planHermesHook(p, agent, hook)
+				if err != nil {
+					return err
+				}
+				for _, item := range items {
+					if err := appendSharedHookItem(p, item); err != nil {
+						return err
+					}
+				}
 			case "claude-settings-json-v1":
 				if hook.Settings == "" {
 					return fmt.Errorf("integration %q: claude settings registrar has no target", agent.Name)
@@ -57,13 +62,9 @@ func planHooks(p *Plan, agents []adapters.Agent, legacy bool) error {
 				}
 				g.declared = append(g.declared, hook.Settings)
 				g.owners = append(g.owners, agent.Name)
-				command := filepath.Join(p.KBRoot, "adapters", "claude", "hooks", "session-start.sh")
-				info, err := os.Stat(command)
+				command, _, err := protocolHookCommand(p.KBRoot, hook.Protocol)
 				if err != nil {
-					return fmt.Errorf("integration %q: hook executable %s is unavailable: %w", agent.Name, command, err)
-				}
-				if info.IsDir() || info.Mode()&0o111 == 0 {
-					return fmt.Errorf("integration %q: hook is not executable: %s", agent.Name, command)
+					return fmt.Errorf("integration %q: %w", agent.Name, err)
 				}
 				g.commands = append(g.commands, command)
 			default:
@@ -129,6 +130,25 @@ func planHooks(p *Plan, agents []adapters.Agent, legacy bool) error {
 		}
 		p.Items = append(p.Items, item)
 	}
+	return nil
+}
+
+func appendSharedHookItem(p *Plan, item Item) error {
+	for i := range p.Items {
+		existing := &p.Items[i]
+		if existing.ID != item.ID || existing.CanonicalTarget != item.CanonicalTarget {
+			continue
+		}
+		if existing.Kind != item.Kind || existing.Action != item.Action || existing.CurrentState != item.CurrentState ||
+			existing.IntendedState != item.IntendedState || existing.BackupAction != item.BackupAction || existing.DryRun != item.DryRun ||
+			existing.mode != item.mode || !bytes.Equal(existing.desired, item.desired) || !bytes.Equal(existing.before, item.before) {
+			return fmt.Errorf("shared hook target %s has conflicting requirements from %v and %v", item.CanonicalTarget, existing.Owners, item.Owners)
+		}
+		existing.Owners = sortedUnique(append(existing.Owners, item.Owners...))
+		existing.DeclaredTargets = sortedUnique(append(existing.DeclaredTargets, item.DeclaredTargets...))
+		return nil
+	}
+	p.Items = append(p.Items, item)
 	return nil
 }
 

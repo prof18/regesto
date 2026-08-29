@@ -59,13 +59,15 @@ func TestAdapterVendorDefaults(t *testing.T) {
 		t.Errorf("claude should have a settings file — it is the agent with hooks")
 	}
 
-	// Codex and Hermes have no hook mechanism, so no settings file. The
-	// installer uses this to decide whether to try registering a hook.
+	// Codex and Hermes retain an empty legacy flat settings field. Hermes's new
+	// registrar target is exposed through hook metadata without changing this output.
 	if a := agentByName(t, list, "codex"); a.SettingsFile != "" {
 		t.Errorf("codex settings = %q, want empty", a.SettingsFile)
 	}
 	if a := agentByName(t, list, "hermes"); a.SettingsFile != "" {
-		t.Errorf("hermes settings = %q, want empty", a.SettingsFile)
+		t.Errorf("hermes settings = %q, want empty legacy field", a.SettingsFile)
+	} else if len(a.Hooks) != 1 || a.Hooks[0].Settings != filepath.Join(home, ".hermes", "config.yaml") {
+		t.Errorf("hermes registrar target = %+v, want config.yaml", a.Hooks)
 	}
 
 	// No default may be a path belonging to one person.

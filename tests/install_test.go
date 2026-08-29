@@ -42,10 +42,12 @@ func materializeInstallHook(t *testing.T, root string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(root, "adapters", "claude", "hooks", "session-start.sh")
-	writeAt(t, root, "adapters/claude/hooks/session-start.sh", string(files["adapters/claude/hooks/session-start.sh"]))
-	if err := os.Chmod(path, 0o755); err != nil {
-		t.Fatal(err)
+	for _, relative := range []string{"adapters/claude/hooks/session-start.sh", "adapters/hermes/hooks/pre-llm.sh"} {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		writeAt(t, root, relative, string(files[relative]))
+		if err := os.Chmod(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

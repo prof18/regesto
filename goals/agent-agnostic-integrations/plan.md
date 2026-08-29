@@ -397,7 +397,7 @@ Verification:
 
 ```bash
 go test ./tests -run 'Hook|Claude|Hermes'
-bash -n bin/* adapters/*/hooks/*.sh
+bash -n bin/regesto-* adapters/*/hooks/*.sh
 ```
 
 Manual probes:

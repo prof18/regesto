@@ -80,9 +80,11 @@ facts to imitate. Drop `--examples` for an empty one.
 regesto --config ~/regesto-kb/config.toml install --dry-run --json
 ```
 
-Skills are symlinked into each agent, the `SessionStart` hook is registered (Claude Code),
-and a short pointer section is appended to your instructions file. It backs up anything it
-edits and is safe to re-run. This runs for every agent in `agents` in `config.toml`, which
+Skills are symlinked into each integration, the declared hook is registered or shown as an
+exact preservation-safe manual recipe, and a short pointer section is appended to the
+instructions file. Claude uses `SessionStart`; Hermes uses first-turn `pre_llm_call` JSON
+framing. It backs up anything it edits and is safe to re-run. This runs for every integration
+in `agents` or `integrations` in `config.toml`, which
 `init` already set to whichever it found installed on this machine — edit it if that guess
 was wrong.
 
@@ -210,6 +212,7 @@ itself (`~/regesto-kb` by default) to remove the knowledge base.
 | `regesto search` | query facts by subject, relation, scope or free text |
 | `regesto context` | the payload the `SessionStart` hook injects |
 | `regesto install` | plan or apply skills, instructions and hook registration |
+| `regesto hook <protocol>` | translate one Claude/Hermes hook payload with exact host framing |
 | `regesto index` | rebuild `INDEX.md` and `knowledge/topics/` |
 | `regesto lint` | validate against `SCHEMA.md`, reconcile contradictions |
 | `regesto harvest` | capture native-memory writes into `inbox/` |
@@ -235,12 +238,15 @@ structured write boundary; its default output remains a concise relative path.
 | Agent | Consultation | Setup |
 |---|---|---|
 | Claude Code | **hook-enforced** — deterministic | [docs/setup-claude-code.md](docs/setup-claude-code.md) |
+| Hermes Agent | **hook-enforced on the first turn** — deterministic | [docs/setup-hermes.md](docs/setup-hermes.md) |
 | Codex CLI | skills + instructions | [docs/setup-codex.md](docs/setup-codex.md) |
 | Others | skills + instructions | [docs/setup-other-agents.md](docs/setup-other-agents.md) |
 
-Only Claude Code exposes a hook that can inject context before the first prompt, so only
-there is consultation *guaranteed*. Everywhere else it is likely. That difference is real
-and this project would rather state it than paper over it.
+Claude Code's `SessionStart` hook and Hermes Agent's `pre_llm_call` hook inject context
+before the model can respond, so consultation is guaranteed on those paths. Codex and
+generic integrations rely on skills plus always-loaded instructions, where consultation
+is likely rather than enforced. That difference is real and this project would rather
+state it than paper over it.
 
 Adding an agent is a pull request that touches `internal/adapters` and `adapters/`, and
 nothing in `knowledge/`.
@@ -260,8 +266,9 @@ nothing in `knowledge/`.
 
 ## Requirements
 
-Go 1.26 to build. `jq` for hook registration. macOS for `regesto schedule` (launchd); the
-rest is portable, and the jobs are two commands you can run from any scheduler.
+Go 1.26 to build. Hook payloads and registration use the Go engine and require no `jq`.
+macOS is required for `regesto schedule` (launchd); the rest is portable, and the jobs are
+two commands you can run from any scheduler.
 
 ## License
 

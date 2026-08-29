@@ -31,6 +31,8 @@ commands:
         validate and atomically create one fact from a JSON object on stdin
   install [--dry-run] [--json]
         plan or apply integration skills, instructions, and hook registration
+  hook <protocol>
+        translate one host hook payload on stdin using host-valid framing
   harvest [--dry-run] [-v]
         capture new native-memory writes into inbox/<agent>@<machine>/
   init [--dir D] [--machine NAME] [--examples] [--force]
@@ -82,6 +84,15 @@ func run(args []string) error {
 	case "version", "--version", "-version":
 		fmt.Println("regesto", version.Current())
 		return nil
+	case "hook":
+		cfg, err := loadConfig(*configPath)
+		if err != nil {
+			return failOpenHook(rest[1:], os.Stdout, os.Stderr, err)
+		}
+		if err := facts.SetConflictPattern(cfg.Section("sync")["conflict_pattern"]); err != nil {
+			return failOpenHook(rest[1:], os.Stdout, os.Stderr, err)
+		}
+		return runHook(cfg, rest[1:])
 	}
 
 	cfg, err := loadConfig(*configPath)

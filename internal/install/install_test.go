@@ -22,14 +22,16 @@ func writeTestFile(t *testing.T, path, body string) {
 
 func loadTestConfig(t *testing.T, root, body string) *config.Config {
 	t.Helper()
-	hook, err := regesto.Adapters.ReadFile("adapters/claude/hooks/session-start.sh")
-	if err != nil {
-		t.Fatal(err)
-	}
-	hookPath := filepath.Join(root, "adapters", "claude", "hooks", "session-start.sh")
-	writeTestFile(t, hookPath, string(hook))
-	if err := os.Chmod(hookPath, 0o755); err != nil {
-		t.Fatal(err)
+	for _, relative := range []string{"adapters/claude/hooks/session-start.sh", "adapters/hermes/hooks/pre-llm.sh"} {
+		hook, err := regesto.Adapters.ReadFile(relative)
+		if err != nil {
+			t.Fatal(err)
+		}
+		hookPath := filepath.Join(root, filepath.FromSlash(relative))
+		writeTestFile(t, hookPath, string(hook))
+		if err := os.Chmod(hookPath, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	path := filepath.Join(root, "config.toml")
 	writeTestFile(t, path, body)
@@ -550,6 +552,132 @@ func TestRenderedSkillOwnershipChangeAfterPlanIsRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(rendered); !os.IsNotExist(err) {
 		t.Fatalf("rendered file was created after ownership changed: %v", err)
+	}
+}
+
+func TestHermesMissingConfigAndAllowlistInstallIdempotently(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := loadTestConfig(t, root, "integrations = [\"hermes\"]\n")
+	plan, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	command := filepath.Join(root, "adapters", "hermes", "hooks", "pre-llm.sh")
+	configBody := string(mustReadTest(t, filepath.Join(home, ".hermes", "config.yaml")))
+	if !strings.Contains(configBody, "pre_llm_call") || !strings.Contains(configBody, command) {
+		t.Fatalf("Hermes config missing exact registration:\n%s", configBody)
+	}
+	allowlistBody := string(mustReadTest(t, filepath.Join(home, ".hermes", "shell-hooks-allowlist.json")))
+	if !strings.Contains(allowlistBody, `"event": "pre_llm_call"`) || !strings.Contains(allowlistBody, command) {
+		t.Fatalf("Hermes allowlist missing exact approval:\n%s", allowlistBody)
+	}
+	second, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Changes() != 0 {
+		t.Fatalf("second Hermes plan has %d changes", second.Changes())
+	}
+}
+
+func TestHermesExistingYAMLIsPreservedWithExactManualRecipe(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	configPath := filepath.Join(home, ".hermes", "config.yaml")
+	writeTestFile(t, configPath, "model: custom\nforeign: true\n")
+	allowlistPath := filepath.Join(home, ".hermes", "shell-hooks-allowlist.json")
+	writeTestFile(t, allowlistPath, "{\n  \"approvals\": [{\"event\": \"post_llm_call\", \"command\": \"/foreign\"}],\n  \"foreign\": true\n}\n")
+	cfg := loadTestConfig(t, root, "integrations = [\"hermes\"]\n")
+	plan, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manual := false
+	for _, item := range plan.Items {
+		if item.ID == "hook-hermes-config:"+mustCanonical(t, configPath) {
+			manual = item.Action == "manual" && strings.Contains(item.IntendedState, "pre_llm_call") && strings.Contains(item.IntendedState, "pre-llm.sh")
+		}
+	}
+	if !manual {
+		t.Fatalf("Hermes manual recipe missing: %+v", plan.Items)
+	}
+	result, err := Apply(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(mustReadTest(t, configPath)); got != "model: custom\nforeign: true\n" {
+		t.Fatalf("Hermes YAML changed:\n%s", got)
+	}
+	if len(result.Backups) != 1 || filepath.Dir(result.Backups[0]) != filepath.Dir(mustCanonical(t, allowlistPath)) {
+		t.Fatalf("Hermes allowlist backups = %v", result.Backups)
+	}
+	allowlist := string(mustReadTest(t, allowlistPath))
+	if !strings.Contains(allowlist, "/foreign") || !strings.Contains(allowlist, "pre_llm_call") || !strings.Contains(allowlist, `"foreign": true`) {
+		t.Fatalf("Hermes allowlist foreign content lost:\n%s", allowlist)
+	}
+	second, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Changes() != 0 {
+		t.Fatalf("second existing-YAML Hermes plan has %d changes", second.Changes())
+	}
+}
+
+func TestHermesSharedTargetsGroupStableOwners(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := loadTestConfig(t, root, "integrations = [\"z-hermes\", \"a-hermes\"]\n"+
+		"[integrations.z-hermes]\nprofile = \"hermes\"\n"+
+		"[integrations.a-hermes]\nprofile = \"hermes\"\n")
+	plan, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, item := range plan.Items {
+		if strings.HasPrefix(item.ID, "hook-hermes-") {
+			seen++
+			if got := strings.Join(item.Owners, ","); got != "a-hermes,z-hermes" {
+				t.Fatalf("Hermes shared owners = %q", got)
+			}
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("Hermes shared hook items = %d, want config and allowlist", seen)
+	}
+	if _, err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHermesAllowlistRejectsDuplicateKeysWithoutWrites(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	allowlist := filepath.Join(home, ".hermes", "shell-hooks-allowlist.json")
+	writeTestFile(t, allowlist, `{"approvals":[],"approvals":[]}`)
+	cfg := loadTestConfig(t, root, "integrations = [\"hermes\"]\n")
+	if _, err := Build(cfg, Options{}); err == nil || !strings.Contains(err.Error(), "duplicate object key") {
+		t.Fatalf("duplicate Hermes allowlist error = %v", err)
+	}
+	if got := string(mustReadTest(t, allowlist)); got != `{"approvals":[],"approvals":[]}` {
+		t.Fatalf("duplicate Hermes allowlist changed: %q", got)
+	}
+}
+
+func TestHermesCommandIsShellQuotedForShlexSplit(t *testing.T) {
+	if got := shellQuote("/tmp/plain/path"); got != "'/tmp/plain/path'" {
+		t.Fatalf("plain shell quote = %q", got)
+	}
+	if got := shellQuote("/tmp/root with 'quote'/hook"); got != `'/tmp/root with '"'"'quote'"'"'/hook'` {
+		t.Fatalf("complex shell quote = %q", got)
+	}
+	if got := shellQuote("/tmp/$HOME;touch owned|hook&other*(?)"); got != "'/tmp/$HOME;touch owned|hook&other*(?)'" {
+		t.Fatalf("metacharacter shell quote = %q", got)
 	}
 }
 

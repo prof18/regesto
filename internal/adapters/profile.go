@@ -213,8 +213,8 @@ func validateProfile(p Profile, source, fileID string) error {
 				return fmt.Errorf("%s: claude-settings-json-v1 requires claude-session-start-v1 and settings", source)
 			}
 		case "hermes-config-yaml-v1":
-			if h.Protocol != "hermes-pre-llm-v1" {
-				return fmt.Errorf("%s: hermes-config-yaml-v1 requires hermes-pre-llm-v1", source)
+			if h.Protocol != "hermes-pre-llm-v1" || h.Settings == "" {
+				return fmt.Errorf("%s: hermes-config-yaml-v1 requires hermes-pre-llm-v1 and settings", source)
 			}
 		case "none":
 			if h.Protocol != "none" || h.Settings != "" {
@@ -415,7 +415,10 @@ func resolveProfile(cfg *config.Config, id string, p Profile, values map[string]
 	if err := validateResolvedMemory(id, a.MemorySources); err != nil {
 		return a, err
 	}
-	if len(a.Hooks) > 0 {
+	// SettingsFile is the legacy flat Claude-settings compatibility field. New
+	// registrars expose their targets through Hooks so adding one does not change
+	// established `regesto config` text output for existing integrations.
+	if len(a.Hooks) > 0 && a.Hooks[0].Registrar == "claude-settings-json-v1" {
 		a.SettingsFile = a.Hooks[0].Settings
 	}
 	return a, nil

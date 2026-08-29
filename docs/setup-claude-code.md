@@ -1,8 +1,8 @@
 # Setup — Claude Code
 
-Claude Code is the only supported agent where consultation is **guaranteed** rather than
-likely, because it exposes a hook that injects text into the model's context before the
-first prompt. The hook does the lookup; the model does not get a choice.
+Claude Code is one of the supported agents where consultation is **guaranteed** rather
+than likely. Its hook injects text into the model's context before the first prompt. The
+hook does the lookup; the model does not get a choice.
 
 ## Install
 
@@ -79,7 +79,12 @@ python3 -m json.tool ~/.claude/settings.json
 The hook is written to **never fail a session start**: if anything goes wrong it exits 0
 and injects nothing. That is deliberate — a non-zero exit would surface as an error on
 every single session — but it does mean a broken hook is silent. Run
-`bin/regesto-context` by hand to see the error it is swallowing.
+the protocol boundary directly to see diagnostics without involving Claude Code:
+
+```bash
+printf '%s' '{"workspace":{"current_dir":"/tmp/project"}}' \
+  | ~/regesto-kb/bin/regesto-hook claude-session-start-v1
+```
 
 To prove stdout really lands in context, put a sentinel string in the hook's output and ask
 the model to repeat it, in an isolated session that does not touch your global config:

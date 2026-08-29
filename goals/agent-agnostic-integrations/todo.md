@@ -265,12 +265,50 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 ## Milestone 6 — protocol-owned hooks
 
 - [ ] Port Claude/Hermes hook parsing, framing, registration/manual recipes, bounded first-turn behavior, and fail-open handling to Go.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `adeecb1`;
+  staged, unstaged, and untracked files none.
 - Scope/owners: `internal/hooks`, hook CLI/shim, adapter hook compatibility, hook fixtures/tests.
-- Verify: Hook/Claude/Hermes tests; `bash -n bin/* adapters/*/hooks/*.sh`; three documented manual probes; full gate.
-- Skip list/findings carried: ___
+- High-risk surfaces: exact plain-text versus JSON framing, malformed/oversized
+  payload fail-open behavior, stdout purity, project-directory extraction, atomic
+  once-per-session claims under repeat calls, bounded anonymous marker state,
+  symlink-safe runtime state, preservation of existing Claude settings and Hermes
+  YAML/allowlist content, and legacy wrapper migration without double injection.
+- Verify: Hook/Claude/Hermes tests; `bash -n bin/regesto-* adapters/*/hooks/*.sh`;
+  three documented manual probes; full gate.
+- Skip list/findings carried: raw Go race runs use isolated `GOCACHE`/`GOPATH`;
+  shared artifact portability remains M7, native memory harvesting M8, `doctor`
+  validation and full Hermes product documentation M10, and live host/release
+  packaging evidence M11/M12. Existing unfamiliar Hermes YAML must never be
+  rewritten; the registrar falls back to an exact manual recipe while JSON
+  allowlist ownership remains independently reviewable.
 - Review shards: protocol framing; registration/YAML safety; failure/session tests.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- Review pass 1: accepted and fixed Claude's unsafe process-cwd fallback for
+  missing/unusable payload directories; Hermes command-path shell injection
+  through unquoted metacharacters; first-turn marker consumption before a
+  successful context build; and stale/incomplete Hermes registration and probe
+  documentation. The protocol boundary now fails open without cross-project
+  context, every Hermes command is single-quoted for `shlex` parsing, context is
+  built before the atomic session claim, and setup guidance uses explicit
+  instance configuration/shims. All three reviewers and targeted re-reviews are
+  clean. Focused tests, three manual Claude/Hermes probes, and the full
+  formatting/vet/test/race/bash/diff gate passed with isolated Go caches.
+  Checkpoint `89dede0` — `feat: add protocol-owned hooks`.
+- Pass 2 baseline: checkpoint `89dede0`; review the full milestone diff from
+  `adeecb1`. Carry only the isolated-cache environment note and the explicit M7
+  artifact-portability, M8 harvesting, M10 doctor/documentation, and M11/M12
+  packaging/live-host boundaries; all pass-1 findings are closed.
+- Review pass 2: accepted and fixed direct-shim `REGESTO_KB_ROOT` routing,
+  out-of-order Hermes false-before-true marker consumption, an invalid shell
+  verification glob that included the compiled binary, and missing shell quotes
+  in the manual Hermes YAML example. Both entry points now select the same
+  instance, explicit false is state-free, the written gate targets only shims
+  and wrappers, and the documented YAML matches the safe generated command.
+  All fresh reviewers and targeted re-reviews are clean. Focused tests, the
+  three manual probes, and the full formatting/vet/test/race/bash/diff gate
+  passed with isolated Go caches. Remediation `97a801a` — `fix: close hook
+  protocol edge cases`.
+- [x] Milestone 6 complete at reviewed checkpoint `97a801a`; final ledger-only
+  closure follows with no implementation changes.
 
 ## Milestone 7 — portable skills/instructions
 
