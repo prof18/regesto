@@ -48,13 +48,36 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 1 — compatibility fixtures
 
-- [ ] Add legacy config/integration fixtures and compatibility tests, including generic profile target cases.
-- Scope/owners: `tests/fixtures/config`, `tests/integrations_test.go`, `tests/adapters_test.go`, `tests/upgrade_test.go`.
+- [x] Add legacy config/integration fixtures and compatibility tests, including generic profile target cases.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `d2941b9`;
+  staged files none; unstaged tracked files none; untracked files are
+  `tests/integrations_test.go` and four files under `tests/fixtures/config/`.
+- Scope/owners: test-only compatibility boundary in `tests/fixtures/config` and
+  `tests/integrations_test.go`; production behavior and existing user files are
+  untouched.
+- High-risk surfaces: byte-compatible legacy config output, exact adapter and
+  instance-file defaults, HOME-dependent detection, current-vs-target trust
+  expectations, and future contracts that must remain explicit skips.
 - Verify: `go test ./tests -run 'Adapter|Integration|Upgrade|Trust'` plus full gate.
-- Skip list/findings carried: ___
-- Review shards: configuration/legacy compatibility; tests/fixtures; upgrade/trust.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- Skip list/findings carried: raw Go race runs need isolated `GOCACHE`/`GOPATH`
+  under the workspace sandbox; no milestone-0 code findings carry forward.
+- Review shards: configuration/defaults/detection; trust and future-contract
+  boundary; instance/upgrade fixture and test determinism.
+- Review pass 1: accepted and fixed exact CLI override serialization, none/one/all
+  and second-HOME detection, dead generic-fixture coverage, and duplicate instance
+  inventory. Unknown/custom quarantine is an explicit skipped M3 contract; the
+  v0.3.1 fixture pins parser/config compatibility while zero-edit upgrade remains
+  M11. Focused output records the M2/M3 skips. Full gate passed with isolated Go
+  caches. Checkpoint `1df6540` — `test: pin legacy integration compatibility`.
+- Pass 2 baseline: checkpoint `1df6540`; review the full milestone diff from
+  `d2941b9`. Carry the isolated-cache environment note and the explicit M2/M3/M11
+  deferrals; no production trust or upgrade behavior belongs in this milestone.
+- Review pass 2: both fresh shards clean. They confirmed exact defaults and CLI
+  output, override precedence, detection isolation, trust compatibility, exact
+  instance inventory, fixture use, focused-regex participation, and accurate
+  M2/M3/M11 deferrals. Full gate passed; no remediation commit required.
+- [x] Milestone 1 complete at reviewed checkpoint `1df6540`; final ledger-only
+  closure follows with no test or production changes.
 
 ## Milestone 2 — profiles and additive configuration
 

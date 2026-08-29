@@ -1,0 +1,10 @@
+# Target contract fixture: parsed by the additive integrations model in M2.
+integrations = ["synthetic"]
+
+[integrations.synthetic]
+profile = "generic"
+skills_dir = "~/.synthetic/skills"
+instructions_file = "~/.synthetic/AGENTS.md"
+memory_kind = "markdown-glob-v1"
+memory_location = "~/.synthetic/memory"
+trust = "quarantine"

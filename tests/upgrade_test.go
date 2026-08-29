@@ -245,7 +245,7 @@ func TestInstanceFilesCoverTheInstanceSideEngine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{
+	wantFiles := []string{
 		"SCHEMA.md",
 		"bin/regesto-search",
 		"bin/regesto-index",
@@ -258,10 +258,14 @@ func TestInstanceFilesCoverTheInstanceSideEngine(t *testing.T) {
 		"adapters/skills/regesto-search/SKILL.md",
 		"adapters/skills/regesto-write/SKILL.md",
 		"adapters/skills/regesto-promote/SKILL.md",
-	} {
-		if len(files[want]) == 0 {
+	}
+	for _, want := range wantFiles {
+		if _, ok := files[want]; !ok {
 			t.Errorf("%s is missing from the instance file set", want)
 		}
+	}
+	if len(files) != len(wantFiles) {
+		t.Errorf("instance file set has %d files, want exactly %d", len(files), len(wantFiles))
 	}
 	// The engine's own source must never be shipped into a knowledge base.
 	for p := range files {
