@@ -165,12 +165,21 @@ func runUpgrade(cfg *config.Config, args []string) error {
 // — so silently appending to `agents` would be the one place upgrade crossed
 // that line. The user adds it themselves if they want it managed.
 func noteNewAgents(cfg *config.Config) {
-	have := make(map[string]bool, len(cfg.Agents))
-	for _, a := range cfg.Agents {
+	have := make(map[string]bool, len(cfg.IntegrationIDs()))
+	for _, a := range cfg.IntegrationIDs() {
 		have[a] = true
 	}
+	detected := adapters.Detect()
+	if !cfg.UsesLegacyAgents() {
+		var err error
+		detected, err = adapters.DetectProfiles(cfg.KBRoot)
+		if err != nil {
+			fmt.Printf("note     could not detect configured integration profiles: %v\n\n", err)
+			return
+		}
+	}
 	var missing []string
-	for _, a := range adapters.Detect() {
+	for _, a := range detected {
 		if !have[a] {
 			missing = append(missing, a)
 		}
@@ -178,8 +187,12 @@ func noteNewAgents(cfg *config.Config) {
 	if len(missing) == 0 {
 		return
 	}
-	fmt.Printf("note     %s detected but not in agents = [...] in config.toml — add it yourself to have this instance manage it\n\n",
-		strings.Join(missing, ", "))
+	vocabulary := "integrations"
+	if cfg.UsesLegacyAgents() {
+		vocabulary = "agents"
+	}
+	fmt.Printf("note     %s detected but not in %s = [...] in config.toml — add it yourself to have this instance manage it\n\n",
+		strings.Join(missing, ", "), vocabulary)
 }
 
 // reinstallAdapters runs the instance's own install script, which was itself

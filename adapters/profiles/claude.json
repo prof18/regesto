@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "claude",
+  "display_name": "Claude Code",
+  "detect": {"paths": ["~/.claude"], "commands": ["claude"]},
+  "skills": {"targets": ["~/.claude/skills"], "variant": "claude"},
+  "instructions": {"targets": ["~/.claude/CLAUDE.md"], "create": false},
+  "hooks": [{"protocol": "claude-session-start-v1", "registrar": "claude-settings-json-v1", "settings": "~/.claude/settings.json"}],
+  "memory": [{"kind": "markdown-glob-v1", "location": "~/.claude/projects/*/memory"}],
+  "default_trust": "supervised"
+}

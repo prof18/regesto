@@ -31,6 +31,12 @@ type Config struct {
 	MachineSource string
 	// Agents lists the agents whose adapters/harvest this instance runs.
 	Agents []string
+	// Integrations is the additive replacement for Agents. Agents is deliberately
+	// kept untouched so existing callers and old instance configuration retain
+	// their exact meaning and output.
+	Integrations    []string
+	agentsSet       bool
+	integrationsSet bool
 	// Projects maps repo basenames or absolute paths to canonical project
 	// names (PLAN 0.2), covering remote-less repos and basename collisions.
 	// Shorthand for Section("projects").
@@ -41,6 +47,24 @@ type Config struct {
 	Sections map[string]map[string]string
 	// Path is where the config file was loaded from.
 	Path string
+}
+
+// IntegrationIDs is the configured integration list. Legacy agents remain the
+// source of truth for legacy configurations.
+func (c *Config) IntegrationIDs() []string {
+	if c.integrationsSet || len(c.Integrations) > 0 {
+		return append([]string(nil), c.Integrations...)
+	}
+	return append([]string(nil), c.Agents...)
+}
+
+// UsesLegacyAgents reports whether this configuration used the legacy top-level
+// agents key. It is intentionally about syntax, rather than list contents.
+func (c *Config) UsesLegacyAgents() bool {
+	// The len fallback keeps programmatic Config literals written before the
+	// integrations field existed behaving as legacy configuration too. An absent
+	// list also remains legacy: bin/regesto-install consumes its agents= line.
+	return !c.integrationsSet && len(c.Integrations) == 0
 }
 
 // Section returns a `[table]` of string pairs, or an empty map if absent.
@@ -143,11 +167,19 @@ func Load(path string) (*Config, error) {
 			case "machine":
 				cfg.Machine = unquote(value)
 			case "agents":
+				cfg.agentsSet = true
 				list, err := parseList(value)
 				if err != nil {
 					return nil, fmt.Errorf("%s:%d: %w", path, lineNo+1, err)
 				}
 				cfg.Agents = list
+			case "integrations":
+				cfg.integrationsSet = true
+				list, err := parseList(value)
+				if err != nil {
+					return nil, fmt.Errorf("%s:%d: %w", path, lineNo+1, err)
+				}
+				cfg.Integrations = list
 			default:
 				return nil, fmt.Errorf("%s:%d: unknown key %q", path, lineNo+1, key)
 			}
@@ -165,6 +197,9 @@ func Load(path string) (*Config, error) {
 			}
 			cfg.Sections[section][key] = v
 		}
+	}
+	if cfg.agentsSet && cfg.integrationsSet {
+		return nil, fmt.Errorf("%s: set either agents or integrations, not both", path)
 	}
 
 	if cfg.KBRoot == "" {

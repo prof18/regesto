@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "hermes",
+  "display_name": "Hermes",
+  "detect": {"paths": ["~/.hermes"], "commands": ["hermes"]},
+  "skills": {"targets": ["~/.hermes/skills"], "variant": "portable"},
+  "instructions": {"targets": ["~/.hermes/SOUL.md"], "create": false},
+  "hooks": [{"protocol": "hermes-pre-llm-v1", "registrar": "hermes-config-yaml-v1"}],
+  "memory": [{"kind": "markdown-glob-v1", "location": "~/.hermes/memories"}],
+  "default_trust": "quarantine"
+}

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "codex",
+  "display_name": "Codex",
+  "detect": {"paths": ["~/.codex"], "commands": ["codex"]},
+  "skills": {"targets": ["~/.codex/skills"], "variant": "portable"},
+  "instructions": {"targets": ["~/.codex/AGENTS.md"], "create": false},
+  "memory": [{"kind": "markdown-glob-v1", "location": "~/.codex/memories"}],
+  "default_trust": "supervised",
+  "exclude_globs": ["raw_memories.md"]
+}

@@ -81,13 +81,46 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 2 — profiles and additive configuration
 
-- [ ] Add data-driven profiles, loader/validation, integrations config, and legacy compatibility mapping.
-- Scope/owners: profile JSON; `internal/adapters`, `internal/config`, config/init/showconfig/scaffold callers.
+- [x] Add data-driven profiles, loader/validation, integrations config, and legacy compatibility mapping.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `2337d5c`;
+  staged files none; implementation changes are limited to four new profile JSON
+  files, `internal/adapters/profile.go`, the planned adapter/config/CLI callers,
+  and focused adapter/integration/upgrade tests.
+- Scope/owners: profile JSON; `internal/adapters`, `internal/config`, config/init/showconfig/upgrade/scaffold callers and tests. Trust normalization, installation application, hook execution, rendering, and typed harvesting remain later milestones.
+- High-risk surfaces: zero-edit legacy configs (including absent lists and unknown
+  overridden agents), data-driven detection, embedded-vs-instance profile
+  precedence, strict profile/config validation, hook-settings consistency,
+  byte-compatible legacy text output, new JSON capability output, and current
+  shell-installer compatibility.
 - Verify: `go test ./tests -run 'Adapter|Integration|Config|InstanceFiles'`; `go test ./...` plus full gate.
-- Skip list/findings carried: ___
-- Review shards: profile/config resolution; instance/scaffold compatibility; tests/docs metadata.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- Skip list/findings carried: raw Go race runs use isolated `GOCACHE`/`GOPATH`;
+  unknown/custom trust enforcement remains the explicit M3 skip and v0.3.1
+  end-to-end upgrade remains M11.
+- Review shards: profile/config resolution and validation; legacy/CLI/installer
+  compatibility; instance/scaffold metadata and test coverage.
+- Review pass 1: accepted and fixed capability-combination validation for hooks,
+  singular settings and memory override ambiguity, inactive unsafe skill variants,
+  command detection validation/consumption, and silent harvest resolution errors.
+  Main audit additionally preserved duplicate legacy agents, removed product-ID
+  hook requirements, and brought all material M2 tests into the focused regex.
+  Compatibility review and every targeted re-review are clean. Focused tests and
+  the full formatting/vet/test/race/diff gate passed with isolated Go caches.
+  Checkpoint `4c6f6b0` — `feat: add capability-driven integration profiles`.
+- Pass 2 baseline: checkpoint `4c6f6b0`; review the full milestone diff from
+  `2337d5c`. Carry only the isolated-cache environment note and the explicit
+  M3 trust/M11 upgrade deferrals; all pass-1 findings and targeted re-reviews
+  are closed.
+- Review pass 2: accepted and fixed contradictory `none` hook/memory
+  declarations, an incomplete init migration example, HOME/command-name edge
+  validation, and missing strict-parser/fallback/duplicate/detection contracts.
+  Duplicate instance profile IDs are structurally rejected during file/ID
+  validation; the v0.3.1 end-to-end upgrade remains intentionally M11 while
+  M2's exact legacy resolution/output fixtures stay green. All three fresh
+  reviewers and final targeted re-reviews are clean. Focused tests and the full
+  formatting/vet/test/race/diff gate passed with isolated Go caches.
+  Remediation `a918b84` — `fix: harden integration profile contracts`.
+- [x] Milestone 2 complete at reviewed checkpoint `a918b84`; final ledger-only
+  closure follows with no implementation changes.
 
 ## Milestone 3 — generalized source trust
 

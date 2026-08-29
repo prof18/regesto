@@ -42,6 +42,24 @@ func TestSchedulePathIncludesConfiguredCommandAndStableDefaults(t *testing.T) {
 	}
 }
 
+func TestIntegrationInitTemplateKeepsLegacyAgentsAndDocumentsGenericProfile(t *testing.T) {
+	body := instanceConfig([]string{"claude", "codex"})
+	for _, want := range []string{
+		"agents = [\"claude\", \"codex\"]",
+		"Replace or remove the generated agents = [...] line above first",
+		"# integrations = [\"my-agent\"]",
+		"[integrations.my-agent]",
+		"memory_kind = \"markdown-glob-v1\"",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("init template missing %q", want)
+		}
+	}
+	if strings.Contains(body, "\nintegrations = [") {
+		t.Error("init template must not create integrations alongside legacy agents")
+	}
+}
+
 func TestScheduleExtraPathComesFirstAndIsDeduplicated(t *testing.T) {
 	cfg := &config.Config{Sections: map[string]map[string]string{
 		"schedule": {"extra_path": "/custom/bin:/opt/homebrew/bin:/custom/bin"},

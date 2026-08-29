@@ -62,8 +62,12 @@ func Run(cfg *config.Config, dryRun bool) ([]Result, error) {
 	if cfg.Machine == "" {
 		return nil, fmt.Errorf("no machine name resolved; cannot name the inbox")
 	}
+	resolved, err := adapters.Resolve(cfg)
+	if err != nil {
+		return nil, err
+	}
 	var results []Result
-	for _, a := range adapters.For(cfg) {
+	for _, a := range resolved {
 		r, err := runAgent(cfg, a, dryRun)
 		if err != nil {
 			return results, err

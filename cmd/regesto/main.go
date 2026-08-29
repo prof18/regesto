@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/prof18/regesto/internal/adapters"
 	"github.com/prof18/regesto/internal/config"
 	"github.com/prof18/regesto/internal/facts"
 	"github.com/prof18/regesto/internal/search"
@@ -97,7 +98,7 @@ func run(args []string) error {
 	case "context":
 		return runContext(cfg, rest[1:])
 	case "config":
-		return runShowConfig(cfg)
+		return runShowConfig(cfg, rest[1:])
 	case "harvest":
 		return runHarvest(cfg, rest[1:])
 	case "promote":
@@ -131,7 +132,14 @@ func loadConfig(path string) (*config.Config, error) {
 			return nil, err
 		}
 	}
-	return config.Load(path)
+	cfg, err := config.Load(path)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := adapters.Resolve(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
 func runSearch(cfg *config.Config, args []string) error {

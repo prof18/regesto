@@ -124,9 +124,9 @@ claude = "~/somewhere/settings.json"
 }
 
 func TestUnknownAgentIsReportedNotSkipped(t *testing.T) {
-	cfg := writeConfig(t, "machine = \"testbox\"\nagents = [\"claude\", \"someagent\"]\n")
+	cfg := writeConfig(t, "machine = \"testbox\"\nagents = [\"claude\", \"some_agent\"]\n")
 	list := adapters.For(cfg)
-	a := agentByName(t, list, "someagent")
+	a := agentByName(t, list, "some_agent")
 	if a.SkillsDir != "" {
 		t.Errorf("unknown agent got a guessed skills dir %q", a.SkillsDir)
 	}
@@ -134,6 +134,80 @@ func TestUnknownAgentIsReportedNotSkipped(t *testing.T) {
 	// silently doing nothing for an agent the user asked for.
 	if len(list) != 2 {
 		t.Errorf("got %d agents, want 2 including the unknown one", len(list))
+	}
+}
+
+func TestAdapterLegacyUnknownAgentOverrideTablesRemainUsable(t *testing.T) {
+	cfg := writeConfig(t, `agents = ["some_agent"]
+[skills_dirs]
+some_agent = "/tmp/some-agent/skills"
+[instructions]
+some_agent = "/tmp/some-agent/AGENTS.md"
+[settings_files]
+some_agent = "/tmp/some-agent/settings.json"
+[memory_dirs]
+some_agent = "/tmp/some-agent/memory/*"
+`)
+	a := agentByName(t, adapters.For(cfg), "some_agent")
+	if a.SkillsDir != "/tmp/some-agent/skills" || a.InstructionsFile != "/tmp/some-agent/AGENTS.md" || a.SettingsFile != "/tmp/some-agent/settings.json" || a.MemoryGlob != "/tmp/some-agent/memory/*" {
+		t.Errorf("legacy unknown overrides were lost: %+v", a)
+	}
+}
+
+func TestAdapterLegacyDuplicateAgentsRemainDuplicates(t *testing.T) {
+	cfg := writeConfig(t, "agents = [\"some_agent\", \"some_agent\"]\n")
+	got := adapters.For(cfg)
+	if len(got) != 2 || got[0].Name != "some_agent" || got[1].Name != "some_agent" {
+		t.Errorf("legacy duplicates changed: %+v", got)
+	}
+}
+
+func TestAdapterProfileAwareDetectionUsesInstanceCommands(t *testing.T) {
+	home, root, tools := t.TempDir(), t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", tools)
+	command := filepath.Join(tools, "custom-agent")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	profiles := filepath.Join(root, "adapters", "profiles")
+	if err := os.MkdirAll(profiles, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"schema_version":1,"id":"custom-agent","display_name":"Custom","detect":{"commands":["custom-agent"]},"skills":{"targets":[],"variant":"portable"},"instructions":{"targets":[]},"hooks":[{"protocol":"none","registrar":"none"}],"memory":[{"kind":"none"}],"default_trust":"quarantine"}`
+	if err := os.WriteFile(filepath.Join(profiles, "custom-agent.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := adapters.DetectProfiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, ",") != "custom-agent" {
+		t.Errorf("profile-aware detection = %v", got)
+	}
+}
+
+func TestAdapterProfileAwareDetectionIgnoresMissingAndNonExecutableCommands(t *testing.T) {
+	root, tools := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", tools)
+	profiles := filepath.Join(root, "adapters", "profiles")
+	if err := os.MkdirAll(profiles, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tools, "not-executable"), []byte("#!/bin/sh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"schema_version":1,"id":"missing-command","display_name":"Missing","detect":{"commands":["not-executable","also-missing"]},"skills":{"targets":[],"variant":"portable"},"instructions":{"targets":[]},"hooks":[{"protocol":"none","registrar":"none"}],"memory":[{"kind":"none"}],"default_trust":"quarantine"}`
+	if err := os.WriteFile(filepath.Join(profiles, "missing-command.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := adapters.DetectProfiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("non-executable/missing command detected profiles: %v", got)
 	}
 }
 

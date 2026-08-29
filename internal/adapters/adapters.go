@@ -22,34 +22,41 @@ import (
 // Agent is one agent's install targets. Paths are declared locations; they may
 // themselves be symlinks, which callers should resolve before comparing.
 type Agent struct {
-	Name string
+	Name string `json:"name"`
+	// ProfileID and DisplayName identify the declarative profile that produced
+	// this integration. They are empty/name for a legacy unknown agent.
+	ProfileID          string         `json:"profile_id"`
+	DisplayName        string         `json:"display_name"`
+	Detect             Detection      `json:"detect"`
+	SkillsDirs         []string       `json:"skills_dirs"`
+	SkillsVariant      string         `json:"skills_variant"`
+	InstructionsFiles  []string       `json:"instructions_files"`
+	InstructionsCreate bool           `json:"instructions_create"`
+	Hooks              []Hook         `json:"hooks"`
+	MemorySources      []MemorySource `json:"memory_sources"`
+	DefaultTrust       string         `json:"default_trust"`
 	// SkillsDir is where SKILL.md directories are linked.
-	SkillsDir string
+	SkillsDir string `json:"skills_dir"`
 	// InstructionsFile is the always-loaded instructions file that gets the
 	// KB section (PLAN 1.e).
-	InstructionsFile string
+	InstructionsFile string `json:"instructions_file"`
 	// SettingsFile is where hooks are registered, empty for agents that
 	// have no hook mechanism.
-	SettingsFile string
+	SettingsFile string `json:"settings_file"`
 	// MemoryGlob matches the agent's native memory directories, which
 	// harvest reads and diffs (PLAN 2.a). Claude Code keeps one per project,
 	// so this is a glob rather than a path.
-	MemoryGlob string
+	MemoryGlob string `json:"memory_glob"`
 	// MaxCaptureBytes skips native files larger than this. It is a guard
 	// against a pathological file, not a content filter — skipping a capture
 	// is a silent way of losing knowledge, which this project's central rule
 	// forbids. Override with [harvest].max_capture_bytes.
-	MaxCaptureBytes int64
+	MaxCaptureBytes int64 `json:"max_capture_bytes"`
 	// ExcludeGlobs are filename patterns never captured. This is the right
 	// control for "not content": size is only a proxy for it, and a bad one —
 	// a large file can be the most valuable thing in the store. Override with
 	// [harvest_exclude].<agent>, comma-separated.
-	ExcludeGlobs []string
-}
-
-type defaults struct {
-	skills, instructions, settings, memory string
-	exclude                                []string
+	ExcludeGlobs []string `json:"exclude_globs"`
 }
 
 // defaultMaxCaptureBytes is deliberately generous. An earlier 64KB limit was set
@@ -63,55 +70,16 @@ type defaults struct {
 // all-or-nothing byte test.
 const defaultMaxCaptureBytes = 10 * 1024 * 1024
 
-// Per-vendor defaults. Adding a fourth agent should touch only this table
-// (DESIGN §7) plus its config override, if any.
-var vendorDefaults = map[string]defaults{
-	"claude": {
-		skills:       "~/.claude/skills",
-		instructions: "~/.claude/CLAUDE.md",
-		settings:     "~/.claude/settings.json",
-		// One memory directory per project, keyed by encoded absolute path.
-		memory: "~/.claude/projects/*/memory",
-	},
-	"codex": {
-		skills:       "~/.codex/skills",
-		instructions: "~/.codex/AGENTS.md",
-		memory:       "~/.codex/memories",
-		// Raw per-session transcript dump, ~862KB and regenerated wholesale.
-		// Codex already versions it in its own .git, and it holds no distilled
-		// claim that MEMORY.md and memory_summary.md do not already carry.
-		exclude: []string{"raw_memories.md"},
-	},
-	"hermes": {
-		skills:       "~/.hermes/skills",
-		instructions: "~/.hermes/SOUL.md",
-		memory:       "~/.hermes/memories",
-	},
-}
-
 // For returns one Agent per name in the config's agent list, applying
 // [skills_dirs] and [instructions] overrides over the vendor defaults. An agent
 // with no default and no override still comes back, with empty paths, so the
 // caller can report it as unknown rather than silently skipping it.
 func For(cfg *config.Config) []Agent {
-	skillOverrides := cfg.Section("skills_dirs")
-	instrOverrides := cfg.Section("instructions")
-	settingOverrides := cfg.Section("settings_files")
-	memoryOverrides := cfg.Section("memory_dirs")
-
-	out := make([]Agent, 0, len(cfg.Agents))
-	for _, name := range cfg.Agents {
-		d := vendorDefaults[name]
-		a := Agent{
-			Name:             name,
-			SkillsDir:        pick(skillOverrides[name], d.skills),
-			InstructionsFile: pick(instrOverrides[name], d.instructions),
-			SettingsFile:     pick(settingOverrides[name], d.settings),
-			MemoryGlob:       pick(memoryOverrides[name], d.memory),
-			MaxCaptureBytes:  maxCaptureBytes(cfg),
-			ExcludeGlobs:     excludes(cfg, name, d.exclude),
-		}
-		out = append(out, a)
+	out, err := Resolve(cfg)
+	if err != nil {
+		// Compatibility callers predate validation errors. CLI startup calls
+		// Resolve explicitly; this wrapper preserves its old no-error signature.
+		return nil
 	}
 	return out
 }
@@ -151,8 +119,15 @@ func excludes(cfg *config.Config, agent string, def []string) []string {
 // `regesto upgrade` compares a live instance's `agents` against to notice one
 // it did not exist to detect when the instance was created.
 func KnownAgents() []string {
-	out := make([]string, 0, len(vendorDefaults))
-	for name := range vendorDefaults {
+	profiles, err := embeddedProfiles()
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(profiles))
+	for name, p := range profiles {
+		if len(p.Detect.Paths) == 0 {
+			continue
+		}
 		out = append(out, name)
 	}
 	sort.Strings(out)
@@ -166,25 +141,21 @@ func KnownAgents() []string {
 // already matches the machine instead of a fixed pair, and so `regesto
 // upgrade` can notice an agent that showed up after the instance was created.
 func Detect() []string {
+	profiles, err := embeddedProfiles()
+	if err != nil {
+		return nil
+	}
 	var out []string
 	for _, name := range KnownAgents() {
-		skills := vendorDefaults[name].skills
-		if skills == "" {
-			continue
-		}
-		if _, err := os.Stat(filepath.Dir(expandHome(skills))); err == nil {
-			out = append(out, name)
+		p := profiles[name]
+		for _, path := range p.Detect.Paths {
+			if _, err := os.Stat(expandHome(path)); err == nil {
+				out = append(out, name)
+				break
+			}
 		}
 	}
 	return out
-}
-
-// pick prefers a configured value over the vendor default, expanding ~.
-func pick(override, def string) string {
-	if override != "" {
-		return expandHome(override)
-	}
-	return expandHome(def)
 }
 
 func expandHome(p string) string {

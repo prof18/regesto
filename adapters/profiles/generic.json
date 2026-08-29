@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "generic",
+  "display_name": "Generic integration",
+  "detect": {"paths": [], "commands": []},
+  "skills": {"targets": [], "variant": "portable"},
+  "instructions": {"targets": [], "create": false},
+  "hooks": [{"protocol": "none", "registrar": "none"}],
+  "memory": [{"kind": "none"}],
+  "default_trust": "quarantine"
+}

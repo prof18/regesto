@@ -334,6 +334,17 @@ func instanceConfig(detected []string) string {
 # [instructions]
 # claude = "~/.dotfiles/AGENTS.md"
 
+# New configurations may use [integrations.<id>] and the portable generic
+# profile. Replace or remove the generated agents = [...] line above first —
+# config.toml deliberately rejects both vocabularies together.
+# integrations = ["my-agent"]
+# [integrations.my-agent]
+# skills_dir = "~/.my-agent/skills"
+# instructions_file = "~/.my-agent/AGENTS.md"
+# memory_kind = "markdown-glob-v1"
+# memory_location = "~/.my-agent/memory"
+# trust = "quarantine"
+
 # Files never captured from native memory, comma-separated globs. This is the
 # control for "not content"; size is only a proxy for it, and a poor one.
 # [harvest_exclude]
