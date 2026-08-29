@@ -159,6 +159,9 @@ func verifyRootBefore(root *os.Root, name string, item Item) error {
 }
 
 func applyLink(item Item) error {
+	if err := verifyLegacySkillProof(item); err != nil {
+		return err
+	}
 	root, name, err := openTargetRoot(item.CanonicalTarget)
 	if err != nil {
 		return err
@@ -190,7 +193,46 @@ func applyLink(item Item) error {
 			return fmt.Errorf("refuse %s: owned link target changed after planning", item.ID)
 		}
 		if item.Action == "remove" {
-			return root.Remove(name)
+			if err := verifyLegacySkillProof(item); err != nil {
+				return err
+			}
+			if item.legacyProofPath == "" {
+				return root.Remove(name)
+			}
+			rollbackDir, err := createLinkRollbackDir(root)
+			if err != nil {
+				return err
+			}
+			rollbackLink := filepath.Join(rollbackDir, "link")
+			if err := root.Rename(name, rollbackLink); err != nil {
+				root.RemoveAll(rollbackDir)
+				return err
+			}
+			capturedRaw, err := root.Readlink(rollbackLink)
+			if err != nil {
+				return fmt.Errorf("captured link retained at %s: %w", filepath.Join(filepath.Dir(item.CanonicalTarget), rollbackLink), err)
+			}
+			capturedCheck := capturedRaw
+			if !filepath.IsAbs(capturedCheck) {
+				capturedCheck = filepath.Join(filepath.Dir(item.CanonicalTarget), capturedCheck)
+			}
+			if filepath.Clean(capturedCheck) != string(item.before) {
+				return restoreCapturedLink(root, rollbackDir, rollbackLink, name,
+					fmt.Errorf("refuse %s: removable link target changed at publication", item.ID), item)
+			}
+			if proofErr := verifyLegacySkillProof(item); proofErr != nil {
+				if _, currentErr := root.Lstat(name); !os.IsNotExist(currentErr) {
+					return fmt.Errorf("%v; original link retained at %s because rollback target is no longer absent", proofErr, filepath.Join(filepath.Dir(item.CanonicalTarget), rollbackLink))
+				}
+				if restoreErr := root.Link(rollbackLink, name); restoreErr != nil {
+					return fmt.Errorf("%v; original link retained at %s because rollback failed: %w", proofErr, filepath.Join(filepath.Dir(item.CanonicalTarget), rollbackLink), restoreErr)
+				}
+				if cleanupErr := root.RemoveAll(rollbackDir); cleanupErr != nil {
+					return fmt.Errorf("%v; restored original link but could not remove rollback directory: %w", proofErr, cleanupErr)
+				}
+				return proofErr
+			}
+			return root.RemoveAll(rollbackDir)
 		}
 	}
 	if item.Action == "create" {
@@ -205,17 +247,118 @@ func applyLink(item Item) error {
 		return err
 	}
 	// Recheck through the already-open parent immediately before publication.
-	raw, err := root.Readlink(name)
+	rawLink, err := root.Readlink(name)
 	if err != nil {
 		return err
 	}
+	raw := rawLink
 	if !filepath.IsAbs(raw) {
 		raw = filepath.Join(filepath.Dir(item.CanonicalTarget), raw)
 	}
 	if filepath.Clean(raw) != string(item.before) {
 		return fmt.Errorf("refuse %s: owned link target changed before publication", item.ID)
 	}
-	return root.Rename(tmpName, name)
+	if err := verifyLegacySkillProof(item); err != nil {
+		return err
+	}
+	if item.legacyProofPath == "" {
+		return root.Rename(tmpName, name)
+	}
+	return publishProvenLink(root, name, tmpName, item)
+}
+
+func publishProvenLink(root *os.Root, name, tmpName string, item Item) error {
+	rollbackDir, err := createLinkRollbackDir(root)
+	if err != nil {
+		return err
+	}
+	rollbackLink := filepath.Join(rollbackDir, "link")
+	// Move, do not overwrite, the exact link that exists at publication time
+	// into a private directory. The replacement is then created with Link,
+	// whose no-replace semantics refuse any concurrent entry at name.
+	if err := root.Rename(name, rollbackLink); err != nil {
+		root.RemoveAll(rollbackDir)
+		return err
+	}
+	capturedRaw, err := root.Readlink(rollbackLink)
+	if err != nil {
+		return fmt.Errorf("original link retained at %s: %w", filepath.Join(filepath.Dir(item.CanonicalTarget), rollbackLink), err)
+	}
+	capturedCheck := capturedRaw
+	if !filepath.IsAbs(capturedCheck) {
+		capturedCheck = filepath.Join(filepath.Dir(item.CanonicalTarget), capturedCheck)
+	}
+	if filepath.Clean(capturedCheck) != string(item.before) {
+		return restoreCapturedLink(root, rollbackDir, rollbackLink, name,
+			fmt.Errorf("refuse %s: owned link target changed at publication", item.ID), item)
+	}
+	if proofErr := verifyLegacySkillProof(item); proofErr != nil {
+		return restoreCapturedLink(root, rollbackDir, rollbackLink, name, proofErr, item)
+	}
+	if err := root.Link(tmpName, name); err != nil {
+		return restoreCapturedLink(root, rollbackDir, rollbackLink, name,
+			fmt.Errorf("refuse %s: replacement target appeared at publication: %w", item.ID, err), item)
+	}
+	if proofErr := verifyLegacySkillProof(item); proofErr != nil {
+		publishedLink := filepath.Join(rollbackDir, "published")
+		if moveErr := root.Rename(name, publishedLink); moveErr != nil {
+			return fmt.Errorf("%v; original link retained at %s and published link could not be secured: %w", proofErr, filepath.Join(filepath.Dir(item.CanonicalTarget), rollbackLink), moveErr)
+		}
+		publishedRaw, readErr := root.Readlink(publishedLink)
+		if readErr != nil || publishedRaw != item.linkTarget {
+			// A concurrent foreign link was captured. Restore it with no-replace
+			// semantics and retain the original in the reported rollback path.
+			if restoreErr := root.Link(publishedLink, name); restoreErr != nil {
+				return fmt.Errorf("%v; original and concurrent links retained under %s because concurrent-link restoration failed: %w", proofErr, filepath.Join(filepath.Dir(item.CanonicalTarget), rollbackDir), restoreErr)
+			}
+			root.Remove(publishedLink)
+			return fmt.Errorf("%v; concurrent link restored and original link retained at %s", proofErr, filepath.Join(filepath.Dir(item.CanonicalTarget), rollbackLink))
+		}
+		if restoreErr := root.Link(rollbackLink, name); restoreErr != nil {
+			return fmt.Errorf("%v; original and published links retained under %s because rollback failed: %w", proofErr, filepath.Join(filepath.Dir(item.CanonicalTarget), rollbackDir), restoreErr)
+		}
+		if cleanupErr := root.RemoveAll(rollbackDir); cleanupErr != nil {
+			return fmt.Errorf("%v; restored original link but could not remove rollback directory: %w", proofErr, cleanupErr)
+		}
+		return proofErr
+	}
+	return root.RemoveAll(rollbackDir)
+}
+
+func restoreCapturedLink(root *os.Root, rollbackDir, rollbackLink, name string, cause error, item Item) error {
+	if restoreErr := root.Link(rollbackLink, name); restoreErr != nil {
+		return fmt.Errorf("%v; captured link retained at %s because no-replace restoration failed: %w", cause, filepath.Join(filepath.Dir(item.CanonicalTarget), rollbackLink), restoreErr)
+	}
+	if cleanupErr := root.RemoveAll(rollbackDir); cleanupErr != nil {
+		return fmt.Errorf("%v; restored captured link but could not remove rollback directory: %w", cause, cleanupErr)
+	}
+	return cause
+}
+
+func createLinkRollbackDir(root *os.Root) (string, error) {
+	for attempt := 0; attempt < 100; attempt++ {
+		name, err := randomTempName(".regesto-link-rollback-")
+		if err != nil {
+			return "", err
+		}
+		if err := root.Mkdir(name, 0o700); err == nil {
+			return name, nil
+		} else if !os.IsExist(err) {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("could not allocate a link rollback directory")
+}
+
+func verifyLegacySkillProof(item Item) error {
+	if item.legacyProofPath == "" {
+		return nil
+	}
+	matches, err := exactRegularTree(item.legacyProofPath, item.legacyProof)
+	if err != nil || !matches {
+		return fmt.Errorf("refuse %s: proven legacy skill contents changed after planning", item.ID)
+	}
+	return nil
 }
 
 func applyFile(item Item, withBackup bool, result *Result) error {

@@ -4,6 +4,7 @@
 package tests
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -94,6 +95,9 @@ func TestContextRespectsByteBudget(t *testing.T) {
 	if len(capped) >= len(full) {
 		t.Fatalf("cap had no effect: capped %d bytes, full %d", len(capped), len(full))
 	}
+	if len(capped) > 700 {
+		t.Fatalf("capped payload is %d bytes, want at most 700", len(capped))
+	}
 	// The header survives truncation.
 	for _, want := range []string{"bin/regesto-search", "SCHEMA.md"} {
 		if !strings.Contains(capped, want) {
@@ -103,6 +107,56 @@ func TestContextRespectsByteBudget(t *testing.T) {
 	// Dropped facts are declared, never silently swallowed.
 	if !strings.Contains(capped, "not shown to keep this small") {
 		t.Errorf("truncation not reported:\n%s", capped)
+	}
+}
+
+func TestContextReturnsEmptyWhenCapCannotFitSearchHeader(t *testing.T) {
+	if got := index.BuildContext(loadFixtures(t), index.ContextOptions{Project: "aurora", MaxBytes: 1}); got != "" {
+		t.Fatalf("one-byte cap returned %d bytes, want an empty fail-open payload", len(got))
+	}
+}
+
+func TestContextBudgetPrioritizesCurrentProjectFacts(t *testing.T) {
+	all := loadFixtures(t)
+	global := all[0]
+	for i := 0; i < 100; i++ {
+		copy := global
+		copy.ID = fmt.Sprintf("global-volume-%03d", i)
+		copy.Title = "Global volume fact with enough text to consume a bounded context"
+		all = append(all, copy)
+	}
+
+	out := index.BuildContext(all, index.ContextOptions{Project: "aurora", MaxBytes: 900})
+	if !strings.Contains(out, "Aurora dev server listens on port 8080") {
+		t.Fatalf("bounded context dropped current-project facts behind globals:\n%s", out)
+	}
+	if strings.Index(out, "## Global") > strings.Index(out, "## Project: aurora") {
+		t.Fatalf("bounded context changed the documented display order:\n%s", out)
+	}
+	if !strings.Contains(out, "not shown to keep this small") {
+		t.Fatalf("bounded context did not disclose dropped global facts:\n%s", out)
+	}
+	listed := strings.Count(out, "` — ")
+	wantDropped := 105 - listed
+	if !strings.Contains(out, fmt.Sprintf("_%d more fact(s) not shown", wantDropped)) {
+		t.Fatalf("bounded context reports the wrong dropped count; listed=%d want dropped=%d:\n%s", listed, wantDropped, out)
+	}
+	if len(out) > 900 {
+		t.Fatalf("project-prioritized payload is %d bytes, want at most 900", len(out))
+	}
+}
+
+func TestEmptyProjectDoesNotConsumeGlobalBudget(t *testing.T) {
+	all := loadFixtures(t)
+	for i := 0; i < 40; i++ {
+		copy := all[0]
+		copy.ID = fmt.Sprintf("global-empty-project-%03d", i)
+		all = append(all, copy)
+	}
+	withoutProject := index.BuildContext(all, index.ContextOptions{MaxBytes: 900})
+	withEmptyProject := index.BuildContext(all, index.ContextOptions{Project: "missing", MaxBytes: 900})
+	if withEmptyProject != withoutProject {
+		t.Fatalf("empty project changed bounded global context:\nwithout:\n%s\nwith:\n%s", withoutProject, withEmptyProject)
 	}
 }
 

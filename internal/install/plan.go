@@ -37,6 +37,8 @@ type Item struct {
 	ownershipTarget string
 	renderRoot      string
 	linkTarget      string
+	legacyProofPath string
+	legacyProof     map[string][]byte
 	mode            os.FileMode
 }
 
@@ -56,6 +58,10 @@ type Options struct {
 	// and host targets. Upgrade dry-runs point it at a temporary post-upgrade
 	// view; ordinary installs leave it empty and read from KBRoot.
 	SourceRoot string
+	// ProvenLegacySkills names pre-marker .state/skills directories whose
+	// payloads were byte-verified against the instance sources before upgrade.
+	// Only upgrade supplies this evidence; ordinary installs never infer it.
+	ProvenLegacySkills map[string]LegacySkillProof
 }
 
 // Build returns the complete install plan without modifying the filesystem.
@@ -73,7 +79,7 @@ func Build(cfg *config.Config, opts Options) (*Plan, error) {
 	if err := planEngineLink(p, opts); err != nil {
 		return nil, err
 	}
-	if err := planSkills(p, agents, sourceRoot); err != nil {
+	if err := planSkills(p, agents, sourceRoot, opts.ProvenLegacySkills); err != nil {
 		return nil, err
 	}
 	if err := planHooks(p, agents, cfg.UsesLegacyAgents(), sourceRoot); err != nil {

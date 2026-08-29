@@ -42,6 +42,10 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
+	provenLegacySkills, err := regestoinstall.ProvenLegacySkills(cfg.KBRoot)
+	if err != nil {
+		return fmt.Errorf("verify legacy rendered skills: %w", err)
+	}
 
 	from := m.Engine
 	if from == "" {
@@ -143,7 +147,7 @@ func runUpgrade(cfg *config.Config, args []string) error {
 			return err
 		}
 		defer os.RemoveAll(sourceRoot)
-		plan, err := regestoinstall.Build(cfg, regestoinstall.Options{SourceRoot: sourceRoot})
+		plan, err := regestoinstall.Build(cfg, regestoinstall.Options{SourceRoot: sourceRoot, ProvenLegacySkills: provenLegacySkills})
 		if err != nil {
 			return err
 		}
@@ -159,7 +163,7 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	// settings, and the scheduled jobs name a binary by absolute path — none of
 	// which change just because the sources did. Leaving those to the user meant
 	// an upgrade that silently did nothing an agent could see.
-	if err := reinstallAdapters(cfg); err != nil {
+	if err := reinstallAdapters(cfg, regestoinstall.Options{ProvenLegacySkills: provenLegacySkills}); err != nil {
 		return err
 	}
 	// Record the engine checkpoint only after the refreshed artifacts installed
@@ -281,9 +285,9 @@ func noteNewAgents(cfg *config.Config) {
 // reinstallAdapters calls the same Go planner/applicator as `regesto install`.
 // Upgrade has already refreshed the instance templates, so the plan observes
 // the just-installed artifact sources without shell config parsing.
-func reinstallAdapters(cfg *config.Config) error {
+func reinstallAdapters(cfg *config.Config, options regestoinstall.Options) error {
 	fmt.Println("\n── adapters ──")
-	plan, err := regestoinstall.Build(cfg, regestoinstall.Options{})
+	plan, err := regestoinstall.Build(cfg, options)
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,17 @@ checkpoint commit(s) are recorded below.
 Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./...`;
 `go test -race ./...`; `git diff --check`.
 
+## Simplified branch history
+
+After completion, the local-only branch history was consolidated to one coherent
+commit per milestone so implementation, review fixes, plan updates, and this ledger
+travel together. The active sequence is M0 `e924493`, M1 `eb1992c`, M2 `22fbb3e`,
+M3 `185e511`, M4 `5f87742`, M5 `8dafe64`, M6 `fa387e9`, M7 `2087a25`, M8
+`95f7814`, M9 `5e7760e`, M10 `92e149f`, M11 `b492b78`, and M12 at the current
+branch tip. Historical pass/checkpoint hashes below remain reachable only through
+the local recovery ref `refs/archive/agent-agnostic-integrations-pre-flatten`; they
+record the review sequence but are no longer separate commits in the active branch.
+
 ## Milestone 0 — safe start and baseline
 
 - [x] Record baseline and commit reviewed goal package before M1.
@@ -264,7 +275,7 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 6 — protocol-owned hooks
 
-- [ ] Port Claude/Hermes hook parsing, framing, registration/manual recipes, bounded first-turn behavior, and fail-open handling to Go.
+- [x] Port Claude/Hermes hook parsing, framing, registration/manual recipes, bounded first-turn behavior, and fail-open handling to Go.
 - Baseline: branch `agent-agnostic-integrations`; base checkpoint `adeecb1`;
   staged, unstaged, and untracked files none.
 - Scope/owners: `internal/hooks`, hook CLI/shim, adapter hook compatibility, hook fixtures/tests.
@@ -417,7 +428,7 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 9 — local stdio MCP
 
-- [ ] Implement stdlib JSON-RPC/MCP handshake, resources, tools, clean shutdown, and shared validation with no socket.
+- [x] Implement stdlib JSON-RPC/MCP handshake, resources, tools, clean shutdown, and shared validation with no socket.
 - Baseline: branch `agent-agnostic-integrations`; base checkpoint `dfa32c2`;
   staged, unstaged, and untracked files none.
 - Scope/owners: `internal/mcp`, MCP CLI, MCP protocol tests/transcript.
@@ -605,16 +616,164 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
 
 ## Milestone 12 — live regression matrix
 
-- [ ] After automated gates, run and record Claude Code, Codex, Hermes, and generic fixture live checks; back up installer targets and dry-run first.
-- Scope/owners: host artifacts and temporary fixture only; preserve backups and unrelated local files.
-- Verify: skills/instructions, hooks, trust, memory baseline/change, generic no-hook behavior; record commands and observed versions.
-- Skip list/findings carried: ___
+- [x] After automated gates, run and record Claude Code, Codex, Hermes, and generic fixture live checks; back up installer targets and dry-run first.
+- Baseline: branch `agent-agnostic-integrations`; base checkpoint `3198fc2`;
+  staged files none and the initial live dry-run produced no host writes. The
+  milestone owns only live setup evidence, temporary fixtures, this ledger,
+  and a narrowly scoped upgrade migration fix discovered by that dry-run.
+- Scope/owners: host artifacts and temporary fixture only; preserve retained
+  backups and every unrelated local file. Live installer targets are the
+  resolved Claude/Codex/Hermes skills directories, shared Claude/Codex
+  instructions, Claude JSON settings, Hermes `SOUL.md`, YAML hook settings and
+  JSON allowlist, plus instance engine-owned files.
+- High-risk surfaces: pre-marker legacy skill ownership, live shared dotfiles,
+  lossless Hermes YAML handling, hook first-turn state, real CLI prompt cost,
+  exact source trust, harvesting without capturing unrelated memory, and
+  proving dry-run/apply agreement before host mutation.
+- Verify: skills/instructions, hooks, trust, memory baseline/change, generic
+  no-hook behavior; record commands and observed versions; focused installer
+  migration regressions and the full gate after each review pass.
+- Observed product versions before setup: Claude Code `2.1.216`; Codex CLI
+  `0.144.6`; Hermes Agent `0.20.0 (2026.8.3)` with Python `3.11.15` and OpenAI
+  SDK `2.24.0`. The development engine was rebuilt from checkpoint `3198fc2`
+  and reached through the existing `~/.local/bin/regesto` checkout symlink.
+- Initial dry-run command: `bin/regesto --config
+  /Users/mg/regesto-kb/config.toml upgrade --dry-run`. It planned 16 instance
+  updates and initially preserved all nine live skill links because the v0.3.1
+  `.state/skills` tree predates ownership markers. No write occurred.
+- Accepted pre-review finding: location alone cannot authorize adopting the
+  old stage, but preserving it leaves Claude-rendered payloads active for Codex
+  and Hermes. Upgrade now captures proof before refreshing sources and may
+  replace a legacy link only when the complete unmarked stage is byte-identical
+  to the historical shell renderer's output from the current instance source.
+  Changed, extra, and non-regular trees remain foreign. Focused tests pass; a
+  repeated live dry-run now plans all nine links as replacements while still
+  preserving the unmarked evidence directories.
+- Skip list/findings carried: isolated Go caches remain required by the
+  workspace sandbox. Existing unfamiliar Hermes YAML is never automatically
+  rewritten; use the exact manual recipe after backup if its current hook is
+  stale. No proprietary cloud memory or remote connector is in scope.
+- Live backup/apply evidence: the 53-entry restore archive
+  `/private/tmp/regesto-m12-backup-20260829-5JBHNz/before.tar` has SHA-256
+  `4b16a5724f9067235736431ee87361e7acd46814fd5adc6a450cb0ec33ed5c6b`.
+  Applying the reviewed plan refreshed 16 instance files and 30 adapter items,
+  including nine proven legacy links; it created adjacent backups for the
+  Hermes allowlist, shared instructions, and `SOUL.md`. The unfamiliar Hermes
+  YAML was preserved, then its one stale hook line was changed through a
+  reviewed temporary copy to the exact quoted `pre-llm.sh` recipe after a
+  precondition hash check. `hermes hooks doctor` reports the hook executable,
+  allowlisted, valid JSON, and healthy. A repeated upgrade dry-run reports zero
+  instance and adapter changes (the YAML registrar remains intentionally
+  `manual` because the installer never claims to parse arbitrary YAML).
+- Live artifact/hook evidence: all nine Claude/Codex/Hermes links resolve to
+  their integration-specific rendered stages; the shared Claude/Codex file and
+  Hermes `SOUL.md` each contain exactly one marker pair. Claude's installed
+  wrapper injects the Regesto project heading and fact
+  `dec-agent-agnostic-per-milestone-review-commits`; a missing KB returns empty
+  output with status zero. The registered Hermes wrapper injects that project
+  fact on the first call for a unique session and returns `{}` on the second;
+  a missing KB also returns `{}` with status zero. Codex declares and installs
+  no hook. Doctor reports current skills/instructions for all three and the
+  exact legacy trust approval `hermes@studio` for the private Telegram channel;
+  Hermes and undeclared integrations retain quarantine defaults.
+- Live memory evidence: isolated instance
+  `/private/tmp/regesto-m12-memory-AYlggB/kb` pointed typed sources at uniquely
+  named directories inside each product's real native memory root. First run
+  baselined one Markdown file per product and captured none; one subsequent
+  change produced exactly one Claude, Codex, and Hermes capture; repeat
+  produced zero. After direct user approval, the three exact
+  `regesto-m12-live` test directories were moved from the Claude, Codex, and
+  Hermes native roots into the retained backup's `native-memory-probes`
+  directory. All source paths are absent and all three probe files are present
+  in the backup; no adjacent native memory was moved.
+- Generic evidence: retained fixture
+  `/private/tmp/regesto-m12-generic-4Ly3xa` installed three portable skill
+  links and one marker-delimited instruction section into pre-created declared
+  targets, preserving foreign text; the second plan had zero changes. Its
+  profile declares no detection or hook capability. Typed Markdown memory
+  baselined once, captured exactly one change, and was inert on repeat;
+  `normalize --show-prompt` returned `no eligible captures`, proving the
+  default-quarantine capture did not reach normalization.
+- Accepted pass-1 live/review findings: the first real 4 KiB hook payload let
+  the mature global store consume every project line; bounded context now
+  retains global-first display while selecting current-project facts first,
+  strictly honors `MaxBytes` (or returns empty when even the search header
+  cannot fit), omits empty project blocks, and exactly reports dropped facts.
+  Legacy skill proof is no longer a stale name boolean: the historical expected
+  file tree is rechecked during planning and immediately before link mutation;
+  `SKILL.md`, exact directories, and regular payloads are required. Regressions
+  cover post-plan change, empty/hidden-only evidence, extra files/directories,
+  symlinks, byte changes, exact caps, empty projects, and dropped counts.
+- Consent boundary and F28 closure: initial external attempts were rejected
+  without disclosure-specific consent and no request was sent. After the user
+  directly approved bounded private-context disclosure and exact probe cleanup,
+  fresh Claude (`--no-session-persistence`), Codex (`--ephemeral`, read-only),
+  and Hermes (one-shot, low reasoning) runs each invoked the installed
+  `regesto-search` skill for `Hermes Regesto capability` and returned exactly
+  `Hermes uses Regesto's tested capability-profile integration` with status
+  zero. Hermes created local session `20260829_232555_e8f3ed`; it was deleted by
+  exact ID and confirmed absent, preserving the non-persistent test boundary.
+- Reproducible local transcripts: live dry-run/doctor/artifact/fail-open checks
+  are retained at `/private/tmp/regesto-m12-live-local-transcript.txt`; generic
+  installation/quarantine and three-product memory repeat/capture paths are at
+  `/private/tmp/regesto-m12-fixture-transcript.txt`. The successful first/second
+  Hermes context probe required the live instance's session-marker write and
+  reported `hermes-first-project-fact=present`, `hermes-second=empty`; its
+  fail-open form is repeated in the local transcript without a marker write.
+  Consent-gated external-session and cleanup evidence is retained at
+  `/private/tmp/regesto-m12-external-session-transcript.txt`, SHA-256
+  `7a13bf5341d3f05f7631e1153ff1887b9cc208a1e2ca6033c4aadbce33a2d744`;
+  it records only modes, statuses, the returned title, and exact cleanup paths.
 - Review shards: Claude live path; Codex/generic portability; Hermes hook/trust; evidence/release checklist.
-- Review pass 1: findings ___; gates ___; commit hash/purpose ___
-- Review pass 2: findings ___; gates ___; remediation commit hash/purpose ___
+- Review pass 1: three fresh-context shards reviewed migration/ownership,
+  bounded context/hooks, and evidence completeness. Accepted findings were the
+  stale proof TOCTOU, empty/unexpected proof trees, post-publication rollback
+  races, unbounded footer/tiny caps, empty-project budget use, dropped-count
+  coverage, and initially thin ledger evidence. Proof publication now
+  atomically captures the exact existing link and uses no-replace links for
+  replacement/recovery, preserving and reporting rollback artifacts if a
+  concurrent entry prevents safe restoration; five targeted migration
+  re-reviews and the context re-review are clean. Focused install/context/hook/
+  upgrade tests pass. The isolated-cache formatting, vet, full test, race test,
+  current-wrapper shell syntax, and diff gate passed after the final fix.
+  External product sessions and probe cleanup are explicitly deferred pending
+  consent, so F28 and this milestone remain open. Checkpoint commit follows.
+- Pass-1 checkpoint `83008f7` — `fix: harden live integration migration`.
+- Review pass 2: three fresh-context reviewers independently found no actionable
+  migration, context/hook, or evidence defects in the full `3198fc2..fb22ac4`
+  milestone diff. Focused install/context/hook/upgrade tests, race variants, vet,
+  and diff checks passed in the review shards. The final isolated-cache gate also
+  passed formatting, repository-wide vet, full tests, race tests, current-wrapper
+  shell syntax, and diff checks. No remediation commit is required. The
+  subsequently authorized live sessions and cleanup close F28 without changing
+  reviewed implementation code; final closure gate and ledger checkpoint follow.
+- [x] Milestone 12 complete: implementation checkpoint `83008f7`, pass-1 ledger
+  checkpoint `fb22ac4`, pass-2 ledger checkpoint `12fdb09`, and consent-gated
+  live/cleanup evidence recorded above; final ledger-only checkpoint follows.
 
 ## Final completion record
 
-- [ ] All accepted facts and automated checks accounted for; F28 live tests recorded; out-of-scope F29 preserved.
-- [ ] Every milestone has two recorded review passes, gates, findings disposition, and cohesive checkpoint commit(s).
-- [ ] Working tree contains only reviewed goal changes; no remote service or proprietary cloud-memory connector introduced.
+- Fact audit: M2's validated data-driven capability profiles, additive legacy
+  resolution, built-in identifiers, and support model prove F01, F02, F03, F04,
+  F05, and F06. M3's
+  source/surface policy and opaque provenance compatibility prove F19, F20, and
+  F30. M4's shared operations and stable JSON/text interfaces prove F10 and F11.
+  M5's rooted plan/apply ownership, backups, idempotence, and manifest lifecycle
+  prove F12, F13, and F25. M6's protocol-owned Claude/Hermes fail-open hooks and
+  explicit Codex `none` capability prove F14, F15, F16, and F17. M7's portable contract,
+  isolated variants, generic declared targets, and host-neutral promotion prove
+  F08, F09, F18, and F23. M8's typed optional Markdown harvesting and explicit
+  unsupported states prove F21. M9's validated stdio-only MCP proves F22. M10's
+  Hermes recipe, canonical capability matrix, doctor, and configured/tested/
+  deterministic distinctions prove F07, F24, and F26. M11's exact v0.3.1
+  upgrade/package equivalence and contract matrix prove F03, F25, and F27. M12's
+  dated live Claude, Codex, Hermes, and generic evidence proves F07, F15, F16,
+  F17, F18, and F28. F29 remains an explicit exclusion: the diff adds no remote HTTP
+  exposure, hosted synchronization, or proprietary cloud-memory connector.
+- Final gate after live closure passed `gofmt -l .`, repository-wide `go vet`,
+  full tests, race tests, current wrapper shell syntax, and `git diff --check`
+  with isolated Go caches. The final audit found every F01-F30 identifier mapped
+  above, every M0-M12 pass recorded, and only this reviewed ledger edit pending.
+- [x] All accepted facts and automated checks accounted for; F28 live tests recorded; out-of-scope F29 preserved.
+- [x] Every milestone has two recorded review passes, gates, findings disposition, and cohesive checkpoint commit(s).
+- [x] Working tree contains only reviewed goal changes; no remote service or proprietary cloud-memory connector introduced.
