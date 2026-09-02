@@ -1,5 +1,8 @@
 # Setup — Codex CLI
 
+Not sure whether this is the right integration path? Start with
+[Connect any agent to Regesto](setup-other-agents.md).
+
 See the canonical [agent integration matrix](agent-integration.md) for profile metadata,
 capability status, and consultation guarantees.
 
@@ -65,12 +68,13 @@ substitution.
 
 ```bash
 ls -l ~/.codex/skills/
-regesto config | grep codex
+regesto --config ~/regesto-kb/config.toml config | grep codex
 ```
 
 Install creates a configured skills directory when it is missing. If the links are not
-listed, inspect the complete resolved plan with `regesto install --dry-run`; for a custom
-location, configure the resolved integration directly:
+listed, inspect the complete resolved plan with
+`regesto --config ~/regesto-kb/config.toml install --dry-run`; for a custom location,
+configure the resolved integration directly:
 
 ```toml
 [integrations.codex]

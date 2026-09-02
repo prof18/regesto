@@ -38,10 +38,13 @@ harvest; exclusions and all raw profile fields are available in the profile JSON
 It is intentionally separate from a dated live-host result; those release records belong in
 the validation ledger rather than being implied forever by this matrix.
 
-## Configure an unknown host
+## Configure an unknown local host
 
-You do not need a built-in preset. Find the host's Agent Skills directory and its
-always-loaded instructions file, create the instructions file if the host has not, then add:
+The complete onboarding procedure is in
+[Connect any agent to Regesto](setup-other-agents.md#custom-local-integration). For a
+one-off local host, you do not need a built-in preset or any Go changes. Find the host's
+actual Agent Skills directory and always-loaded instructions file. Create the instructions
+file first if the host has not, then add:
 
 ```toml
 integrations = ["my-agent"]
@@ -69,24 +72,41 @@ regesto --config ~/regesto-kb/config.toml doctor --integration my-agent
 ```
 
 The generic profile never creates a host-owned instructions file and never guesses a hook
-format. For a host hook, copy `generic.json` into the instance as
-`adapters/profiles/<id>.json`, then change its `id` to the filename ID and replace the
-`none` hook with a supported `protocol`, the `manual` registrar, and the host settings
-path. The filename and JSON `id` must match. Use an automatic registrar only when Regesto
-has a preservation-safe implementation for that settings format. The install plan then
-prints the exact event and command instead of rewriting an unfamiliar file.
+format. This `config.toml`-only setup is the normal path.
+
+For a reusable preset or a compatible host hook, copy the instance file
+`~/regesto-kb/adapters/profiles/generic.json` to
+`~/regesto-kb/adapters/profiles/<id>.json`, then change its `id` to the filename ID.
+Replace the `none` hook with a supported `protocol`, the `manual` registrar, and the host
+settings path. Use an automatic registrar only when Regesto has a preservation-safe
+implementation for that settings format. The install plan then prints the exact event
+and command instead of rewriting an unfamiliar file.
 
 ## Hosts without local integration files
 
-Use the local stdio MCP server when a client supports MCP:
+Use the local stdio MCP server when a client supports MCP. MCP addresses the instance
+directly, so an MCP-only client does not need to appear in `integrations`:
 
-```bash
-regesto --config ~/regesto-kb/config.toml mcp
+```json
+{
+  "mcpServers": {
+    "regesto": {
+      "command": "/absolute/path/to/regesto",
+      "args": ["--config", "/Users/you/regesto-kb/config.toml", "mcp"]
+    }
+  }
+}
 ```
 
-It exposes search, exact fact reads, project resolution, validated writes, the generated
-index, and fact resources over stdin/stdout only. It opens no network listener. If a host
-supports neither local skills/instructions nor local MCP, export the conversation and run
-the portable `regesto-promote` procedure. No silently skipped capability is treated as an
-installation success; `regesto doctor --json` reports `unsupported`, `warning`, `manual`,
-or `error` explicitly.
+Use `command -v regesto` when the client requires an absolute executable path. The
+equivalent shell command is `regesto --config ~/regesto-kb/config.toml mcp`. It exposes search,
+exact fact reads, project resolution, validated writes, the generated index, and fact
+resources over stdin/stdout only. Diagnostics go to stderr and it opens no network
+listener. MCP makes the tools available; persistent client instructions are still needed
+if consultation must be habitual rather than requested.
+
+If a host supports neither local skills/instructions nor local MCP, export the
+conversation and run `regesto promote <export>` from the knowledge-base directory. No
+silently skipped capability is treated as an installation success; `regesto doctor`
+reports `unsupported` for an intentionally absent capability, `manual` for a safe human
+step, and `warning` or `error` when remediation is required.

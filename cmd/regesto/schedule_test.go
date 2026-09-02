@@ -46,8 +46,8 @@ func TestTrustIntegrationInitTemplateUsesCanonicalVocabularyAndDocumentsGenericP
 	body := instanceConfig([]string{"claude", "codex"})
 	for _, want := range []string{
 		"integrations = [\"claude\", \"codex\"]",
-		"generated integrations = [...]",
-		"# integrations = [\"my-agent\"]",
+		"# integrations = [\"claude\", \"my-agent\"]",
+		"MCP-only client does not need an integrations entry",
 		"[integrations.my-agent]",
 		"memory_kind = \"markdown-glob-v1\"",
 		"A private\n# channel alone does not grant trust",

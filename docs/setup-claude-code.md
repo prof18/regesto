@@ -1,5 +1,8 @@
 # Setup — Claude Code
 
+Not sure whether this is the right integration path? Start with
+[Connect any agent to Regesto](setup-other-agents.md).
+
 See the canonical [agent integration matrix](agent-integration.md) for profile metadata,
 capability status, and the distinction between fixture-tested and live-host evidence.
 

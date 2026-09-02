@@ -334,16 +334,22 @@ func instanceConfig(detected []string) string {
 # "hermes@studio-public" = "quarantine"
 # "hermes-private@studio-*" = "supervised"
 
-# Add a custom host with the portable generic profile. The generated integrations = [...]
-# line above is the canonical vocabulary; add the custom ID to that list.
-# integrations = ["my-agent"]
+# Add a custom local host with the portable generic profile. Keep the IDs already
+# present in integrations = [...] and append the custom ID. Only declare paths the
+# host actually supports; create its instructions file before running install.
+# integrations = ["claude", "my-agent"]
 # [integrations.my-agent]
+# profile = "generic"
 # skills_dir = "~/.my-agent/skills"
 # instructions_file = "~/.my-agent/AGENTS.md"
 # memory_kind = "markdown-glob-v1"
 # memory_location = "~/.my-agent/memory"
 # trust = "quarantine"
 # Diagnose resolved targets without writing: regesto doctor --integration my-agent
+
+# An MCP-only client does not need an integrations entry. Configure that client to
+# launch the installed regesto executable with: --config /absolute/path/config.toml mcp
+# Add an entry above only to install host files or harvest native memory.
 
 # Files never captured from native memory, comma-separated globs. This is the
 # control for "not content"; size is only a proxy for it, and a poor one.

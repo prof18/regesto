@@ -530,7 +530,7 @@ func TestHarvestRejectsUnsafeStateNamespaceComponents(t *testing.T) {
 	t.Setenv("REGESTO_MACHINE", "testbox")
 	root := t.TempDir()
 	cfg := loadHarvestConfig(t, root, "integrations = [\"../escape\"]\n")
-	if _, err := harvest.Run(cfg, false); err == nil || !strings.Contains(err.Error(), "safe inbox/state path component") {
+	if _, err := harvest.Run(cfg, false); err == nil || !strings.Contains(err.Error(), "must match") {
 		t.Fatalf("unsafe integration error = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(root), "escape@testbox")); !os.IsNotExist(err) {

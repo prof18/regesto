@@ -8,6 +8,11 @@ Post-completion simplification: historical config, rendered-skill, harvest-snaps
 
 The work was staged by milestone. Implementation, review fixes, and the matching plan/todo updates are kept in cohesive commits.
 
+Post-completion documentation rewrite: onboarding now begins with a four-path decision
+guide—built-in profile, custom local integration, MCP-only client, or manual transcript
+promotion. The guide separates configured integrations from one-time detection, makes
+MCP's instance-level role explicit, and keeps the capability matrix as reference material.
+
 ## Specification
 
 ### Support levels

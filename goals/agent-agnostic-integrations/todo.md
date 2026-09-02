@@ -17,6 +17,19 @@ Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./.
   current config-section comment, and made the manual cache-cleanup note name only the
   obsolete paths. No runtime migration branches remain.
 
+## Post-completion onboarding rewrite
+
+- [x] Put a four-path setup decision table in README and the canonical setup guide.
+- [x] Document built-in profiles, custom local paths, native-memory harvesting, MCP-only
+  clients, and transcript promotion as complete procedures.
+- [x] Distinguish configured integrations from detected clients and state that MCP alone
+  does not require an integration entry.
+- [x] Add copyable config/command examples, `doctor` status guidance, and documentation
+  regression coverage.
+- Review pass 1 corrected the MCP launch example to pass an explicit executable and
+  config path. Review pass 2 added the required normalizer setup before transcript
+  promotion and made Codex troubleshooting commands independent of the working directory.
+
 Migration-specific checklist entries below record the original execution history and are superseded by this simplification; they are not current product requirements.
 
 ## Simplified branch history

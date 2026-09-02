@@ -111,10 +111,35 @@ func TestDocsProductPagesLinkCanonicalMatrix(t *testing.T) {
 	}
 }
 
+func TestDocsSetupGuideCoversEveryConnectionPath(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join(repoRoot(t), "docs", "setup-other-agents.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		"## Built-in integrations",
+		"## Custom local integration",
+		"## MCP client",
+		"## No local integration surface",
+		`profile = "generic"`,
+		"does not need an entry in `integrations`",
+		`"args": ["--config", "/Users/you/regesto-kb/config.toml", "mcp"]`,
+		"regesto promote ~/Downloads/conversation.md",
+		"[normalize]",
+		`--command "claude -p"`,
+		"regesto doctor --integration my-agent",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("connection guide lacks %q", want)
+		}
+	}
+}
+
 func TestDocsCanonicalExamplesUseMatchingOverrideVocabulary(t *testing.T) {
 	checks := map[string][]string{
 		"setup-claude-code.md": {"[integrations.claude]", "skills_dir =", "instructions_file =", "settings_file ="},
-		"setup-codex.md":       {"[integrations.codex]", "skills_dir ="},
+		"setup-codex.md":       {"[integrations.codex]", "skills_dir =", "--config ~/regesto-kb/config.toml config", "--config ~/regesto-kb/config.toml install --dry-run"},
 	}
 	for name, wants := range checks {
 		body, err := os.ReadFile(filepath.Join(repoRoot(t), "docs", name))

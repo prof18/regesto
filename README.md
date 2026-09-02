@@ -46,7 +46,8 @@ to the original than an honest rephrase is.
 
 ## Quickstart
 
-Ten minutes, one machine, one agent.
+Ten minutes, one machine, one built-in agent. For a custom agent, MCP client, or hosted
+chat, start with [Connect any agent to Regesto](docs/setup-other-agents.md).
 
 **1. Install the engine.**
 
@@ -71,7 +72,23 @@ That writes the tree, a commented `config.toml`, both ignore files, this machine
 identity, the `bin/` shims, the agent adapters, `SCHEMA.md`, and a handful of example
 facts to imitate. Drop `--examples` for an empty one.
 
-**3. Install the adapters into your agents.**
+**3. Choose which built-in agents Regesto should manage.**
+
+`regesto init` detects installed Claude Code, Codex, and Hermes directories once and uses
+that result to create the initial `integrations` list. Detection is only a starting guess:
+open `~/regesto-kb/config.toml` and add or remove names until it matches what you want.
+
+```toml
+integrations = ["claude"]
+```
+
+You can list more than one:
+
+```toml
+integrations = ["claude", "codex", "hermes"]
+```
+
+**4. Preview and install the agent adapters.**
 
 ```bash
 ~/regesto-kb/bin/regesto-install --dry-run   # see what it would touch
@@ -80,32 +97,39 @@ facts to imitate. Drop `--examples` for an empty one.
 regesto --config ~/regesto-kb/config.toml install --dry-run --json
 ```
 
-For each configured integration, install acts only on capabilities its resolved profile
-declares: skills targets are linked, instructions targets receive the pointer section,
-and hooks are registered or shown as exact preservation-safe manual recipes. A missing
-capability is reported as unsupported rather than guessed. The built-in Claude profile
-uses `SessionStart`; Hermes uses first-turn `pre_llm_call` JSON framing. Install backs up
-anything it edits and is safe to re-run. It evaluates every integration in
-`integrations` in `config.toml`, which
-`init` already set to whichever it found installed on this machine — edit it if that guess
-was wrong.
+For each configured integration, install links Regesto's skills, updates its existing
+instructions file, and registers a startup hook when the profile supports one. The dry run
+shows every target before anything changes. Installation backs up files it edits and is
+safe to run again.
 
 Run `regesto --config ~/regesto-kb/config.toml doctor` to see detected integrations,
 installed and pending artifacts, hook registration, memory availability, trust defaults,
 and exact remediation without changing either the instance or host files.
 
-**4. Open a session in a project.** With a current declared startup hook, its facts are
-already in context — you did not ask for them, and the agent did not decide to look. A
-hookless integration with declared skills and instructions targets receives those advisory
-paths instead; a profile with no such targets needs configured generic paths, MCP, or
-manual promotion.
+**5. Open a new agent session in a project.** Claude's startup hook injects project
+context automatically. Hermes does the same on the first turn after its reported YAML
+step is complete. Codex has no startup hook; its installed instructions tell it to search
+Regesto when recorded knowledge could answer the question.
 
-**5. Record something.** Tell the agent "remember that migrations here are forward-only",
+**6. Record something.** Tell the agent "remember that release builds run on CI",
 or run `/regesto-write`. The skill submits it through Regesto's validated write command, so
 the fact lands in `knowledge/facts/` with its schema metadata, path, and timestamps assigned
 by the tool, plus a `**Why:**` line.
 
 That is the whole loop. Everything below is optional.
+
+### Which setup path should I use?
+
+| Your client | What to do |
+|---|---|
+| Claude Code, Codex, or Hermes | Put its built-in ID in `integrations`, then run `regesto install`. |
+| Another local agent with skills or persistent instructions | Configure its actual paths with the `generic` profile. |
+| A client that can launch local MCP servers | Point it at `regesto --config /absolute/path/config.toml mcp`; no integration entry is required for MCP alone. |
+| A client with none of those capabilities | Export the conversation and run `regesto promote`. |
+
+The complete procedures and copyable configuration are in
+[Connect any agent to Regesto](docs/setup-other-agents.md). The
+[integration matrix](docs/agent-integration.md) is the exact capability reference.
 
 ---
 
@@ -257,7 +281,9 @@ structured write boundary; its default output remains a concise relative path.
 | Claude Code | deterministic when the declared startup hook is current | [docs/setup-claude-code.md](docs/setup-claude-code.md) |
 | Hermes Agent | deterministic on the first turn when registration and allowlist are current | [docs/setup-hermes.md](docs/setup-hermes.md) |
 | Codex CLI | skills + instructions | [docs/setup-codex.md](docs/setup-codex.md) |
-| Others | profile-dependent: configured skills/instructions, MCP, or manual promotion | [docs/setup-other-agents.md](docs/setup-other-agents.md) |
+| Other local agents | portable skills and/or instructions configured with their actual paths | [docs/setup-other-agents.md](docs/setup-other-agents.md#custom-local-integration) |
+| MCP clients | local search, reads, project resolution, and validated writes; consultation remains client-driven | [docs/setup-other-agents.md](docs/setup-other-agents.md#mcp-client) |
+| Hosted clients with no local interface | export a conversation and promote it manually | [docs/setup-other-agents.md](docs/setup-other-agents.md#no-local-integration-surface) |
 
 The declared Claude `SessionStart` and Hermes `pre_llm_call` protocols inject context
 before the model can respond, so consultation is guaranteed when their registrations are
