@@ -1,59 +1,41 @@
 # Connect any agent to Regesto
 
-This is the setup guide for both people and agents. Start here when you are not sure
-which integration path applies. The [agent integration matrix](agent-integration.md) is
-the reference for exact built-in capabilities; this page is the procedure.
+Use this guide when your client is not Claude Code, Codex, or Hermes, or when you are
+building an integration for a new agent. The [integration matrix](agent-integration.md) is
+the advanced reference for exact profiles and protocols.
 
-Regesto can connect to a client in four ways. Choose the first row the client supports:
+## Choose a connection
 
-| Client capability | Setup path | What it provides |
+Start with the first capability your client supports:
+
+| Client capability | Setup path | Result |
 |---|---|---|
-| Built-in profile: Claude Code, Codex, or Hermes | [Built-in integration](#built-in-integrations) | Known skills, instructions, hooks, and memory locations |
-| Local skills directory or always-loaded instructions file | [Custom local integration](#custom-local-integration) | Portable skills and/or persistent instructions |
-| Local stdio MCP servers | [MCP client](#mcp-client) | Search, reads, project resolution, and validated writes |
-| None of the above | [Manual promotion](#no-local-integration-surface) | Facts extracted from an exported conversation |
+| Built-in Claude Code, Codex, or Hermes profile | [Built-in integrations](#built-in-integrations) | Regesto already knows the client paths and supported hooks |
+| Local skills or a persistent instructions file | [Custom local integration](#custom-local-integration) | Regesto installs only the capabilities you configure |
+| Local stdio MCP servers | [MCP client](#mcp-client) | The client gets Regesto search, read, project, and write tools |
+| None of these | [No local integration surface](#no-local-integration-surface) | Export a conversation and promote it manually |
 
-These paths can be combined. For example, a client may use MCP for live searches and a
-configured memory source for harvesting.
+The local and MCP paths can be combined. For example, persistent instructions can make
+consultation habitual while MCP provides the actual tools.
 
-## Before connecting a client
-
-Install Regesto and create one knowledge-base instance:
+Before continuing, install Regesto and create a knowledge base:
 
 ```bash
 brew install prof18/tap/regesto
 regesto init --dir ~/regesto-kb --examples
 ```
 
-Run later commands from `~/regesto-kb`, or add
-`--config ~/regesto-kb/config.toml` immediately after `regesto` when running elsewhere.
-
-Two terms matter:
-
-- A **configured integration** is an entry in `integrations = [...]`. Regesto installs
-  local artifacts for it and can harvest its declared memory.
-- A **detected integration** is a built-in client Regesto happens to find on this
-  machine. Detection during `init` only supplies the initial list; it does not enable or
-  disable anything later.
-
-An MCP-only client does not need an entry in `integrations` because MCP is an interface to
-the knowledge-base instance itself. Add an integration entry only if Regesto should also
-install local files for that client or harvest its memory.
+Run the remaining commands from `~/regesto-kb`, or pass
+`--config ~/regesto-kb/config.toml` after `regesto`.
 
 ## Built-in integrations
 
-Regesto ships profiles for `claude`, `codex`, and `hermes`. `regesto init` adds whichever
-ones it detects at that moment. Open `~/regesto-kb/config.toml` and make the list match the
-clients you want Regesto to manage:
+For Claude Code, Codex, or Hermes, add the built-in ID to `config.toml` and run the normal
+installer. You do not need to configure paths or copy a custom profile:
 
 ```toml
 integrations = ["claude", "codex", "hermes"]
 ```
-
-It is fine to configure a built-in integration that is not currently detected. This is
-useful when the same knowledge base is used on multiple machines.
-
-Preview, install, and verify:
 
 ```bash
 cd ~/regesto-kb
@@ -62,34 +44,31 @@ regesto install
 regesto doctor
 ```
 
-`install` renders and links skills, updates a marker-delimited section in an existing
-instructions file, and registers hooks where Regesto has a preservation-safe registrar.
-It backs up host files before changing them and is safe to run again.
-
-Expected consultation behavior differs by host:
-
-- **Claude Code:** its `SessionStart` hook injects context automatically.
-- **Hermes:** its first-turn hook injects context after any reported manual YAML step has
-  been completed.
-- **Codex:** instructions tell it to search and the skills provide the procedure, but no
-  built-in hook forces consultation.
-
-For host-specific details, use [Claude Code](setup-claude-code.md),
-[Codex](setup-codex.md), or [Hermes](setup-hermes.md).
+Keep only the integrations you use. See the short setup notes for
+[Claude Code](setup-claude-code.md), [Codex](setup-codex.md), or
+[Hermes](setup-hermes.md) if `doctor` reports a host-specific step.
 
 ## Custom local integration
 
-Use this path for an unrecognized local agent such as a new CLI or desktop client. First
-find what the client actually supports; do not guess vendor paths or settings formats.
+Use the `generic` profile for an unsupported local client. Regesto will not guess an
+unknown product's paths, memory format, or hook protocol.
 
-Look for:
+### 1. Find the capabilities the client actually has
 
-1. An Agent Skills-compatible directory.
-2. A Markdown file loaded into every session.
-3. A Markdown memory directory that the client writes.
-4. A documented startup or pre-model hook.
+Look in the client's documentation or configuration for:
 
-Add a unique ID to the top-level list and put its actual paths in the matching section:
+- an Agent Skills-compatible directory;
+- a Markdown instructions file loaded into every session;
+- optionally, a directory where the client writes Markdown memory;
+- optionally, a documented startup or pre-model hook.
+
+You need at least a skills directory or a persistent instructions file for this path. If
+the client only supports MCP, skip to [MCP client](#mcp-client).
+
+### 2. Add the minimum configuration
+
+Choose a short, unique ID and add it to the top-level integration list. Configure only
+the paths the client supports:
 
 ```toml
 # Keep any built-in IDs you already use and append the custom ID.
@@ -102,12 +81,17 @@ instructions_file = "~/.my-agent/AGENTS.md"
 trust = "quarantine"
 ```
 
-Only include capabilities the client really has. A skills-only client needs only
-`skills_dir`; an instructions-only client needs only `instructions_file`. Create the
-instructions file yourself if it does not exist—Regesto will add its marked section to an
-existing host-owned file, but the generic profile will not invent that file.
+A skills-only client can omit `instructions_file`. An instructions-only client can omit
+`skills_dir`.
 
-Then run:
+Create the instructions file yourself if it does not exist. The generic profile can add
+its marked section to an existing file, but it will not create a file owned by another
+client.
+
+`quarantine` is the safe default for an unfamiliar source: harvested material stays out
+of canonical knowledge until it has been reviewed.
+
+### 3. Preview, install, and verify
 
 ```bash
 cd ~/regesto-kb
@@ -116,13 +100,16 @@ regesto install
 regesto doctor --integration my-agent
 ```
 
-The generic profile uses portable skills, has no guessed hook or memory location, and
-defaults new harvested material to quarantine. `doctor` should show each configured
-capability as current and undeclared capabilities as unsupported.
+Read the dry run before applying it. It shows the resolved targets and whether Regesto
+will create a link, update a marked instructions section, or leave something untouched.
 
-### Add native-memory harvesting
+After a clean result, restart the client and ask it to search Regesto for a known example
+fact. Then ask it to remember a disposable fact and confirm that a new Markdown file
+appears under `knowledge/facts/`.
 
-If the client writes Markdown memory, extend the same section:
+### Optional: harvest the client's native memory
+
+If the client writes Markdown memory, add its real location to the same section:
 
 ```toml
 [integrations.my-agent]
@@ -135,85 +122,82 @@ trust = "quarantine"
 ```
 
 The first `regesto harvest` records a baseline and normally captures nothing. Later runs
-write only new changes under `inbox/my-agent@<machine>/`. Keep an unfamiliar or shared
-source quarantined until a human explicitly approves it.
+write new changes under `inbox/my-agent@<machine>/` for review and normalization.
 
-### Add a custom hook
+Do not point `memory_location` at Regesto's `knowledge/` directory. Client memory is an
+input to harvest, not the canonical store.
 
-The generic profile never guesses a hook format. If the client has a compatible hook,
-copy `~/regesto-kb/adapters/profiles/generic.json` to
-`~/regesto-kb/adapters/profiles/<id>.json`, make its JSON `id` match the filename, and
-declare a supported protocol with the `manual` registrar. `regesto install --dry-run`
-will print the exact registration recipe without rewriting an unfamiliar settings file.
+### Optional: add a hook
 
-A genuinely new hook payload or output format requires a small protocol adapter and
-contract tests. That is the uncommon case where Regesto source code must change.
+Do not reuse a built-in hook recipe unless the client documents the same event, input,
+and output format. The generic profile deliberately declares no hook.
+
+For a compatible documented hook, copy
+`~/regesto-kb/adapters/profiles/generic.json` to
+`~/regesto-kb/adapters/profiles/<id>.json`, change its `id` to the filename ID, and declare
+the supported protocol with the `manual` registrar. The install dry run will print a
+registration recipe instead of rewriting an unfamiliar settings file.
+
+A new hook payload or response format needs a protocol adapter and contract tests in the
+Regesto source. This is the only custom-agent path that normally requires code changes.
 
 ## MCP client
 
-Use MCP when the client can launch a local stdio MCP server. Configure the client with an
-absolute knowledge-base path; the exact outer setting name varies by client:
+An MCP-only client does not need an entry in `integrations`. Configure it to launch the
+local Regesto stdio server instead:
 
 ```json
 {
   "mcpServers": {
     "regesto": {
-      "command": "/absolute/path/to/regesto",
+      "command": "regesto",
       "args": ["--config", "/Users/you/regesto-kb/config.toml", "mcp"]
     }
   }
 }
 ```
 
-The command is:
+`regesto` is normally enough because the installation command puts it on your `PATH`.
+Replace `/Users/you/regesto-kb` with the absolute path to your knowledge base; MCP clients
+often do not expand `~` in JSON configuration.
+
+If the client reports that it cannot find `regesto`, it is not inheriting your shell
+`PATH`. Run `command -v regesto` in a terminal and use the returned path as `command`.
+For example, Homebrew commonly returns `/opt/homebrew/bin/regesto` on Apple Silicon, but
+the location depends on how Regesto was installed.
+
+The equivalent shell command is:
 
 ```bash
-regesto --config /absolute/path/to/regesto-kb/config.toml mcp
+regesto --config ~/regesto-kb/config.toml mcp
 ```
 
-Use `command -v regesto` to find the executable for a client that requires an absolute
-`command` value.
+The client owns the process and communicates over stdin/stdout. Regesto opens no network
+listener. It exposes tools for searching facts, reading an exact fact, resolving a
+project, and writing a validated fact, plus resources for the index and individual facts.
 
-The client starts and owns this process. It communicates over stdin/stdout; Regesto opens
-no network listener. Protocol output stays on stdout and diagnostics go to stderr.
+MCP makes the tools available; it does not force the model to use them. If the client
+supports persistent instructions, add a short rule telling it to search Regesto whenever
+a recorded decision or preference could settle the task, and to use the Regesto write
+tool when the user explicitly asks it to remember something.
 
-The server exposes:
-
-- `regesto_search` — search canonical facts.
-- `regesto_get_fact` — read one exact fact.
-- `regesto_resolve_project` — map a working directory to its canonical project.
-- `regesto_write_fact` — validate and atomically write a fact with explicit provenance.
-- `regesto://index` and `regesto://facts/<id>` resources.
-
-MCP access does not itself force the model to consult Regesto. If the client supports
-persistent instructions, add something equivalent to:
-
-```markdown
-Before answering a question that a recorded decision, preference, convention, or
-environment fact could settle, call `regesto_search` and read the matching exact facts.
-When the user explicitly asks you to remember something, call `regesto_write_fact` with
-source `<client-id>@<machine-name>`.
-```
-
-Restart the client after changing its MCP configuration, then confirm that it can list
-the four Regesto tools.
+Restart the client after changing its MCP configuration, then confirm it can list the
+Regesto tools.
 
 ## No local integration surface
 
-A hosted, web, or mobile client may expose no local skills, instructions, hook, MCP, or
-memory files. Regesto cannot integrate with it automatically. Export or copy the
-conversation, then run the CLI from the knowledge-base directory:
+When a hosted or mobile client has no skills, instructions, MCP, hooks, or accessible
+memory, export or copy the conversation and promote it from the knowledge-base directory.
 
-First choose an installed agent CLI that can turn the transcript into facts. Configure a
-fallback chain in `~/regesto-kb/config.toml`:
+First configure at least one installed agent CLI that can extract claims:
 
 ```toml
 [normalize]
 commands = "claude -p ;; codex exec --sandbox read-only"
 ```
 
-Only one working command is required; Regesto tries the entries from left to right. You
-can instead select one command for a single run with `--command "claude -p"`.
+Regesto tries the commands from left to right. For a single run, you can select one
+explicitly with `--command "claude -p"`.
 
 Then promote the export:
 
@@ -224,31 +208,16 @@ regesto promote ~/Downloads/conversation.md
 pbpaste | regesto promote -
 ```
 
-Review the resulting facts, and then run:
-
-```bash
-regesto lint --fix --rebuild
-```
-
-`/regesto-promote` is only a convenience when the current agent already has Regesto's
-skills installed. The `regesto promote` CLI form works independently of that client.
+Review the resulting facts, then run `regesto lint --fix --rebuild`.
 
 ## Reading `doctor`
 
-Run `regesto doctor --integration <id>` after local integration setup. Its statuses mean:
+`regesto doctor --integration <id>` uses four useful states:
 
-- `ok` or `current`: no action is required.
-- `manual`: Regesto prints a step it cannot safely perform for you.
-- `unsupported`: the profile does not declare that capability; this is expected when you
-  intentionally omitted it.
-- `warning` or `error`: read the attached remediation before opening a new session.
+- `ok` or `current`: no action is required;
+- `manual`: complete the printed step;
+- `unsupported`: the profile intentionally does not declare that capability;
+- `warning` or `error`: follow the attached remediation before testing a new session.
 
-After a clean install, open a new client session so it reloads skills and instructions.
-
-## Safety boundaries
-
-Do not point an agent's auto-memory directory at `knowledge/`. Vendor memory is a bounded,
-pruned cache; Regesto should harvest changes from it instead of letting it own canonical
-facts. Do not expose the stdio MCP process through a public network listener. It provides
-access to the complete local knowledge base and is designed to be launched locally by the
-client.
+Do not expose `regesto mcp` through a public network listener. It provides access to the
+complete local knowledge base and is intended to be launched locally by the client.

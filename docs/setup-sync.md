@@ -167,10 +167,6 @@ regesto --config ~/regesto-kb/config.toml harvest --dry-run   # first run record
 relative to `config.toml`'s location, and the instructions section renders `~/`-relative
 paths rather than absolute ones. Do not hardcode a path anywhere yourself.
 
-**Home directories differ between machines**, and that is handled: everything resolves
-relative to `config.toml`'s location, and the instructions section renders `~/`-relative
-paths rather than absolute ones. Do not hardcode a path anywhere yourself.
-
 ## Upgrading, with more than one machine
 
 `.regesto-manifest` records which engine last wrote the instance's shared files, and it

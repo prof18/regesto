@@ -1,171 +1,86 @@
-# Setup — Claude Code
+# Set up Claude Code
 
-Not sure whether this is the right integration path? Start with
-[Connect any agent to Regesto](setup-other-agents.md).
+Use the main [quick start](../README.md#quick-start) first. This page only covers what is
+specific to Claude Code. The [integration matrix](agent-integration.md) contains the exact
+profile metadata and protocol details.
 
-See the canonical [agent integration matrix](agent-integration.md) for profile metadata,
-capability status, and the distinction between fixture-tested and live-host evidence.
-
-When its declared `SessionStart` hook is registered, consultation is **deterministic**:
-the hook injects text into the model's context before the first prompt. The guarantee
-comes from that installed capability, not from the Claude product name. The hook does the
-lookup; the model does not get a choice.
+Claude Code is Regesto's most automatic integration: a `SessionStart` hook injects
+relevant knowledge before the first prompt.
 
 ## Install
 
-```bash
-regesto init --dir ~/regesto-kb --examples
-~/regesto-kb/bin/regesto-install
-```
-
-`regesto-install` is a thin launcher for `regesto install`. Installation is
-idempotent, backs up every host file it edits, and takes `--dry-run` (plus `--json` for a
-versioned machine-readable plan). The Go installer does three things:
-
-1. **Renders and links the skills** into `~/.claude/skills/`: `regesto-search`,
-   `regesto-write`, `regesto-promote`.
-2. **Registers the `SessionStart` hook** in `~/.claude/settings.json`, appending to any
-   hooks already there.
-3. **Appends the knowledge-base section** to `~/.claude/CLAUDE.md`, between
-   `regesto:section:start` / `:end` markers so it can be updated later without touching
-   the rest of the file.
-
-In an engine source checkout, the launcher also builds the real binary before a
-non-dry install. Release-backed instances already have an engine and simply forward to it.
-
-Then open a session in a project. Its facts should be in context before you type anything.
-
-## What you should see
-
-```
-$ ~/regesto-kb/bin/regesto-context --dir ~/work/aurora
-# Knowledge base
-...
-## Project: aurora (3)
-- `dec-http-port-8080` — The API listens on 8080 in development
-```
-
-That exact text is what the hook feeds Claude Code at session start.
-
-## Configuration
-
-Everything lives in your instance's `config.toml`; the engine hardcodes nothing.
+Make sure `claude` is listed in your knowledge base's `config.toml`:
 
 ```toml
 integrations = ["claude"]
+```
 
-# Only if this machine differs from the vendor defaults.
+Then preview, install, and verify the integration:
+
+```bash
+cd ~/regesto-kb
+regesto install --dry-run
+regesto install
+regesto doctor --integration claude
+```
+
+Installation connects three things:
+
+- Regesto's search, write, and promote skills;
+- a short knowledge-base section in `~/.claude/CLAUDE.md`;
+- the session-start hook in `~/.claude/settings.json`.
+
+Regesto preserves unrelated content and backs up host files before editing them. If
+`CLAUDE.md` does not exist, create it and run `regesto install` again; Regesto does not
+invent host-owned instruction files.
+
+Open a new Claude Code session after installation.
+
+## Verify it
+
+Run the same context lookup used by the hook:
+
+```bash
+~/regesto-kb/bin/regesto-context --dir ~/work/aurora
+```
+
+If the project has facts, the output contains its canonical project name and matching
+entries. `regesto doctor --integration claude` should report the skills, instructions,
+and hook as current.
+
+## Use non-default Claude paths
+
+The built-in defaults are normally enough. Override them only when your Claude files live
+somewhere else:
+
+```toml
 [integrations.claude]
 skills_dir = "~/.agents/skills"
-instructions_file = "~/.dotfiles/AGENTS.md"
+instructions_file = "~/.dotfiles/CLAUDE.md"
 settings_file = "~/.claude/settings.json"
 ```
 
-`regesto config` prints what these resolve to. If something installed in the wrong place,
-look there first.
+Run `regesto config` to see the resolved paths, then rerun the install commands.
 
----
+## If context does not appear
 
-## Troubleshooting
-
-These are the things that actually went wrong while building this, not a list of things
-that theoretically could.
-
-### The session starts but no facts appear
-
-Check, in order:
+Check these in order:
 
 ```bash
-~/regesto-kb/bin/regesto-config         # is the instance the one you think it is?
-~/regesto-kb/bin/regesto-context        # does it print anything at all?
+regesto doctor --integration claude
+~/regesto-kb/bin/regesto-context
 python3 -m json.tool ~/.claude/settings.json
 ```
 
-The hook is written to **never fail a session start**: if anything goes wrong it exits 0
-and injects nothing. That is deliberate — a non-zero exit would surface as an error on
-every single session — but it does mean a broken hook is silent. Run
-the protocol boundary directly to see diagnostics without involving Claude Code:
+The hook deliberately fails open so a Regesto problem never blocks Claude from starting.
+That also means a broken hook can be silent. `doctor` shows the missing or stale artifact;
+`regesto-context` confirms whether Regesto itself can resolve facts; the final command
+checks that Claude's settings file is valid JSON.
 
-```bash
-printf '%s' '{"workspace":{"current_dir":"/tmp/project"}}' \
-  | ~/regesto-kb/bin/regesto-hook claude-session-start-v1
-```
+Two normal cases are easy to misread as failures:
 
-To prove stdout really lands in context, put a sentinel string in the hook's output and ask
-the model to repeat it, in an isolated session that does not touch your global config:
-
-```bash
-claude -p --settings /tmp/probe-settings.json 'repeat the sentinel you were given'
-```
-
-### Settings JSON is invalid
-
-The installer parses and merges `settings.json` in Go; it has no `jq` dependency. If the
-file is malformed, planning fails before making any change. Repair the JSON and re-run
-`regesto install --dry-run` to inspect the exact canonical target and backup action.
-
-### Facts land under two different project names
-
-Claude Code's native memory directory is derived from the **absolute repo path**, so the
-same project fragments across clones and across machines. Regesto resolves the canonical
-name from the git remote's basename instead, which every clone shares.
-
-For a repo with no remote, or two different projects whose basenames collide, map them in
-the instance config:
-
-```toml
-[projects]
-"aurora-fork" = "aurora"
-```
-
-`regesto project --scope` run inside the repo prints what the hook will use. `regesto
-cycle` also moves already-filed facts onto the canonical name when you add a mapping —
-names that merely *resemble* each other are left alone, because `beacon` and
-`beacon-mobile` are two different projects.
-
-### The machine name keeps changing
-
-macOS appends and increments a counter to the hostname when rejoining networks — the same
-box comes back as `-2`, then `-3`. Regesto strips the suffix, but if `regesto config` says
-`machine_source=hostname` you are relying on a guess, and the machine name appears in
-`inbox/<agent>@<machine>/` and in every fact's `source:`.
-
-Pin it:
-
-```bash
-echo laptop > ~/regesto-kb/.state/machine
-```
-
-`.state/` is per-machine, never committed and never synced.
-
-### I edited a skill and nothing changed
-
-Shipped skills carry a `{{kb_root}}` placeholder, so they are rendered into
-`.state/integrations/claude/skills/` and linked from there. Re-run
-`bin/regesto-install` after editing one.
-The same applies to the instructions section: install compares the installed copy against
-the template and updates it when it has drifted, because a stale always-loaded section
-actively misdirects every session.
-
-### Something else already owns a skill link
-
-If `~/.claude/skills/regesto-search` exists and points somewhere other than this instance,
-install warns and leaves it alone rather than stealing it. That is what you want when two
-instances are on one machine; delete the link yourself if it is stale.
-
-### Harvest captured nothing
-
-`regesto harvest` diffs each agent's memory files against a snapshot in `.state/`. The
-first run takes the baseline, so it legitimately reports nothing. After that, an empty run
-means the agent has not written since the last one.
-
-The window matters: native memory is a cache the agent prunes, so a note written **and
-pruned** between two harvest runs never appears in any diff. Run harvest every few minutes
-(`regesto schedule install` does), and treat the `regesto-write` skill as the real
-guarantee for anything you care about.
-
-### Everything harvested since the last run vanished
-
-Something rewrote a memory file before harvest diffed it. Nothing in regesto does this —
-memory files hold a pointer, not content — but if you ever install or re-assert the pointer
-block by hand, harvest first.
+- The first `regesto harvest` only records a baseline. It captures changes from later
+  runs.
+- If two clones resolve to different project names, add the desired mapping under
+  `[projects]` in `config.toml`, then run `regesto project --scope` inside the repository
+  to verify it.

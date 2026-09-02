@@ -1,5 +1,9 @@
 # Agent integration matrix
 
+This is the advanced capability reference. For normal setup, use the
+[main quick start](../README.md#quick-start) or
+[custom-agent guide](setup-other-agents.md#custom-local-integration).
+
 Regesto integrates by capability, not by product identity. A profile declares what a host
 can expose: detection signals, Agent Skills targets and variant, always-loaded instructions,
 hook protocol and safe registrar, native-memory sources, exclusions, and default trust. A
@@ -40,11 +44,10 @@ the validation ledger rather than being implied forever by this matrix.
 
 ## Configure an unknown local host
 
-The complete onboarding procedure is in
+The guided onboarding procedure is in
 [Connect any agent to Regesto](setup-other-agents.md#custom-local-integration). For a
-one-off local host, you do not need a built-in preset or any Go changes. Find the host's
-actual Agent Skills directory and always-loaded instructions file. Create the instructions
-file first if the host has not, then add:
+one-off local host, you do not need a built-in preset or any Go changes. The standalone
+reference configuration is:
 
 ```toml
 integrations = ["my-agent"]
@@ -91,15 +94,17 @@ directly, so an MCP-only client does not need to appear in `integrations`:
 {
   "mcpServers": {
     "regesto": {
-      "command": "/absolute/path/to/regesto",
+      "command": "regesto",
       "args": ["--config", "/Users/you/regesto-kb/config.toml", "mcp"]
     }
   }
 }
 ```
 
-Use `command -v regesto` when the client requires an absolute executable path. The
-equivalent shell command is `regesto --config ~/regesto-kb/config.toml mcp`. It exposes search,
+If the client does not inherit your shell `PATH`, replace `regesto` with the output of
+`command -v regesto`. The knowledge-base path must be absolute because MCP clients may not
+expand `~`. The equivalent shell command is
+`regesto --config ~/regesto-kb/config.toml mcp`. It exposes search,
 exact fact reads, project resolution, validated writes, the generated index, and fact
 resources over stdin/stdout only. Diagnostics go to stderr and it opens no network
 listener. MCP makes the tools available; persistent client instructions are still needed
