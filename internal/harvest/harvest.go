@@ -41,13 +41,10 @@ type entry struct {
 }
 
 type snapshot struct {
-	Agent             string                    `json:"agent"`
-	Taken             string                    `json:"taken"`
-	Entries           map[string]entry          `json:"entries"`
-	LegacySource      string                    `json:"legacy_source,omitempty"`
-	LegacyInitialized bool                      `json:"legacy_initialized,omitempty"`
-	Sources           map[string]sourceSnapshot `json:"sources,omitempty"`
-	Observed          map[string]entry          `json:"observed,omitempty"`
+	Agent    string                    `json:"agent"`
+	Taken    string                    `json:"taken"`
+	Sources  map[string]sourceSnapshot `json:"sources,omitempty"`
+	Observed map[string]entry          `json:"observed,omitempty"`
 }
 
 type sourceSnapshot struct {
@@ -156,17 +153,6 @@ func runAgent(kbFS *os.Root, cfg *config.Config, a adapters.Agent, dryRun bool) 
 	if err != nil {
 		return nil, err
 	}
-	var firstMarkdown string
-	for _, source := range a.MemorySources {
-		if source.Kind == "markdown-glob-v1" {
-			firstMarkdown = memorySourceID(source)
-			break
-		}
-	}
-	if state.LegacySource == "" {
-		state.LegacySource = firstMarkdown
-	}
-
 	publishedFiles := map[string]bool{}
 	observedFiles := map[string]entry{}
 	var results []Result
@@ -179,8 +165,7 @@ func runAgent(kbFS *os.Root, cfg *config.Config, a adapters.Agent, dryRun bool) 
 			results = append(results, res)
 			continue
 		case "markdown-glob-v1":
-			legacy := res.SourceID == state.LegacySource
-			res, sourceTouched, err := runMarkdownSource(kbFS, cfg, a, source, res.SourceID, legacy, &state, publishedFiles, observedFiles, dryRun)
+			res, sourceTouched, err := runMarkdownSource(kbFS, cfg, a, source, res.SourceID, &state, publishedFiles, observedFiles, dryRun)
 			if err != nil {
 				return results, err
 			}
@@ -212,7 +197,7 @@ func memorySourceID(source adapters.MemorySource) string {
 	return source.Kind + "-" + hex.EncodeToString(sum[:8])
 }
 
-func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, source adapters.MemorySource, sourceID string, legacy bool, state *snapshot, publishedFiles map[string]bool, observedFiles map[string]entry, dryRun bool) (Result, bool, error) {
+func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, source adapters.MemorySource, sourceID string, state *snapshot, publishedFiles map[string]bool, observedFiles map[string]entry, dryRun bool) (Result, bool, error) {
 	res := Result{Agent: a.Name, SourceID: sourceID, Kind: source.Kind, Location: source.Location}
 	dirs, err := filepath.Glob(source.Location)
 	if err != nil {
@@ -334,9 +319,7 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 	}
 
 	previous := sourceSnapshot{Entries: map[string]entry{}}
-	if legacy {
-		previous = sourceSnapshot{Initialized: state.LegacyInitialized, Entries: state.Entries}
-	} else if saved, ok := state.Sources[sourceID]; ok {
+	if saved, ok := state.Sources[sourceID]; ok {
 		previous = saved
 	}
 	if previous.Entries == nil {
@@ -353,7 +336,7 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 
 	// A first run would otherwise dump the entire existing store into the
 	// inbox. Record the baseline instead and capture only what changes after
-	// it — the existing content is already covered by the 0.c migration.
+	// it — first-run history is outside incremental capture.
 	first := !previous.Initialized
 	if first && len(changed) > 0 {
 		res.Note = fmt.Sprintf("first run — recorded a baseline of %d file(s), captured none", len(changed))
@@ -385,14 +368,12 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 			// costs local disk instead of repository and sync weight. A file
 			// seen for the first time has no baseline and is captured whole.
 			body, suffix := contents[key], ""
-			if prevBlob, err := readSourceBlob(kbFS, cfg, a.Name, sourceID, legacy, key); err == nil {
+			if prevBlob, err := readSourceBlob(kbFS, cfg, a.Name, sourceID, key); err == nil {
 				if d, ok := unifiedDiff(prevBlob, contents[key], key); ok {
 					body, suffix = d, ".diff"
 				}
 			}
-			if !legacy {
-				name = sourceID + "__" + name
-			}
+			name = sourceID + "__" + name
 			if err := writeRootExclusive(kbFS, filepath.Join(dest, name+suffix), body, 0o644); err != nil {
 				return res, false, err
 			}
@@ -407,29 +388,23 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 	// recovers on the next pass instead of capturing whole files forever.
 	if !dryRun {
 		for key, e := range current {
-			if prevBlob, err := readSourceBlob(kbFS, cfg, a.Name, sourceID, legacy, key); err == nil {
+			if prevBlob, err := readSourceBlob(kbFS, cfg, a.Name, sourceID, key); err == nil {
 				sum := sha256.Sum256(prevBlob)
 				if hex.EncodeToString(sum[:]) == e.Sha {
 					continue
 				}
 			}
-			if err := writeSourceBlob(kbFS, cfg, a.Name, sourceID, legacy, key, contents[key]); err != nil {
+			if err := writeSourceBlob(kbFS, cfg, a.Name, sourceID, key, contents[key]); err != nil {
 				return res, false, err
 			}
 		}
 	}
 
 	if !dryRun {
-		updated := sourceSnapshot{Initialized: true, Entries: current}
-		if legacy {
-			state.LegacyInitialized = true
-			state.Entries = current
-		} else {
-			if state.Sources == nil {
-				state.Sources = map[string]sourceSnapshot{}
-			}
-			state.Sources[sourceID] = updated
+		if state.Sources == nil {
+			state.Sources = map[string]sourceSnapshot{}
 		}
+		state.Sources[sourceID] = sourceSnapshot{Initialized: true, Entries: current}
 	}
 	return res, true, nil
 }
@@ -456,7 +431,7 @@ func memoryOriginID(origin string) string {
 }
 
 func loadSnapshot(kbFS *os.Root, cfg *config.Config, agent string) (snapshot, error) {
-	s := snapshot{Entries: map[string]entry{}, Sources: map[string]sourceSnapshot{}, Observed: map[string]entry{}}
+	s := snapshot{Sources: map[string]sourceSnapshot{}, Observed: map[string]entry{}}
 	data, err := readRootFile(kbFS, snapshotRelativePath(cfg, agent))
 	if os.IsNotExist(err) {
 		return s, nil
@@ -466,22 +441,13 @@ func loadSnapshot(kbFS *os.Root, cfg *config.Config, agent string) (snapshot, er
 	}
 	if err := json.Unmarshal(data, &s); err != nil {
 		// A corrupt baseline must not wedge the loop; treat it as a first run.
-		return snapshot{Entries: map[string]entry{}, Sources: map[string]sourceSnapshot{}, Observed: map[string]entry{}}, nil
-	}
-	if s.Entries == nil {
-		s.Entries = map[string]entry{}
+		return snapshot{Sources: map[string]sourceSnapshot{}, Observed: map[string]entry{}}, nil
 	}
 	if s.Sources == nil {
 		s.Sources = map[string]sourceSnapshot{}
 	}
 	if s.Observed == nil {
 		s.Observed = map[string]entry{}
-	}
-	// Any readable pre-M8 snapshot represents a completed legacy baseline,
-	// including an empty store. The added flag prevents a later first file from
-	// being silently treated as another first run.
-	if !s.LegacyInitialized {
-		s.LegacyInitialized = true
 	}
 	return s, nil
 }

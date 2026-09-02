@@ -85,7 +85,7 @@ declares: skills targets are linked, instructions targets receive the pointer se
 and hooks are registered or shown as exact preservation-safe manual recipes. A missing
 capability is reported as unsupported rather than guessed. The built-in Claude profile
 uses `SessionStart`; Hermes uses first-turn `pre_llm_call` JSON framing. Install backs up
-anything it edits and is safe to re-run. It evaluates every integration in `agents` or
+anything it edits and is safe to re-run. It evaluates every integration in
 `integrations` in `config.toml`, which
 `init` already set to whichever it found installed on this machine — edit it if that guess
 was wrong.
@@ -192,6 +192,12 @@ file it cannot attribute — an instance older than the manifest — is treated 
 A file a release **retires** is removed, but only where it is byte for byte what the engine
 recorded writing. Edit it and it becomes yours: kept, reported, and no longer tracked.
 Anything with no recorded hash is never touched at all.
+
+Regesto does not carry automatic migrations for old instance formats. For a pre-0.4
+instance, manually rename `agents` to `integrations`, move location overrides into
+`[integrations.<id>]`, then run `regesto install`. After confirming the new links and one
+current harvest baseline, old `.state/skills` and per-integration `last/` blob directories
+can be removed.
 
 Then it finishes the job for each declared capability: re-renders and relinks configured
 skills, drops retired owned skills, refreshes configured instructions and hook

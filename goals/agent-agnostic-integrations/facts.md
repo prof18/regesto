@@ -2,7 +2,7 @@
 
 - F01. Regesto describes support through host capabilities rather than a closed list of agent vendors.
 - F02. The published support levels are core access, portable discovery, deterministic context injection, optional native-memory harvest, and manual import.
-- F03. Existing `agents = [...]` configuration, override tables, source values, and generated instance files continue to work without a manual migration.
+- F03. The one live instance is manually updated to `integrations = [...]`; the engine does not carry automatic migration or compatibility machinery for historical config and state layouts.
 - F04. New configuration may declare an arbitrary integration and its capabilities without changing Go code for skills, instructions, file-memory harvesting, or manual hook setup.
 - F05. Built-in integration profiles are data-driven, validated at startup, and contain no personal paths.
 - F06. Claude Code, Codex, and Hermes remain built-in profiles and retain their current configuration identifiers.
@@ -10,8 +10,8 @@
 - F08. Shared Agent Skills conform to the portable Agent Skills contract and contain no required Claude-, Codex-, or Hermes-specific syntax.
 - F09. A host-specific optimization may extend a portable skill, but an unsupported optimization never appears in another host's rendered skill.
 - F10. Regesto exposes a validated machine-facing write command so integrations do not need to hand-author timestamps, paths, or unchecked frontmatter.
-- F11. Machine-facing search, context, project resolution, configuration, installation planning, and write results have stable JSON forms while existing text output remains compatible.
-- F12. Adapter installation is implemented in tested Go code; `bin/regesto-install` remains as a compatibility shim.
+- F11. Machine-facing search, context, project resolution, configuration, installation planning, and write results have stable JSON forms.
+- F12. Adapter installation is implemented in tested Go code; `bin/regesto-install` remains as a thin launcher.
 - F13. Installation dry runs are complete and inert, repeated installation is idempotent, edits are backed up, shared instruction files are updated once, and foreign skill links are never stolen.
 - F14. Hook timing, input parsing, output encoding, registration, and failure behavior belong to the integration profile rather than being inferred from a settings-file path.
 - F15. Claude's `SessionStart` hook continues to inject project-aware context and never breaks session startup when Regesto fails.
@@ -26,7 +26,7 @@
 - F24. `regesto doctor` reports detected integrations, installed artifacts, capability status, hook registration, memory availability, trust policy, and actionable remediation.
 - F25. `regesto init`, `regesto upgrade`, and the manifest continue to scaffold, update, preserve, and retire integration-owned instance files safely.
 - F26. Documentation has one canonical capability matrix and separate product recipes; it distinguishes configured, tested, and deterministic behavior.
-- F27. Automated contract tests cover portable artifacts, legacy migration, installer safety, hook protocols, trust quarantine, MCP, generic integrations, and engine/instance packaging.
+- F27. Automated contract tests cover portable artifacts, current-format installer safety, hook protocols, trust quarantine, MCP, generic integrations, and engine/instance packaging.
 - F28. Manual end-to-end tests run against Claude Code, Codex, and Hermes on this machine before the goal is complete.
 - F29. Remote HTTP exposure, hosted synchronization, proprietary cloud-memory connectors, and adding every known product preset are outside this goal.
 - F30. No fact-file schema migration is required because `source` remains an opaque `<integration>@<machine>` provenance string; the trust-policy change is engine/config behavior.

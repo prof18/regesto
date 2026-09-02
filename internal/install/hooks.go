@@ -18,13 +18,10 @@ type hookGroup struct {
 	commands  []string
 }
 
-func planHooks(p *Plan, agents []adapters.Agent, legacy bool, sourceRoot string) error {
+func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 	groups := map[string]*hookGroup{}
 	for _, agent := range agents {
 		hooks := append([]adapters.Hook(nil), agent.Hooks...)
-		if legacy && agent.SettingsFile != "" && !hasAutomaticHook(hooks) {
-			hooks = append(hooks, adapters.Hook{Protocol: "claude-session-start-v1", Registrar: "claude-settings-json-v1", Settings: agent.SettingsFile})
-		}
 		for _, hook := range hooks {
 			switch hook.Registrar {
 			case "none", "":
@@ -150,15 +147,6 @@ func appendSharedHookItem(p *Plan, item Item) error {
 	}
 	p.Items = append(p.Items, item)
 	return nil
-}
-
-func hasAutomaticHook(hooks []adapters.Hook) bool {
-	for _, hook := range hooks {
-		if hook.Registrar != "" && hook.Registrar != "none" && hook.Registrar != "manual" {
-			return true
-		}
-	}
-	return false
 }
 
 func nonempty(value string) []string {

@@ -97,36 +97,11 @@ jobs:
             '{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"regesto://index"}}' \
             | regesto --config "$RUNNER_TEMP/kb/config.toml" mcp > "$RUNNER_TEMP/release-mcp.jsonl"
 
-          legacy="$RUNNER_TEMP/legacy-v0.3.1"
-          legacy_home="$RUNNER_TEMP/legacy-home"
-          cp -R tests/fixtures/v0.3.1-instance "$legacy"
-          chmod +x \
-            "$legacy/bin/regesto-config" \
-            "$legacy/bin/regesto-context" \
-            "$legacy/bin/regesto-index" \
-            "$legacy/bin/regesto-install" \
-            "$legacy/bin/regesto-project" \
-            "$legacy/bin/regesto-search" \
-            "$legacy/adapters/claude/hooks/session-start.sh"
-          mkdir -p "$legacy_home/.claude" "$legacy_home/.codex"
-          printf '%s\n' 'claude legacy preface' > "$legacy_home/.claude/CLAUDE.md"
-          printf '%s\n' 'codex legacy preface' > "$legacy_home/.codex/AGENTS.md"
-          cp "$legacy/config.toml" "$RUNNER_TEMP/legacy-config-before.toml"
-          HOME="$legacy_home" regesto --config "$legacy/config.toml" upgrade --dry-run > "$RUNNER_TEMP/legacy-upgrade-dry.txt"
-          cmp "$legacy/config.toml" "$RUNNER_TEMP/legacy-config-before.toml"
-          HOME="$legacy_home" regesto --config "$legacy/config.toml" upgrade > "$RUNNER_TEMP/legacy-upgrade.txt"
-          cmp "$legacy/config.toml" "$RUNNER_TEMP/legacy-config-before.toml"
-          HOME="$legacy_home" regesto --config "$legacy/config.toml" upgrade --dry-run > "$RUNNER_TEMP/legacy-upgrade-current.txt"
-          grep -q '0 file(s) would change, 0 would be removed' "$RUNNER_TEMP/legacy-upgrade-current.txt"
-
-          python3 - "$RUNNER_TEMP/release-install-dry.json" "$RUNNER_TEMP/release-install.json" "$RUNNER_TEMP/release-install-current.json" "$RUNNER_TEMP/release-doctor.json" "$RUNNER_TEMP/release-mcp.jsonl" "$legacy" "$RUNNER_TEMP/kb" "$legacy_home" "$VERSION" <<'PY'
-          import hashlib
+          python3 - "$RUNNER_TEMP/release-install-dry.json" "$RUNNER_TEMP/release-install.json" "$RUNNER_TEMP/release-install-current.json" "$RUNNER_TEMP/release-doctor.json" "$RUNNER_TEMP/release-mcp.jsonl" <<'PY'
           import json
-          import os
-          import stat
           import sys
 
-          dry, applied, current, doctor, transcript, legacy, initialized, legacy_home, version = sys.argv[1:]
+          dry, applied, current, doctor, transcript = sys.argv[1:]
           with open(dry, encoding="utf-8") as stream:
               dry_report = json.load(stream)
           assert dry_report["dry_run"] is True and "result" not in dry_report
@@ -160,42 +135,6 @@ jobs:
           assert messages[2]["result"]["resources"][0]["uri"] == "regesto://index"
           assert "# INDEX" in messages[3]["result"]["contents"][0]["text"]
 
-          def read_manifest(root):
-              engine = None
-              files = {}
-              with open(os.path.join(root, ".regesto-manifest"), encoding="utf-8") as stream:
-                  for line in stream:
-                      line = line.strip()
-                      if not line or line.startswith("#"):
-                          continue
-                      key, value = line.split(None, 1)
-                      if key == "engine":
-                          engine = value
-                      elif key != "written":
-                          files[value] = key
-              return engine, files
-
-          legacy_engine, legacy_files = read_manifest(legacy)
-          initialized_engine, initialized_files = read_manifest(initialized)
-          assert legacy_engine == version == initialized_engine
-          assert set(legacy_files) == set(initialized_files)
-          for relative, digest in legacy_files.items():
-              legacy_path = os.path.join(legacy, relative)
-              initialized_path = os.path.join(initialized, relative)
-              with open(legacy_path, "rb") as stream:
-                  legacy_body = stream.read()
-              with open(initialized_path, "rb") as stream:
-                  initialized_body = stream.read()
-              assert legacy_body == initialized_body
-              assert hashlib.sha256(legacy_body).hexdigest() == digest
-              assert stat.S_IMODE(os.stat(legacy_path).st_mode) == stat.S_IMODE(os.stat(initialized_path).st_mode)
-
-          assert os.path.islink(os.path.join(legacy_home, ".claude/skills/regesto-search"))
-          assert os.path.islink(os.path.join(legacy_home, ".codex/skills/regesto-search"))
-          with open(os.path.join(legacy_home, ".claude/CLAUDE.md"), encoding="utf-8") as stream:
-              assert stream.read().count("<!-- regesto:section:start -->") == 1
-          with open(os.path.join(legacy_home, ".codex/AGENTS.md"), encoding="utf-8") as stream:
-              assert stream.read().count("<!-- regesto:section:start -->") == 1
           PY
 
       # A release publishes what CHANGELOG.md says about it, and will not publish

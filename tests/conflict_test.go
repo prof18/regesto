@@ -205,7 +205,7 @@ func TestScopeAliasesAreCanonicalised(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(root, "config.toml")
-	if err := os.WriteFile(cfgPath, []byte("agents = [\"claude\"]\n\n[projects]\n\"aurora-2\" = \"aurora\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("integrations = [\"claude\"]\n\n[projects]\n\"aurora-2\" = \"aurora\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.Load(cfgPath)
@@ -256,7 +256,7 @@ func TestUnlistedSimilarNamesAreLeftAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(root, "config.toml")
-	if err := os.WriteFile(cfgPath, []byte("agents = [\"claude\"]\n\n[projects]\n\"aurora-2\" = \"aurora\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("integrations = [\"claude\"]\n\n[projects]\n\"aurora-2\" = \"aurora\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, _ := config.Load(cfgPath)

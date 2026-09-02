@@ -24,7 +24,7 @@ import (
 type Agent struct {
 	Name string `json:"name"`
 	// ProfileID and DisplayName identify the declarative profile that produced
-	// this integration. They are empty/name for a legacy unknown agent.
+	// this integration.
 	ProfileID          string         `json:"profile_id"`
 	DisplayName        string         `json:"display_name"`
 	Detect             Detection      `json:"detect"`
@@ -43,8 +43,8 @@ type Agent struct {
 	// SettingsFile is where hooks are registered, empty for agents that
 	// have no hook mechanism.
 	SettingsFile string `json:"settings_file"`
-	// MemoryGlob is the legacy compatibility projection of the first declared
-	// markdown-glob-v1 source. New harvesting consumes MemorySources directly.
+	// MemoryGlob is the flat projection of the first declared markdown-glob-v1
+	// source. Harvesting consumes MemorySources directly.
 	MemoryGlob string `json:"memory_glob"`
 	// MaxCaptureBytes skips native files larger than this. It is a guard
 	// against a pathological file, not a content filter — skipping a capture
@@ -68,20 +68,6 @@ type Agent struct {
 // belongs in 2.b as a diff against the previously archived copy, not here as an
 // all-or-nothing byte test.
 const defaultMaxCaptureBytes = 10 * 1024 * 1024
-
-// For returns one Agent per name in the config's agent list, applying
-// [skills_dirs] and [instructions] overrides over the vendor defaults. An agent
-// with no default and no override still comes back, with empty paths, so the
-// caller can report it as unknown rather than silently skipping it.
-func For(cfg *config.Config) []Agent {
-	out, err := Resolve(cfg)
-	if err != nil {
-		// Compatibility callers predate validation errors. CLI startup calls
-		// Resolve explicitly; this wrapper preserves its old no-error signature.
-		return nil
-	}
-	return out
-}
 
 // maxCaptureBytes reads [harvest].max_capture_bytes, falling back to the
 // default. A value of 0 disables the guard entirely.

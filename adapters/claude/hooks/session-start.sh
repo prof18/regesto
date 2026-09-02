@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claude Code SessionStart compatibility wrapper. Stdout is added to the
+# Claude Code SessionStart launcher. Stdout is added to the
 # model's context before the first prompt. Payload parsing and context framing
 # are owned by `regesto hook claude-session-start-v1`, not this shell launcher.
 #

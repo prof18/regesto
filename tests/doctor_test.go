@@ -58,10 +58,10 @@ type doctorJSON struct {
 			Trust   string `json:"trust"`
 			Pattern bool   `json:"pattern"`
 		} `json:"source_policies"`
-		LegacySources []struct {
+		TrustedSources []struct {
 			Source string `json:"source"`
 			Reason string `json:"reason"`
-		} `json:"legacy_trusted_sources"`
+		} `json:"trusted_sources"`
 	} `json:"trust"`
 	Checks       []map[string]any `json:"checks"`
 	Remediations []string         `json:"remediations"`
@@ -171,8 +171,8 @@ func TestDoctorReportsCapabilitiesTrustAndRemediationWithoutWriting(t *testing.T
 	if len(got.Trust.Precedence) != 6 || got.Trust.Precedence[0] != "exact source policy" || got.Trust.Precedence[5] != "quarantine fallback" {
 		t.Errorf("trust precedence is incomplete: %v", got.Trust.Precedence)
 	}
-	if len(got.Trust.LegacySources) != 1 || got.Trust.LegacySources[0].Source != "claude@doctorbox" {
-		t.Errorf("legacy trust diagnostics are incomplete: %+v", got.Trust.LegacySources)
+	if len(got.Trust.TrustedSources) != 1 || got.Trust.TrustedSources[0].Source != "claude@doctorbox" {
+		t.Errorf("trusted source diagnostics are incomplete: %+v", got.Trust.TrustedSources)
 	}
 	if after := doctorHostSnapshot(t, home); !sameSnapshot(beforeHome, after) {
 		t.Fatalf("doctor changed HOME: before=%v after=%v", beforeHome, after)
@@ -256,7 +256,7 @@ func TestDoctorIsolatesPlanFailuresAndFilteredRuns(t *testing.T) {
 	}
 }
 
-func TestDoctorUnsupportedAndLegacyTrustAreExplicit(t *testing.T) {
+func TestDoctorUnsupportedTrustIsExplicit(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	for _, tc := range []struct {
@@ -264,7 +264,7 @@ func TestDoctorUnsupportedAndLegacyTrustAreExplicit(t *testing.T) {
 		body string
 	}{
 		{name: "generic", body: "integrations = [\"generic\"]\n"},
-		{name: "legacy-unknown", body: "agents = [\"mystery\"]\n"},
+		{name: "unknown", body: "integrations = [\"mystery\"]\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()

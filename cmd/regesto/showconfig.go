@@ -28,20 +28,11 @@ func runShowConfig(cfg *config.Config, args []string) error {
 		return err
 	}
 	if *jsonOutput {
-		return json.NewEncoder(os.Stdout).Encode(resolvedConfig{SchemaVersion: jsonSchemaVersion, KBRoot: cfg.KBRoot, Machine: cfg.Machine, MachineSource: cfg.MachineSource, LegacyAgents: cfg.UsesLegacyAgents(), IntegrationIDs: append([]string{}, cfg.IntegrationIDs()...), Integrations: jsonIntegrations(resolved)})
+		return json.NewEncoder(os.Stdout).Encode(resolvedConfig{SchemaVersion: jsonSchemaVersion, KBRoot: cfg.KBRoot, Machine: cfg.Machine, MachineSource: cfg.MachineSource, IntegrationIDs: append([]string{}, cfg.IntegrationIDs()...), Integrations: jsonIntegrations(resolved)})
 	}
 	fmt.Printf("kb_root=%s\n", cfg.KBRoot)
 	fmt.Printf("machine=%s\n", cfg.Machine)
 	fmt.Printf("machine_source=%s\n", cfg.MachineSource)
-	if cfg.UsesLegacyAgents() {
-		fmt.Printf("agents=%s\n", strings.Join(cfg.Agents, " "))
-		for _, a := range resolved {
-			fmt.Printf("agent.%s.skills_dir=%s\n", a.Name, a.SkillsDir)
-			fmt.Printf("agent.%s.instructions=%s\n", a.Name, a.InstructionsFile)
-			fmt.Printf("agent.%s.settings=%s\n", a.Name, a.SettingsFile)
-		}
-		return nil
-	}
 	fmt.Printf("integrations=%s\n", strings.Join(cfg.IntegrationIDs(), " "))
 	for _, a := range resolved {
 		fmt.Printf("integration.%s.profile=%s\n", a.Name, a.ProfileID)
@@ -60,7 +51,6 @@ type resolvedConfig struct {
 	KBRoot         string            `json:"kb_root"`
 	Machine        string            `json:"machine"`
 	MachineSource  string            `json:"machine_source"`
-	LegacyAgents   bool              `json:"legacy_agents"`
 	IntegrationIDs []string          `json:"integration_ids"`
 	Integrations   []jsonIntegration `json:"integrations"`
 }

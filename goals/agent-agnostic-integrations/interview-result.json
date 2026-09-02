@@ -16,8 +16,8 @@
       "generic-host",
       "docs-tests"
     ],
-    "compatibility": "zero-edit",
+    "compatibility": "manual-single-instance-update",
     "preset-scope": "existing-plus-generic"
   },
-  "basis": "The user accepted the preceding agent-agnostic analysis as a solid plan, confirmed Hermes is working on this machine, approved the articulated goal, and authorized the implementation branch when execution begins. Remote/public services and proprietary cloud-memory connectors were not requested and remain out of scope."
+  "basis": "The user accepted the agent-agnostic plan, confirmed Hermes is working on this machine, and later clarified that Regesto has one user: update that instance manually and remove automatic historical migration complexity. Remote/public services and proprietary cloud-memory connectors remain out of scope."
 }

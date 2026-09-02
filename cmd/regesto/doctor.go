@@ -87,7 +87,7 @@ type doctorArtifact struct {
 type doctorTrust struct {
 	Precedence     []string          `json:"precedence"`
 	SourcePolicies []doctorTrustRule `json:"source_policies"`
-	LegacySources  []doctorTrustRule `json:"legacy_trusted_sources"`
+	TrustedSources []doctorTrustRule `json:"trusted_sources"`
 }
 
 type doctorTrustRule struct {
@@ -184,7 +184,7 @@ func buildDoctorReport(cfg *config.Config, filter string) (doctorReport, error) 
 		if _, exists := configured[id]; exists || configuredProfiles[id] || (filter != "" && id != filter) {
 			continue
 		}
-		resolved, resolveErr := adapters.Resolve(doctorScopedConfig(cfg, id, false))
+		resolved, resolveErr := adapters.Resolve(doctorScopedConfig(cfg, id))
 		if resolveErr != nil {
 			addDoctorCheck(&report, doctorCheck{ID: "detected-profile-" + id, Status: "error", Message: resolveErr.Error(), Remediation: "Repair the detected profile metadata and rerun regesto doctor."})
 			continue
@@ -211,7 +211,7 @@ func buildDoctorReport(cfg *config.Config, filter string) (doctorReport, error) 
 	} else {
 		planCfg := cfg
 		if filter != "" {
-			planCfg = doctorScopedConfig(cfg, filter, cfg.UsesLegacyAgents())
+			planCfg = doctorScopedConfig(cfg, filter)
 		}
 		globalPlan, globalErr := regestoinstall.Build(planCfg, regestoinstall.Options{})
 		if globalErr == nil {
@@ -222,7 +222,7 @@ func buildDoctorReport(cfg *config.Config, filter string) (doctorReport, error) 
 		} else {
 			addDoctorCheck(&report, doctorCheck{ID: "install-plan", Status: "error", Message: globalErr.Error(), Remediation: "Resolve the reported host artifact or target conflict, then run regesto install --dry-run."})
 			for _, input := range configuredInputs {
-				individual, individualErr := regestoinstall.Build(doctorScopedConfig(cfg, input.agent.Name, cfg.UsesLegacyAgents()), regestoinstall.Options{})
+				individual, individualErr := regestoinstall.Build(doctorScopedConfig(cfg, input.agent.Name), regestoinstall.Options{})
 				plans[input.agent.Name], planErrors[input.agent.Name] = individual, individualErr
 			}
 		}
@@ -249,14 +249,9 @@ func buildDoctorReport(cfg *config.Config, filter string) (doctorReport, error) 
 	return report, nil
 }
 
-func doctorScopedConfig(cfg *config.Config, id string, legacy bool) *config.Config {
+func doctorScopedConfig(cfg *config.Config, id string) *config.Config {
 	clone := *cfg
-	clone.Agents, clone.Integrations = nil, nil
-	if legacy {
-		clone.Agents = []string{id}
-	} else {
-		clone.Integrations = []string{id}
-	}
+	clone.Integrations = []string{id}
 	clone.Sections = make(map[string]map[string]string, len(cfg.Sections))
 	for section, values := range cfg.Sections {
 		if strings.HasPrefix(section, "integrations.") && section != "integrations."+id {
@@ -319,7 +314,7 @@ func diagnoseIntegration(agent adapters.Agent, detected, configured bool, kbRoot
 	if defaultTrust == "" {
 		defaultTrust = "quarantine"
 	}
-	d.Capabilities.Trust = doctorCapability{Status: "ok", Detail: "new captures default to " + defaultTrust + "; exact, legacy, and pattern source policies take precedence"}
+	d.Capabilities.Trust = doctorCapability{Status: "ok", Detail: "new captures default to " + defaultTrust + "; exact trusted sources and source policies take precedence"}
 
 	if !configured {
 		d.Status = "warning"
@@ -437,23 +432,23 @@ func doctorPathWithin(base, target string) bool {
 func describeTrust(cfg *config.Config) doctorTrust {
 	out := doctorTrust{
 		Precedence: []string{
-			"exact source policy", "legacy exact trusted source", "longest matching source-policy pattern",
+			"exact source policy", "exact trusted source", "longest matching source-policy pattern",
 			"human inbox authority", "configured integration default", "quarantine fallback",
 		},
-		SourcePolicies: []doctorTrustRule{}, LegacySources: []doctorTrustRule{},
+		SourcePolicies: []doctorTrustRule{}, TrustedSources: []doctorTrustRule{},
 	}
 	rules, _ := cfg.SourcePolicyRules()
 	for _, rule := range rules {
 		out.SourcePolicies = append(out.SourcePolicies, doctorTrustRule{Source: rule.Source, Trust: rule.Trust, Pattern: rule.Pattern})
 	}
-	legacy := cfg.Section("trusted_sources")
-	keys := make([]string, 0, len(legacy))
-	for key := range legacy {
+	trusted := cfg.Section("trusted_sources")
+	keys := make([]string, 0, len(trusted))
+	for key := range trusted {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		out.LegacySources = append(out.LegacySources, doctorTrustRule{Source: key, Reason: legacy[key]})
+		out.TrustedSources = append(out.TrustedSources, doctorTrustRule{Source: key, Reason: trusted[key]})
 	}
 	return out
 }
@@ -609,8 +604,8 @@ func printDoctorReport(report doctorReport) {
 		}
 		fmt.Printf("trust source-policy %s%s: %s\n", rule.Source, suffix, rule.Trust)
 	}
-	for _, rule := range report.Trust.LegacySources {
-		fmt.Printf("trust legacy-source %s: %s\n", rule.Source, rule.Reason)
+	for _, rule := range report.Trust.TrustedSources {
+		fmt.Printf("trust trusted-source %s: %s\n", rule.Source, rule.Reason)
 	}
 	for _, check := range report.Checks {
 		if check.Status != "ok" {

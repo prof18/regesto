@@ -2,9 +2,11 @@
 
 ## Solution approach
 
-Keep the knowledge format and existing instances stable while replacing the closed vendor table with a capability-driven integration layer. Portable behavior lives in common CLI operations, Agent Skills, instructions, and stdio MCP; product profiles contribute discovery defaults, rendering choices, hook protocols, hook registration, and memory sources. Existing `claude`, `codex`, and `hermes` identifiers remain valid aliases so the migration is additive.
+Replace the closed vendor table with a capability-driven integration layer. Portable behavior lives in common CLI operations, Agent Skills, instructions, and stdio MCP; product profiles contribute discovery defaults, rendering choices, hook protocols, hook registration, and memory sources. The one live instance is updated manually to the current format.
 
-The work is deliberately staged. Every milestone ends with its own compatibility gate, two iterative codebase-review passes, and a committed checkpoint, so implementation can stop, review, or split without leaving a half-migrated installer in users' instances or accumulating one oversized final commit.
+Post-completion simplification: historical config, rendered-skill, harvest-snapshot, and v0.3.1 package migrations are intentionally removed. Any migration-specific requirement or milestone detail later in this original execution plan is superseded by this decision; current-format ownership checks, backups, dry runs, and engine-file refresh remain required.
+
+The work was staged by milestone. Implementation, review fixes, and the matching plan/todo updates are kept in cohesive commits.
 
 ## Specification
 

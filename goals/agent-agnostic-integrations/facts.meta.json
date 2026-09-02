@@ -4,7 +4,7 @@
   "facts": [
     {"id":"F01","automatedVerification":false,"text":"Regesto describes support through host capabilities rather than a closed list of agent vendors."},
     {"id":"F02","automatedVerification":false,"text":"The published support levels are core access, portable discovery, deterministic context injection, optional native-memory harvest, and manual import."},
-    {"id":"F03","automatedVerification":true,"text":"Existing agents configuration, override tables, source values, and generated instance files continue to work without a manual migration."},
+    {"id":"F03","automatedVerification":true,"text":"The live instance is manually updated to integrations; historical config and state layouts have no automatic migration layer."},
     {"id":"F04","automatedVerification":true,"text":"New configuration may declare an arbitrary integration and its capabilities without changing Go code for portable capabilities."},
     {"id":"F05","automatedVerification":true,"text":"Built-in integration profiles are data-driven, validated at startup, and contain no personal paths."},
     {"id":"F06","automatedVerification":true,"text":"Claude Code, Codex, and Hermes remain built-in profiles and retain their current configuration identifiers."},
@@ -12,8 +12,8 @@
     {"id":"F08","automatedVerification":true,"text":"Shared Agent Skills conform to the portable Agent Skills contract and contain no required vendor-specific syntax."},
     {"id":"F09","automatedVerification":true,"text":"Host-specific skill optimizations never leak into another host's rendered skill."},
     {"id":"F10","automatedVerification":true,"text":"Regesto exposes a validated machine-facing write command."},
-    {"id":"F11","automatedVerification":true,"text":"Machine-facing commands have stable JSON forms while existing text output remains compatible."},
-    {"id":"F12","automatedVerification":true,"text":"Adapter installation is implemented in tested Go code and the existing installer path remains a compatibility shim."},
+    {"id":"F11","automatedVerification":true,"text":"Machine-facing commands have stable JSON forms."},
+    {"id":"F12","automatedVerification":true,"text":"Adapter installation is implemented in tested Go code and the existing installer path remains a thin launcher."},
     {"id":"F13","automatedVerification":true,"text":"Installation is dry-run safe, idempotent, backup-aware, shared-target-aware, and ownership-safe."},
     {"id":"F14","automatedVerification":true,"text":"Hook protocols and registration belong to integration profiles."},
     {"id":"F15","automatedVerification":true,"text":"Claude SessionStart behavior remains project-aware and fail-open."},
@@ -28,7 +28,7 @@
     {"id":"F24","automatedVerification":true,"text":"regesto doctor reports integration health and remediation."},
     {"id":"F25","automatedVerification":true,"text":"Init, upgrade, and manifest safety cover integration-owned files."},
     {"id":"F26","automatedVerification":false,"text":"Documentation has a canonical capability matrix and separate product recipes."},
-    {"id":"F27","automatedVerification":true,"text":"The automated suite covers contracts, migration, safety, protocols, trust, MCP, custom integrations, and packaging."},
+    {"id":"F27","automatedVerification":true,"text":"The automated suite covers contracts, current-format safety, protocols, trust, MCP, custom integrations, and packaging."},
     {"id":"F28","automatedVerification":false,"text":"Manual end-to-end tests pass for Claude Code, Codex, and Hermes."},
     {"id":"F29","automatedVerification":false,"text":"Remote services, proprietary cloud-memory connectors, and every vendor preset are outside this goal."},
     {"id":"F30","automatedVerification":true,"text":"The existing fact-file schema and source syntax remain valid."}

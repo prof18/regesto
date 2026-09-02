@@ -7,6 +7,18 @@ checkpoint commit(s) are recorded below.
 Full gate (required after each pass): `gofmt -l .`; `go vet ./...`; `go test ./...`;
 `go test -race ./...`; `git diff --check`.
 
+## Post-completion simplification
+
+- [x] Adopt manual updates for the single live instance; no automatic historical migration contract.
+- [x] Remove legacy `agents`/override parsing, old render-stage ownership proofs, old harvest snapshot loading, and the v0.3.1 package fixture/release gate.
+- [x] Keep current-format containment, ownership, backup, dry-run, idempotence, manifest refresh, and regression coverage.
+- [x] Add the concise manual-update note to README and update the goal contract.
+- Review pass 2 removed the now-trivial legacy stage-name indirection, corrected the
+  current config-section comment, and made the manual cache-cleanup note name only the
+  obsolete paths. No runtime migration branches remain.
+
+Migration-specific checklist entries below record the original execution history and are superseded by this simplification; they are not current product requirements.
+
 ## Simplified branch history
 
 After completion, the local-only branch history was consolidated to one coherent

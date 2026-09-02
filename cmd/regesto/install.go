@@ -22,8 +22,8 @@ func runInstall(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	dryRun := fs.Bool("dry-run", false, "print the complete plan and write nothing")
 	jsonOutput := fs.Bool("json", false, "print the versioned install plan as JSON")
-	engineLink := fs.String("engine-link", "", "compatibility shim: PATH link to plan")
-	engineTarget := fs.String("engine-target", "", "compatibility shim: engine target for PATH link")
+	engineLink := fs.String("engine-link", "", "launcher: PATH link to plan")
+	engineTarget := fs.String("engine-target", "", "launcher: engine target for PATH link")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

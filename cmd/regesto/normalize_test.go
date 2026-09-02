@@ -18,7 +18,7 @@ func normalizeTestConfig(t *testing.T) *config.Config {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "config.toml")
-	if err := os.WriteFile(path, []byte("agents = [\"claude\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("integrations = [\"claude\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.Load(path)

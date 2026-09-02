@@ -21,11 +21,11 @@ type installJSON struct {
 	Plan          regestoinstall.Plan `json:"plan"`
 }
 
-func installConfig(t *testing.T, root string, agents string) *config.Config {
+func installConfig(t *testing.T, root string, integrations string) *config.Config {
 	t.Helper()
 	materializeInstallHook(t, root)
 	path := filepath.Join(root, "config.toml")
-	body := "machine = \"testbox\"\nagents = [" + agents + "]\n"
+	body := "machine = \"testbox\"\nintegrations = [" + integrations + "]\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestInstallSharedInstructionTargetUsesOneOwnerAndBackup(t *testing.T) {
 	if err := os.WriteFile(instructions, []byte("keep me\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("machine = \"testbox\"\nagents = [\"claude\", \"codex\"]\n[instructions]\nclaude = \"~/.dotfiles/AGENTS.md\"\ncodex = \"~/.dotfiles/AGENTS.md\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("machine = \"testbox\"\nintegrations = [\"claude\", \"codex\"]\n[integrations.claude]\ninstructions_file = \"~/.dotfiles/AGENTS.md\"\n[integrations.codex]\ninstructions_file = \"~/.dotfiles/AGENTS.md\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.Load(filepath.Join(root, "config.toml"))

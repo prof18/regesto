@@ -157,8 +157,8 @@ func TestFixtureConfigLoads(t *testing.T) {
 	if cfg.Machine != "testbox" {
 		t.Errorf("machine = %q, want testbox", cfg.Machine)
 	}
-	if len(cfg.Agents) != 2 || cfg.Agents[0] != "claude" {
-		t.Errorf("agents = %v", cfg.Agents)
+	if len(cfg.Integrations) != 2 || cfg.Integrations[0] != "claude" {
+		t.Errorf("integrations = %v", cfg.Integrations)
 	}
 	if cfg.Projects["aurora-2"] != "aurora" {
 		t.Errorf("projects map = %v", cfg.Projects)

@@ -1,6 +1,6 @@
 // Package config loads the instance configuration (config.toml at the KB
 // root). Per the "build for two audiences" rule (PLAN §0), every value that
-// is machine- or person-specific — KB root, machine name, agent list,
+// is machine- or person-specific — KB root, machine name, integration list,
 // project map — comes from this file, never from constants in code.
 //
 // The parser handles the flat TOML subset the config actually uses: comments,
@@ -42,43 +42,24 @@ type Config struct {
 	// MachineSource records where Machine came from, so an install can show
 	// its working instead of silently guessing.
 	MachineSource string
-	// Agents lists the agents whose adapters/harvest this instance runs.
-	Agents []string
-	// Integrations is the additive replacement for Agents. Agents is deliberately
-	// kept untouched so existing callers and old instance configuration retain
-	// their exact meaning and output.
-	Integrations    []string
-	agentsSet       bool
-	integrationsSet bool
+	// Integrations lists the agent integrations whose adapters/harvest this
+	// instance runs.
+	Integrations []string
 	// Projects maps repo basenames or absolute paths to canonical project
 	// names (PLAN 0.2), covering remote-less repos and basename collisions.
 	// Shorthand for Section("projects").
 	Projects map[string]string
 	// Sections holds every `[table]` of string pairs in the file, so a new
 	// section is a config change rather than a parser change. Known sections
-	// include projects, skills_dirs, instructions, trusted_sources, and
-	// source_policies.
+	// include projects, integrations.<id>, trusted_sources, and source_policies.
 	Sections map[string]map[string]string
 	// Path is where the config file was loaded from.
 	Path string
 }
 
-// IntegrationIDs is the configured integration list. Legacy agents remain the
-// source of truth for legacy configurations.
+// IntegrationIDs returns a copy of the configured integration list.
 func (c *Config) IntegrationIDs() []string {
-	if c.integrationsSet || len(c.Integrations) > 0 {
-		return append([]string(nil), c.Integrations...)
-	}
-	return append([]string(nil), c.Agents...)
-}
-
-// UsesLegacyAgents reports whether this configuration used the legacy top-level
-// agents key. It is intentionally about syntax, rather than list contents.
-func (c *Config) UsesLegacyAgents() bool {
-	// The len fallback keeps programmatic Config literals written before the
-	// integrations field existed behaving as legacy configuration too. An absent
-	// list also remains legacy: bin/regesto-install consumes its agents= line.
-	return !c.integrationsSet && len(c.Integrations) == 0
+	return append([]string(nil), c.Integrations...)
 }
 
 // Section returns a `[table]` of string pairs, or an empty map if absent.
@@ -221,6 +202,10 @@ func Load(path string) (*Config, error) {
 		}
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section = strings.TrimSpace(line[1 : len(line)-1])
+			switch section {
+			case "skills_dirs", "instructions", "settings_files", "memory_dirs":
+				return nil, fmt.Errorf("%s:%d: legacy [%s] is no longer supported; move the value under [integrations.<id>] (see README)", path, lineNo+1, section)
+			}
 			continue
 		}
 		key, value, ok := strings.Cut(line, "=")
@@ -238,14 +223,8 @@ func Load(path string) (*Config, error) {
 			case "machine":
 				cfg.Machine = unquote(value)
 			case "agents":
-				cfg.agentsSet = true
-				list, err := parseList(value)
-				if err != nil {
-					return nil, fmt.Errorf("%s:%d: %w", path, lineNo+1, err)
-				}
-				cfg.Agents = list
+				return nil, fmt.Errorf("%s:%d: legacy agents is no longer supported; rename it to integrations (see README)", path, lineNo+1)
 			case "integrations":
-				cfg.integrationsSet = true
 				list, err := parseList(value)
 				if err != nil {
 					return nil, fmt.Errorf("%s:%d: %w", path, lineNo+1, err)
@@ -274,10 +253,6 @@ func Load(path string) (*Config, error) {
 			cfg.Sections[section][key] = v
 		}
 	}
-	if cfg.agentsSet && cfg.integrationsSet {
-		return nil, fmt.Errorf("%s: set either agents or integrations, not both", path)
-	}
-
 	if cfg.KBRoot == "" {
 		cfg.KBRoot = filepath.Dir(abs)
 	}

@@ -33,60 +33,7 @@ func trustCapture(agent, machine string) normalize.Capture {
 	return normalize.Capture{Agent: agent, Machine: machine, Source: agent + "@" + machine}
 }
 
-func TestLegacyBuiltInIntegrationDefaults(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	cfg := loadConfigFixture(t, "legacy-defaults.toml")
-	got := adapters.For(cfg)
-	if len(got) != 3 {
-		t.Fatalf("got %d adapters, want 3", len(got))
-	}
-	want := map[string]adapters.Agent{
-		"claude": {Name: "claude", SkillsDir: filepath.Join(home, ".claude/skills"), InstructionsFile: filepath.Join(home, ".claude/CLAUDE.md"), SettingsFile: filepath.Join(home, ".claude/settings.json"), MemoryGlob: filepath.Join(home, ".claude/projects/*/memory"), MaxCaptureBytes: 10 * 1024 * 1024},
-		"codex":  {Name: "codex", SkillsDir: filepath.Join(home, ".codex/skills"), InstructionsFile: filepath.Join(home, ".codex/AGENTS.md"), MemoryGlob: filepath.Join(home, ".codex/memories"), MaxCaptureBytes: 10 * 1024 * 1024, ExcludeGlobs: []string{"raw_memories.md"}},
-		"hermes": {Name: "hermes", SkillsDir: filepath.Join(home, ".hermes/skills"), InstructionsFile: filepath.Join(home, ".hermes/SOUL.md"), MemoryGlob: filepath.Join(home, ".hermes/memories"), MaxCaptureBytes: 10 * 1024 * 1024},
-	}
-	for _, gotAgent := range got {
-		wantAgent, ok := want[gotAgent.Name]
-		if !ok {
-			t.Errorf("unexpected adapter %q", gotAgent.Name)
-			continue
-		}
-		if gotAgent.Name != wantAgent.Name || gotAgent.SkillsDir != wantAgent.SkillsDir || gotAgent.InstructionsFile != wantAgent.InstructionsFile || gotAgent.SettingsFile != wantAgent.SettingsFile || gotAgent.MemoryGlob != wantAgent.MemoryGlob || gotAgent.MaxCaptureBytes != wantAgent.MaxCaptureBytes || strings.Join(gotAgent.ExcludeGlobs, "\x00") != strings.Join(wantAgent.ExcludeGlobs, "\x00") {
-			t.Errorf("%s resolved as %+v, want %+v", gotAgent.Name, gotAgent, wantAgent)
-		}
-	}
-}
-
-func TestAdapterLegacyOverrideTablesWin(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	cfg := loadConfigFixture(t, "legacy-overrides.toml")
-	byName := map[string]adapters.Agent{}
-	for _, a := range adapters.For(cfg) {
-		byName[a.Name] = a
-	}
-	if got := byName["claude"].SkillsDir; got != filepath.Join(home, ".legacy/claude-skills") {
-		t.Errorf("legacy skills override = %q", got)
-	}
-	if got := byName["codex"].InstructionsFile; got != filepath.Join(home, ".legacy/AGENTS.md") {
-		t.Errorf("legacy instructions override = %q", got)
-	}
-	if got := byName["claude"].SettingsFile; got != filepath.Join(home, ".legacy/claude-settings.json") {
-		t.Errorf("legacy settings override = %q", got)
-	}
-	if got := byName["claude"].Hooks[0].Settings; got != byName["claude"].SettingsFile {
-		t.Errorf("legacy settings override disagrees with hook metadata: hook=%q flat=%q", got, byName["claude"].SettingsFile)
-	}
-	if got := byName["hermes"].MemoryGlob; got != filepath.Join(home, ".legacy/hermes-memory") {
-		t.Errorf("legacy memory override = %q", got)
-	}
-	if got := byName["codex"].SkillsDir; got != filepath.Join(home, ".codex/skills") {
-		t.Errorf("unoverridden default changed = %q", got)
-	}
-}
-
-func TestAdapterLegacyDetectionIdentifiers(t *testing.T) {
+func TestAdapterDetectionIdentifiers(t *testing.T) {
 	wantAgents := []string{"claude", "codex", "hermes"}
 	if got := adapters.KnownAgents(); strings.Join(got, ",") != strings.Join(wantAgents, ",") {
 		t.Fatalf("known agents = %v, want exactly %v", got, wantAgents)
@@ -126,64 +73,8 @@ func TestAdapterLegacyDetectionIdentifiers(t *testing.T) {
 	}
 }
 
-func TestIntegrationLegacyConfigTextOutput(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	runConfig := func(fixture string) string {
-		t.Helper()
-		cmd := exec.Command("go", "run", "./cmd/regesto", "--config", configFixture(t, fixture), "config")
-		cmd.Dir = repoRoot(t)
-		cmd.Env = append(os.Environ(), "HOME="+home, "REGESTO_MACHINE=fixture-box")
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &stdout, &stderr
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("config command: %v\nstderr: %s", err, stderr.String())
-		}
-		return stdout.String()
-	}
-	want := strings.Join([]string{
-		"kb_root=" + filepath.Join(repoRoot(t), "tests/fixtures/config"),
-		"machine=fixture-box",
-		"machine_source=env:REGESTO_MACHINE",
-		"agents=claude codex hermes",
-		"agent.claude.skills_dir=" + filepath.Join(home, ".claude/skills"),
-		"agent.claude.instructions=" + filepath.Join(home, ".claude/CLAUDE.md"),
-		"agent.claude.settings=" + filepath.Join(home, ".claude/settings.json"),
-		"agent.codex.skills_dir=" + filepath.Join(home, ".codex/skills"),
-		"agent.codex.instructions=" + filepath.Join(home, ".codex/AGENTS.md"),
-		"agent.codex.settings=",
-		"agent.hermes.skills_dir=" + filepath.Join(home, ".hermes/skills"),
-		"agent.hermes.instructions=" + filepath.Join(home, ".hermes/SOUL.md"),
-		"agent.hermes.settings=",
-	}, "\n") + "\n"
-	if got := runConfig("legacy-defaults.toml"); got != want {
-		t.Errorf("config output mismatch:\ngot:\n%s\nwant:\n%s", got, want)
-	}
-
-	// Legacy override tables must be reflected in the same stable text format,
-	// while values without overrides retain their built-in defaults.
-	wantOverrides := strings.Join([]string{
-		"kb_root=" + filepath.Join(repoRoot(t), "tests/fixtures/config"),
-		"machine=fixture-box",
-		"machine_source=env:REGESTO_MACHINE",
-		"agents=claude codex hermes",
-		"agent.claude.skills_dir=" + filepath.Join(home, ".legacy/claude-skills"),
-		"agent.claude.instructions=" + filepath.Join(home, ".claude/CLAUDE.md"),
-		"agent.claude.settings=" + filepath.Join(home, ".legacy/claude-settings.json"),
-		"agent.codex.skills_dir=" + filepath.Join(home, ".codex/skills"),
-		"agent.codex.instructions=" + filepath.Join(home, ".legacy/AGENTS.md"),
-		"agent.codex.settings=",
-		"agent.hermes.skills_dir=" + filepath.Join(home, ".hermes/skills"),
-		"agent.hermes.instructions=" + filepath.Join(home, ".hermes/SOUL.md"),
-		"agent.hermes.settings=",
-	}, "\n") + "\n"
-	if got := runConfig("legacy-overrides.toml"); got != wantOverrides {
-		t.Errorf("override config output mismatch:\ngot:\n%s\nwant:\n%s", got, wantOverrides)
-	}
-}
-
-func TestLegacyTrustBehavior(t *testing.T) {
-	cfg := writeConfig(t, "agents = [\"claude\", \"codex\", \"hermes\"]\n")
+func TestIntegrationTrustDefaults(t *testing.T) {
+	cfg := writeConfig(t, "integrations = [\"claude\", \"codex\", \"hermes\"]\n")
 	policy, err := normalize.ResolveTrustPolicy(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -201,7 +92,7 @@ func TestLegacyTrustBehavior(t *testing.T) {
 			t.Errorf("%s quarantine = %v, want %v", tc.agent, got, tc.quarantined)
 		}
 	}
-	trusted := writeConfig(t, "agents = [\"hermes\"]\n[trusted_sources]\n\"hermes@fixture-box\" = \"private\"\n")
+	trusted := writeConfig(t, "integrations = [\"hermes\"]\n[trusted_sources]\n\"hermes@fixture-box\" = \"private\"\n")
 	policy, err = normalize.ResolveTrustPolicy(trusted)
 	if err != nil {
 		t.Fatal(err)
@@ -245,24 +136,27 @@ func TestIntegrationUnknownIDDefaultsToGenericProfile(t *testing.T) {
 	}
 }
 
-func TestConfigRejectsAgentsAndIntegrations(t *testing.T) {
+func TestConfigRejectsLegacyAgents(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(path, []byte("agents = [\"claude\"]\nintegrations = [\"codex\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "either agents or integrations") {
-		t.Fatalf("error = %v, want actionable both-key rejection", err)
+	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "rename it to integrations") {
+		t.Fatalf("error = %v, want actionable legacy-key rejection", err)
 	}
 }
 
-func TestLegacyAgentsRejectIntegrationOverrideSections(t *testing.T) {
-	cfg := writeConfig(t, "agents = [\"claude\"]\n[integrations.claude]\nskills_dir = \"/tmp/nope\"\n")
-	if _, err := adapters.Resolve(cfg); err == nil || !strings.Contains(err.Error(), "use either agents or integrations") {
-		t.Fatalf("error = %v, want vocabulary rejection", err)
+func TestConfigRejectsLegacyOverrideTables(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("integrations = [\"claude\"]\n[skills_dirs]\nclaude = \"/tmp/nope\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "move the value under [integrations.<id>]") {
+		t.Fatalf("error = %v, want actionable legacy-table rejection", err)
 	}
 }
 
-func TestConfigWithoutListKeepsLegacyTextOutput(t *testing.T) {
+func TestConfigWithoutListUsesEmptyIntegrations(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "config.toml")
 	if err := os.WriteFile(path, []byte("machine = \"fixture-box\"\n"), 0o644); err != nil {
@@ -276,23 +170,20 @@ func TestConfigWithoutListKeepsLegacyTextOutput(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("config: %v\\nstderr: %s", err, stderr.String())
 	}
-	want := "kb_root=" + root + "\nmachine=fixture-box\nmachine_source=env:REGESTO_MACHINE\nagents=\n"
+	want := "kb_root=" + root + "\nmachine=fixture-box\nmachine_source=env:REGESTO_MACHINE\nintegrations=\n"
 	if got := stdout.String(); got != want {
 		t.Errorf("config output = %q, want %q", got, want)
 	}
 }
 
-func TestExplicitEmptyIntegrationsUsesNewVocabulary(t *testing.T) {
+func TestExplicitAndProgrammaticIntegrations(t *testing.T) {
 	cfg := writeConfig(t, "integrations = []\n")
-	if cfg.UsesLegacyAgents() {
-		t.Fatal("explicit integrations=[] must not fall back to legacy vocabulary")
-	}
 	if got := cfg.IntegrationIDs(); len(got) != 0 {
 		t.Errorf("integration ids = %v, want empty", got)
 	}
 	programmatic := &config.Config{Integrations: []string{"synthetic"}}
-	if programmatic.UsesLegacyAgents() || strings.Join(programmatic.IntegrationIDs(), ",") != "synthetic" {
-		t.Errorf("programmatic integrations chose wrong vocabulary: %+v", programmatic)
+	if strings.Join(programmatic.IntegrationIDs(), ",") != "synthetic" {
+		t.Errorf("programmatic integrations were not returned: %+v", programmatic)
 	}
 }
 
@@ -460,7 +351,6 @@ func TestIntegrationConfigJSON(t *testing.T) {
 		t.Fatalf("config --json: %v\\nstderr: %s", err, stderr.String())
 	}
 	var got struct {
-		LegacyAgents bool `json:"legacy_agents"`
 		Integrations []struct {
 			Name         string `json:"name"`
 			ProfileID    string `json:"profile_id"`
@@ -470,7 +360,7 @@ func TestIntegrationConfigJSON(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.LegacyAgents || len(got.Integrations) != 1 || got.Integrations[0].Name != "synthetic" || got.Integrations[0].ProfileID != "generic" || got.Integrations[0].DefaultTrust != "quarantine" {
+	if len(got.Integrations) != 1 || got.Integrations[0].Name != "synthetic" || got.Integrations[0].ProfileID != "generic" || got.Integrations[0].DefaultTrust != "quarantine" {
 		t.Errorf("JSON = %s", stdout.String())
 	}
 }
@@ -583,7 +473,6 @@ func TestTrustUnknownIntegrationTargetContract(t *testing.T) {
 func TestTrustHumanIntegrationIDIsReserved(t *testing.T) {
 	for _, body := range []string{
 		"integrations = [\"human\"]\n[integrations.human]\nprofile = \"claude\"\n",
-		"agents = [\"human\"]\n",
 	} {
 		cfg := writeConfig(t, body)
 		if _, err := normalize.ResolveTrustPolicy(cfg); err == nil || !strings.Contains(err.Error(), "reserved for human authority") {
@@ -604,14 +493,14 @@ func TestTrustSourcePoliciesPrecedence(t *testing.T) {
 			capture: trustCapture("unknown", "fixture-box"),
 		},
 		{
-			name:       "exact quarantine beats legacy trust",
-			body:       "agents = [\"claude\"]\n[trusted_sources]\n\"claude@fixture-box\" = \"legacy approval\"\n[source_policies]\n\"claude@fixture-box\" = \"quarantine\"\n",
+			name:       "exact quarantine beats trusted source",
+			body:       "integrations = [\"claude\"]\n[trusted_sources]\n\"claude@fixture-box\" = \"approval\"\n[source_policies]\n\"claude@fixture-box\" = \"quarantine\"\n",
 			capture:    trustCapture("claude", "fixture-box"),
 			quarantine: true,
 		},
 		{
-			name:    "legacy trust beats pattern",
-			body:    "integrations = [\"unknown\"]\n[trusted_sources]\n\"unknown@fixture-box\" = \"legacy approval\"\n[source_policies]\n\"unknown@*\" = \"quarantine\"\n",
+			name:    "trusted source beats pattern",
+			body:    "integrations = [\"unknown\"]\n[trusted_sources]\n\"unknown@fixture-box\" = \"approval\"\n[source_policies]\n\"unknown@*\" = \"quarantine\"\n",
 			capture: trustCapture("unknown", "fixture-box"),
 		},
 		{
@@ -627,7 +516,7 @@ func TestTrustSourcePoliciesPrecedence(t *testing.T) {
 		},
 		{
 			name:       "pattern downgrades supervised profile",
-			body:       "agents = [\"claude\"]\n[source_policies]\n\"claude@*\" = \"quarantine\"\n",
+			body:       "integrations = [\"claude\"]\n[source_policies]\n\"claude@*\" = \"quarantine\"\n",
 			capture:    trustCapture("claude", "fixture-box"),
 			quarantine: true,
 		},
@@ -683,7 +572,7 @@ func TestTrustSourcePoliciesRejectMalformedRules(t *testing.T) {
 }
 
 func TestTrustMalformedCaptureNamespacesAreQuarantined(t *testing.T) {
-	policy, err := normalize.ResolveTrustPolicy(writeConfig(t, "agents = [\"claude\"]\n[trusted_sources]\n\"claude@fixture-box\" = \"legacy approval\"\n\"Bad ID@fixture-box\" = \"malformed legacy approval\"\n"))
+	policy, err := normalize.ResolveTrustPolicy(writeConfig(t, "integrations = [\"claude\"]\n[trusted_sources]\n\"claude@fixture-box\" = \"approval\"\n\"Bad ID@fixture-box\" = \"malformed approval\"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -698,17 +587,5 @@ func TestTrustMalformedCaptureNamespacesAreQuarantined(t *testing.T) {
 		if !policy.Quarantined(capture) {
 			t.Errorf("malformed capture was trusted: %+v", capture)
 		}
-	}
-}
-
-// This pins parser/config compatibility directly; upgrade_test.go separately
-// drives the same legacy syntax through the committed v0.3.1 package fixture.
-func TestIntegrationV031LegacyConfigFixture(t *testing.T) {
-	cfg := loadConfigFixture(t, "legacy-v0.3.1.toml")
-	if strings.Join(cfg.Agents, ",") != "claude,codex" {
-		t.Fatalf("legacy agents = %v, want claude,codex", cfg.Agents)
-	}
-	if got := cfg.Projects["aurora-2"]; got != "aurora" {
-		t.Errorf("legacy project mapping = %q, want aurora", got)
 	}
 }

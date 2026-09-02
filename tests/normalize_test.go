@@ -23,7 +23,7 @@ func normalizeInstance(t *testing.T) *config.Config {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "config.toml")
-	if err := os.WriteFile(path, []byte("agents = [\"claude\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("integrations = [\"claude\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.Load(path)
@@ -320,7 +320,7 @@ func TestTrustQuarantinedCaptureRemainsInvisibleAndUnconsumed(t *testing.T) {
 
 func TestTrustExactSourceOverrideAllowsNormalization(t *testing.T) {
 	cfg := normalizeInstance(t)
-	if err := os.WriteFile(cfg.Path, []byte("agents = [\"claude\"]\n[trusted_sources]\n\"unattended@testbox\" = \"human-approved\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfg.Path, []byte("integrations = [\"claude\"]\n[trusted_sources]\n\"unattended@testbox\" = \"human-approved\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var err error
@@ -343,7 +343,7 @@ func TestTrustExactSourceOverrideAllowsNormalization(t *testing.T) {
 
 func TestTrustSourcePolicyPatternAllowsNormalization(t *testing.T) {
 	cfg := normalizeInstance(t)
-	if err := os.WriteFile(cfg.Path, []byte("agents = [\"claude\"]\n[source_policies]\n\"unattended@*\" = \"supervised\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfg.Path, []byte("integrations = [\"claude\"]\n[source_policies]\n\"unattended@*\" = \"supervised\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var err error
@@ -391,7 +391,7 @@ func TestTrustHumanInboxCaptureNormalizesAsHuman(t *testing.T) {
 
 func TestTrustExactPolicyCanQuarantineHumanInboxCapture(t *testing.T) {
 	cfg := normalizeInstance(t)
-	if err := os.WriteFile(cfg.Path, []byte("agents = [\"claude\"]\n[source_policies]\n\"human@testbox\" = \"quarantine\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfg.Path, []byte("integrations = [\"claude\"]\n[source_policies]\n\"human@testbox\" = \"quarantine\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var err error

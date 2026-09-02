@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Compatibility shim over `regesto install`. In an engine checkout it keeps the
-# historical bootstrap behavior: a real install builds the binary that hooks
+# Thin launcher for `regesto install`. In an engine checkout a real install builds the binary that hooks
 # need, while a dry run is served from source and remains inert.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

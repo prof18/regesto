@@ -41,7 +41,7 @@
       "id": "compatibility",
       "prompt": "How strict should backward compatibility be?",
       "answerMode": "single-custom",
-      "recommendedAnswer": "Existing instances using agents, legacy override tables, source values, hooks, and manifests must continue to work without editing config.toml; new instances use the integration terminology and schema.",
+      "recommendedAnswer": "Update the single live instance manually to the integration terminology and schema; do not carry automatic migration paths for historical formats.",
       "recommendedOptionIds": ["zero-edit"],
       "options": [
         {"id": "zero-edit", "label": "Zero-edit compatibility"},

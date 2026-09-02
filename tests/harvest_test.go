@@ -4,7 +4,6 @@
 package tests
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +27,7 @@ func harvestInstanceWith(t *testing.T, extra string) (cfg *config.Config, memDir
 	if err := os.MkdirAll(memDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "agents = [\"claude\"]\n\n[memory_dirs]\nclaude = \"" + memDir + "\"\n" + extra
+	body := "integrations = [\"claude\"]\n\n[integrations.claude]\nmemory_kind = \"markdown-glob-v1\"\nmemory_location = \"" + memDir + "\"\n" + extra
 	path := filepath.Join(root, "config.toml")
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -393,7 +392,7 @@ func TestMultipleMarkdownSourcesKeepIndependentStableBaselines(t *testing.T) {
 		t.Fatalf("multiple-source captures = %v", got)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".state", "testbox", "multi.json")); err != nil {
-		t.Fatalf("legacy snapshot path not preserved: %v", err)
+		t.Fatalf("snapshot path missing: %v", err)
 	}
 
 	// Source order is presentation, not identity. Reordering a profile must not
@@ -408,43 +407,6 @@ func TestMultipleMarkdownSourcesKeepIndependentStableBaselines(t *testing.T) {
 	}
 	if got := captured(results); len(got) != 0 {
 		t.Fatalf("reordered sources recaptured %v", got)
-	}
-}
-
-func TestLegacySnapshotShapeAndLocationRemainUsable(t *testing.T) {
-	cfg, mem := harvestInstance(t)
-	write(t, mem, "note.md", "unchanged")
-	if _, err := harvest.Run(cfg, false); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(cfg.KBRoot, ".state", cfg.Machine, "claude.json")
-	body, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var old map[string]any
-	if err := json.Unmarshal(body, &old); err != nil {
-		t.Fatal(err)
-	}
-	delete(old, "legacy_source")
-	delete(old, "legacy_initialized")
-	delete(old, "sources")
-	body, err = json.Marshal(old)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, body, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	newConfig := "integrations = [\"claude\"]\n[integrations.claude]\nmemory_kind = \"markdown-glob-v1\"\nmemory_location = \"" + mem + "\"\n"
-	cfg = loadHarvestConfig(t, cfg.KBRoot, newConfig)
-	results, err := harvest.Run(cfg, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := captured(results); len(got) != 0 {
-		t.Fatalf("legacy snapshot recaptured unchanged memory: %v", got)
 	}
 }
 
@@ -567,7 +529,7 @@ func TestOverlappingSourcesRemainStableAcrossReorderAndReaddition(t *testing.T) 
 func TestHarvestRejectsUnsafeStateNamespaceComponents(t *testing.T) {
 	t.Setenv("REGESTO_MACHINE", "testbox")
 	root := t.TempDir()
-	cfg := loadHarvestConfig(t, root, "agents = [\"../escape\"]\n")
+	cfg := loadHarvestConfig(t, root, "integrations = [\"../escape\"]\n")
 	if _, err := harvest.Run(cfg, false); err == nil || !strings.Contains(err.Error(), "safe inbox/state path component") {
 		t.Fatalf("unsafe integration error = %v", err)
 	}
@@ -576,7 +538,7 @@ func TestHarvestRejectsUnsafeStateNamespaceComponents(t *testing.T) {
 	}
 
 	t.Setenv("REGESTO_MACHINE", "../escape")
-	cfg = loadHarvestConfig(t, root, "agents = [\"claude\"]\n")
+	cfg = loadHarvestConfig(t, root, "integrations = [\"claude\"]\n")
 	if _, err := harvest.Run(cfg, false); err == nil || !strings.Contains(err.Error(), "machine name") {
 		t.Fatalf("unsafe machine error = %v", err)
 	}
@@ -589,7 +551,7 @@ func TestHarvestRejectsKnowledgeBaseAndMemoryOverlapBeforeWriting(t *testing.T) 
 	if err := os.Mkdir(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := loadHarvestConfig(t, root, "agents = [\"claude\"]\n[memory_dirs]\nclaude = \""+parent+"\"\n")
+	cfg := loadHarvestConfig(t, root, "integrations = [\"claude\"]\n[integrations.claude]\nmemory_kind = \"markdown-glob-v1\"\nmemory_location = \""+parent+"\"\n")
 	if _, err := harvest.Run(cfg, false); err == nil || !strings.Contains(err.Error(), "overlaps knowledge-base root") {
 		t.Fatalf("overlap error = %v", err)
 	}
@@ -612,7 +574,7 @@ func TestHarvestRejectsSymlinkedOutputRootsWithoutTouchingVendor(t *testing.T) {
 			if err := os.Symlink(vendor, filepath.Join(root, output)); err != nil {
 				t.Fatal(err)
 			}
-			cfg := loadHarvestConfig(t, root, "agents = [\"claude\"]\n[memory_dirs]\nclaude = \""+memory+"\"\n")
+			cfg := loadHarvestConfig(t, root, "integrations = [\"claude\"]\n[integrations.claude]\nmemory_kind = \"markdown-glob-v1\"\nmemory_location = \""+memory+"\"\n")
 			if _, err := harvest.Run(cfg, false); err == nil || !strings.Contains(err.Error(), "output root") {
 				t.Fatalf("symlinked %s error = %v", output, err)
 			}

@@ -21,7 +21,7 @@ type TrustPolicy struct {
 
 // ResolveTrustPolicy builds one policy for a normalisation run. Unknown,
 // unconfigured, and empty integration IDs have no entry and therefore remain
-// quarantined. Source-policy exact rules, legacy trusted_sources entries, and
+// quarantined. Source-policy exact rules, trusted_sources entries, and
 // source-policy patterns are parsed once into their documented precedence.
 func ResolveTrustPolicy(cfg *config.Config) (TrustPolicy, error) {
 	resolved, err := adapters.Resolve(cfg)
@@ -58,7 +58,7 @@ func ResolveTrustPolicy(cfg *config.Config) (TrustPolicy, error) {
 
 // Quarantined reports whether source is not allowed to enter normalisation.
 // It first rejects malformed source namespaces. Valid captures then resolve in
-// order: exact source_policies, legacy exact trusted_sources, the most-specific
+// order: exact source_policies, exact trusted_sources, the most-specific
 // source_policies pattern, the canonical human authority, configured integration
 // default, then quarantine. No product-name inference is performed; `human` is
 // the protocol's reserved authoritative principal rather than an integration.

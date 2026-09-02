@@ -3,7 +3,6 @@ package install
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,7 +20,6 @@ import (
 )
 
 var portableSkillName = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
-var safeIntegrationStageName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 type skillSource struct {
 	name  string
@@ -43,7 +41,7 @@ type integrationRender struct {
 	sources        []skillSource
 }
 
-func planSkills(p *Plan, agents []adapters.Agent, sourceRoot string, provenLegacySkills map[string]LegacySkillProof) error {
+func planSkills(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 	portable, err := loadPortableSkills(sourceRoot)
 	if err != nil {
 		return err
@@ -71,7 +69,7 @@ func planSkills(p *Plan, agents []adapters.Agent, sourceRoot string, provenLegac
 		if err != nil {
 			return err
 		}
-		stage := filepath.Join(p.KBRoot, ".state", "integrations", integrationStageName(agent.Name), "skills")
+		stage := filepath.Join(p.KBRoot, ".state", "integrations", agent.Name, "skills")
 		canonicalStage, err := CanonicalTarget(stage)
 		if err != nil {
 			return err
@@ -85,27 +83,7 @@ func planSkills(p *Plan, agents []adapters.Agent, sourceRoot string, provenLegac
 		}
 		renders = append(renders, rendered)
 	}
-	if err := planSkillTargets(p, renders, provenLegacySkills); err != nil {
-		return err
-	}
-
-	// Migrate the pre-variant shared render stage after new per-integration
-	// trees and replacement links have been fully described in the same plan.
-	legacyStage := filepath.Join(p.KBRoot, ".state", "skills")
-	legacyCanonical, err := CanonicalTarget(legacyStage)
-	if err != nil {
-		return err
-	}
-	if !within(canonicalRoot, legacyCanonical) {
-		return fmt.Errorf("refuse legacy rendered skill stage outside the knowledge base: %s resolves to %s", legacyStage, legacyCanonical)
-	}
-	owners := make([]string, 0, len(renders))
-	for _, rendered := range renders {
-		owners = append(owners, rendered.agent.Name)
-	}
-	return planStaleSkillDirs(p, legacyStage, legacyCanonical, nil, sortedUnique(owners), func(skill string) []byte {
-		return stageMarker(canonicalRoot, skill)
-	})
+	return planSkillTargets(p, renders)
 }
 
 func loadPortableSkills(sourceRoot string) ([]skillSource, error) {
@@ -484,14 +462,6 @@ func appendSkillOverlay(base, appendix []byte) []byte {
 	return []byte(strings.TrimRight(string(base), "\r\n") + "\n\n" + strings.TrimSpace(string(appendix)) + "\n")
 }
 
-func integrationStageName(id string) string {
-	if safeIntegrationStageName.MatchString(id) {
-		return id
-	}
-	sum := sha256.Sum256([]byte(id))
-	return "legacy-" + hex.EncodeToString(sum[:8])
-}
-
 func planIntegrationRender(p *Plan, canonicalRoot string, rendered integrationRender) error {
 	for _, source := range rendered.sources {
 		if err := planRenderedSkill(p, canonicalRoot, rendered, source); err != nil {
@@ -499,7 +469,7 @@ func planIntegrationRender(p *Plan, canonicalRoot string, rendered integrationRe
 		}
 	}
 	return planStaleSkillDirs(p, rendered.stage, rendered.canonicalStage, rendered.sources, []string{rendered.agent.Name}, func(skill string) []byte {
-		return stageMarker(canonicalRoot, integrationStageName(rendered.agent.Name), skill)
+		return stageMarker(canonicalRoot, rendered.agent.Name, skill)
 	})
 }
 
@@ -518,7 +488,7 @@ func planRenderedSkill(p *Plan, canonicalRoot string, rendered integrationRender
 	if !within(rendered.canonicalStage, markerCanonical) {
 		return fmt.Errorf("refuse rendered skill marker outside integration stage: %s", markerCanonical)
 	}
-	marker := stageMarker(canonicalRoot, integrationStageName(rendered.agent.Name), source.name)
+	marker := stageMarker(canonicalRoot, rendered.agent.Name, source.name)
 	expected := map[string]bool{}
 	for path := range source.files {
 		expected[filepath.Clean(path)] = true
@@ -704,7 +674,7 @@ func planStaleSkillFiles(p *Plan, integration, skill, declaredDir, canonicalStag
 	})
 }
 
-func planSkillTargets(p *Plan, renders []integrationRender, provenLegacySkills map[string]LegacySkillProof) error {
+func planSkillTargets(p *Plan, renders []integrationRender) error {
 	type targetGroup struct {
 		canonical string
 		declared  []string
@@ -756,13 +726,13 @@ func planSkillTargets(p *Plan, renders []integrationRender, provenLegacySkills m
 		} else if err != nil {
 			return err
 		}
-		if err := planOwnedDanglingLinks(p, owners, group.declared, key, chosen.sources, provenLegacySkills); err != nil {
+		if err := planOwnedDanglingLinks(p, owners, group.declared, key, chosen.sources); err != nil {
 			return err
 		}
 		for _, source := range chosen.sources {
 			dest := filepath.Join(key, source.name)
 			want := filepath.Join(chosen.stage, source.name)
-			item, err := planSkillLink(owners, group.declared, dest, want, p.KBRoot, provenLegacySkills)
+			item, err := planSkillLink(owners, group.declared, dest, want, p.KBRoot)
 			if err != nil {
 				return err
 			}
@@ -772,7 +742,7 @@ func planSkillTargets(p *Plan, renders []integrationRender, provenLegacySkills m
 	return nil
 }
 
-func planOwnedDanglingLinks(p *Plan, owners, declaredDirs []string, canonicalDir string, sources []skillSource, provenLegacySkills map[string]LegacySkillProof) error {
+func planOwnedDanglingLinks(p *Plan, owners, declaredDirs []string, canonicalDir string, sources []skillSource) error {
 	shipped := map[string]bool{}
 	for _, source := range sources {
 		shipped[source.name] = true
@@ -797,8 +767,7 @@ func planOwnedDanglingLinks(p *Plan, owners, declaredDirs []string, canonicalDir
 			raw = filepath.Join(canonicalDir, raw)
 		}
 		raw = filepath.Clean(raw)
-		owned, proof := regestoSkillLinkOwnership(p.KBRoot, raw, entry.Name(), provenLegacySkills)
-		if !owned {
+		if !regestoSkillLinkOwnership(p.KBRoot, raw, entry.Name()) {
 			continue
 		}
 		declared := make([]string, 0, len(declaredDirs))
@@ -810,16 +779,12 @@ func planOwnedDanglingLinks(p *Plan, owners, declaredDirs []string, canonicalDir
 			DeclaredTargets: sortedUnique(declared), CanonicalTarget: dest, CurrentState: "dangling Regesto-owned skill link to " + raw,
 			IntendedState: "absent", BackupAction: "none (Regesto-owned symlink)", DryRun: "remove dangling Regesto-owned skill link", before: []byte(raw),
 		}
-		if proof != nil {
-			item.legacyProofPath = raw
-			item.legacyProof = proof.expected
-		}
 		p.Items = append(p.Items, item)
 	}
 	return nil
 }
 
-func planSkillLink(owners, declaredDirs []string, dest, want, root string, provenLegacySkills map[string]LegacySkillProof) (Item, error) {
+func planSkillLink(owners, declaredDirs []string, dest, want, root string) (Item, error) {
 	canonical, err := canonicalLinkPath(dest)
 	if err != nil {
 		return Item{}, err
@@ -858,203 +823,39 @@ func planSkillLink(owners, declaredDirs []string, dest, want, root string, prove
 		raw = filepath.Join(filepath.Dir(dest), raw)
 	}
 	raw = filepath.Clean(raw)
-	if owned, proof := regestoSkillLinkOwnership(root, raw, filepath.Base(dest), provenLegacySkills); owned {
-		item.Action, item.CurrentState, item.DryRun = "replace", "legacy or stale Regesto-owned skill link", "replace Regesto-owned skill link"
+	if regestoSkillLinkOwnership(root, raw, filepath.Base(dest)) {
+		item.Action, item.CurrentState, item.DryRun = "replace", "stale Regesto-owned skill link", "replace Regesto-owned skill link"
 		item.before = []byte(raw)
-		if proof != nil {
-			item.legacyProofPath = raw
-			item.legacyProof = proof.expected
-		}
 		return item, nil
 	}
 	item.Action, item.CurrentState, item.DryRun = "skip", "foreign symlink to "+raw+" preserved", "leave foreign skill link unchanged"
 	return item, nil
 }
 
-func regestoSkillLinkOwnership(root, raw, skill string, provenLegacySkills map[string]LegacySkillProof) (bool, *LegacySkillProof) {
+func regestoSkillLinkOwnership(root, raw, skill string) bool {
 	canonicalRoot, err := CanonicalTarget(root)
 	if err != nil {
-		return false, nil
+		return false
 	}
 	canonicalRaw, err := CanonicalTarget(raw)
 	if err != nil {
-		return false, nil
-	}
-	legacySource := filepath.Join(canonicalRoot, "adapters", "skills", skill)
-	if canonicalRaw == legacySource {
-		return true, nil
-	}
-	legacy := filepath.Join(canonicalRoot, ".state", "skills", skill)
-	if canonicalRaw == legacy {
-		marker, err := os.ReadFile(filepath.Join(canonicalRaw, ".regesto-owned"))
-		if err == nil && bytes.Equal(marker, stageMarker(canonicalRoot, skill)) {
-			return true, nil
-		}
-		proof, ok := provenLegacySkills[skill]
-		if !ok {
-			return false, nil
-		}
-		matches, err := exactRegularTree(canonicalRaw, proof.expected)
-		if err != nil || !matches {
-			return false, nil
-		}
-		return true, &proof
+		return false
 	}
 	integrations := filepath.Join(canonicalRoot, ".state", "integrations")
 	rel, err := filepath.Rel(integrations, canonicalRaw)
 	if err != nil {
-		return false, nil
+		return false
 	}
 	parts := strings.Split(filepath.ToSlash(rel), "/")
 	if len(parts) != 3 || parts[1] != "skills" || parts[2] != skill {
-		return false, nil
+		return false
 	}
 	marker, err := os.ReadFile(filepath.Join(canonicalRaw, ".regesto-owned"))
-	return err == nil && bytes.Equal(marker, stageMarker(canonicalRoot, parts[0], skill)), nil
+	return err == nil && bytes.Equal(marker, stageMarker(canonicalRoot, parts[0], skill))
 }
 
-// LegacySkillProof retains the historical renderer output used to establish
-// ownership before upgrade replaces the instance sources. Planning and apply
-// recheck these exact bytes so the evidence cannot become a stale boolean.
-type LegacySkillProof struct {
-	expected map[string][]byte
-}
-
-// ProvenLegacySkills identifies the generated skill directories written by
-// the pre-marker shell installer. Location alone is not ownership evidence: a
-// user can put anything under .state/. A directory is proven only when its
-// complete regular-file tree is byte-for-byte the old renderer's output from
-// the instance's current adapter source. Upgrade calls this before replacing
-// those sources and passes the result into both dry-run and apply plans.
-func ProvenLegacySkills(kbRoot string) (map[string]LegacySkillProof, error) {
-	proved := map[string]LegacySkillProof{}
-	sourceRoot := filepath.Join(kbRoot, "adapters", "skills")
-	entries, err := os.ReadDir(sourceRoot)
-	if os.IsNotExist(err) {
-		return proved, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-		expected, ok, err := legacyRenderedFiles(filepath.Join(sourceRoot, entry.Name()), kbRoot)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			continue
-		}
-		if _, ok := expected["SKILL.md"]; !ok {
-			continue
-		}
-		matches, err := exactRegularTree(filepath.Join(kbRoot, ".state", "skills", entry.Name()), expected)
-		if err != nil {
-			return nil, err
-		}
-		if matches {
-			proved[entry.Name()] = LegacySkillProof{expected: expected}
-		}
-	}
-	return proved, nil
-}
-
-func legacyRenderedFiles(sourceDir, kbRoot string) (map[string][]byte, bool, error) {
-	files := map[string][]byte{}
-	valid := true
-	err := filepath.WalkDir(sourceDir, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if path == sourceDir || entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			return nil
-		}
-		if entry.Type()&os.ModeType != 0 {
-			valid = false
-			return fs.SkipAll
-		}
-		relative, err := filepath.Rel(sourceDir, path)
-		if err != nil {
-			return err
-		}
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if strings.EqualFold(filepath.Ext(relative), ".md") {
-			body = render(body, kbRoot)
-		}
-		// The historical shell installer captured both `sed` and `cat` with
-		// command substitution, which strips every trailing newline, and then
-		// wrote the value with printf '%s\n'. Reproduce that byte behavior.
-		body = append(bytes.TrimRight(body, "\n"), '\n')
-		files[filepath.Clean(relative)] = body
-		return nil
-	})
-	return files, valid && err == nil, err
-}
-
-func exactRegularTree(root string, expected map[string][]byte) (bool, error) {
-	info, err := os.Lstat(root)
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return false, err
-	}
-	seen := map[string]bool{}
-	expectedDirs := map[string]bool{".": true}
-	for relative := range expected {
-		for dir := filepath.Dir(relative); dir != "."; dir = filepath.Dir(dir) {
-			expectedDirs[filepath.Clean(dir)] = true
-		}
-	}
-	matches := true
-	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if path == root {
-			return nil
-		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			if !expectedDirs[filepath.Clean(relative)] {
-				matches = false
-			}
-			return nil
-		}
-		body, exists := expected[filepath.Clean(relative)]
-		if entry.Type()&os.ModeType != 0 || !exists {
-			matches = false
-			return nil
-		}
-		got, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal(got, body) {
-			matches = false
-		}
-		seen[filepath.Clean(relative)] = true
-		return nil
-	})
-	if err != nil {
-		return false, err
-	}
-	return matches && len(seen) == len(expected), nil
-}
-
-func stageMarker(canonicalRoot string, parts ...string) []byte {
-	if len(parts) == 1 {
-		return []byte("regesto-generated-skill-stage-v1\nkb_root=" + canonicalRoot + "\nskill=" + parts[0] + "\n")
-	}
-	return []byte("regesto-generated-integration-skill-v1\nkb_root=" + canonicalRoot + "\nintegration=" + parts[0] + "\nskill=" + parts[1] + "\n")
+func stageMarker(canonicalRoot, integration, skill string) []byte {
+	return []byte("regesto-generated-integration-skill-v1\nkb_root=" + canonicalRoot + "\nintegration=" + integration + "\nskill=" + skill + "\n")
 }
 
 func treeDigest(root string) ([]byte, error) {

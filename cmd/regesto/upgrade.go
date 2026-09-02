@@ -42,11 +42,6 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
-	provenLegacySkills, err := regestoinstall.ProvenLegacySkills(cfg.KBRoot)
-	if err != nil {
-		return fmt.Errorf("verify legacy rendered skills: %w", err)
-	}
-
 	from := m.Engine
 	if from == "" {
 		from = "unrecorded"
@@ -147,7 +142,7 @@ func runUpgrade(cfg *config.Config, args []string) error {
 			return err
 		}
 		defer os.RemoveAll(sourceRoot)
-		plan, err := regestoinstall.Build(cfg, regestoinstall.Options{SourceRoot: sourceRoot, ProvenLegacySkills: provenLegacySkills})
+		plan, err := regestoinstall.Build(cfg, regestoinstall.Options{SourceRoot: sourceRoot})
 		if err != nil {
 			return err
 		}
@@ -163,7 +158,7 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	// settings, and the scheduled jobs name a binary by absolute path — none of
 	// which change just because the sources did. Leaving those to the user meant
 	// an upgrade that silently did nothing an agent could see.
-	if err := reinstallAdapters(cfg, regestoinstall.Options{ProvenLegacySkills: provenLegacySkills}); err != nil {
+	if err := reinstallAdapters(cfg, regestoinstall.Options{}); err != nil {
 		return err
 	}
 	// Record the engine checkpoint only after the refreshed artifacts installed
@@ -243,7 +238,7 @@ func upgradePlanSourceRoot(root string, changes, removals []manifest.Change, for
 }
 
 // noteNewAgents flags a known agent that is present on this machine but
-// missing from this instance's `agents` in config.toml — the case where a
+// missing from this instance's `integrations` in config.toml — the case where a
 // release adds an adapter for something the user already had installed
 // before init ever ran its own detection.
 //
@@ -256,14 +251,10 @@ func noteNewAgents(cfg *config.Config) {
 	for _, a := range cfg.IntegrationIDs() {
 		have[a] = true
 	}
-	detected := adapters.Detect()
-	if !cfg.UsesLegacyAgents() {
-		var err error
-		detected, err = adapters.DetectProfiles(cfg.KBRoot)
-		if err != nil {
-			fmt.Printf("note     could not detect configured integration profiles: %v\n\n", err)
-			return
-		}
+	detected, err := adapters.DetectProfiles(cfg.KBRoot)
+	if err != nil {
+		fmt.Printf("note     could not detect configured integration profiles: %v\n\n", err)
+		return
 	}
 	var missing []string
 	for _, a := range detected {
@@ -274,12 +265,8 @@ func noteNewAgents(cfg *config.Config) {
 	if len(missing) == 0 {
 		return
 	}
-	vocabulary := "integrations"
-	if cfg.UsesLegacyAgents() {
-		vocabulary = "agents"
-	}
-	fmt.Printf("note     %s detected but not in %s = [...] in config.toml — add it yourself to have this instance manage it\n\n",
-		strings.Join(missing, ", "), vocabulary)
+	fmt.Printf("note     %s detected but not in integrations = [...] in config.toml — add it yourself to have this instance manage it\n\n",
+		strings.Join(missing, ", "))
 }
 
 // reinstallAdapters calls the same Go planner/applicator as `regesto install`.

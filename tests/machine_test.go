@@ -39,7 +39,7 @@ func TestStateMachineBeatsSyncedConfig(t *testing.T) {
 	t.Setenv("REGESTO_MACHINE", "")
 	// The synced config says studio; this machine's own .state says macbook.
 	// .state must win, or every machine would answer "studio".
-	cfg := writeInstance(t, "agents = [\"claude\"]\nmachine = \"studio\"\n", "macbook\n")
+	cfg := writeInstance(t, "integrations = [\"claude\"]\nmachine = \"studio\"\n", "macbook\n")
 	if cfg.Machine != "macbook" {
 		t.Errorf("machine = %q, want macbook — the synced config overrode per-machine state", cfg.Machine)
 	}
@@ -50,7 +50,7 @@ func TestStateMachineBeatsSyncedConfig(t *testing.T) {
 
 func TestEnvBeatsEverything(t *testing.T) {
 	t.Setenv("REGESTO_MACHINE", "ci-box")
-	cfg := writeInstance(t, "agents = [\"claude\"]\nmachine = \"studio\"\n", "macbook\n")
+	cfg := writeInstance(t, "integrations = [\"claude\"]\nmachine = \"studio\"\n", "macbook\n")
 	if cfg.Machine != "ci-box" {
 		t.Errorf("machine = %q, want ci-box", cfg.Machine)
 	}
@@ -62,7 +62,7 @@ func TestEnvBeatsEverything(t *testing.T) {
 // A single-machine instance that never syncs may legitimately set it in config.
 func TestConfigMachineUsedWhenNoState(t *testing.T) {
 	t.Setenv("REGESTO_MACHINE", "")
-	cfg := writeInstance(t, "agents = [\"claude\"]\nmachine = \"solo\"\n", "")
+	cfg := writeInstance(t, "integrations = [\"claude\"]\nmachine = \"solo\"\n", "")
 	if cfg.Machine != "solo" {
 		t.Errorf("machine = %q, want solo", cfg.Machine)
 	}
@@ -75,7 +75,7 @@ func TestConfigMachineUsedWhenNoState(t *testing.T) {
 // it as a guess so an installer can tell the user to pin it.
 func TestHostnameFallbackIsReportedAsSuch(t *testing.T) {
 	t.Setenv("REGESTO_MACHINE", "")
-	cfg := writeInstance(t, "agents = [\"claude\"]\n", "")
+	cfg := writeInstance(t, "integrations = [\"claude\"]\n", "")
 	if cfg.Machine == "" {
 		t.Error("machine must never resolve to empty — the hook has to work anyway")
 	}
@@ -157,7 +157,7 @@ func TestConfigDiscoveryPrecedence(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfgPath := filepath.Join(root, "config.toml")
-	if err := os.WriteFile(cfgPath, []byte("agents = [\"claude\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("integrations = [\"claude\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

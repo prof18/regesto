@@ -38,8 +38,11 @@ func agentByName(t *testing.T, list []adapters.Agent, name string) adapters.Agen
 }
 
 func TestAdapterVendorDefaults(t *testing.T) {
-	cfg := writeConfig(t, "machine = \"testbox\"\nagents = [\"claude\", \"codex\", \"hermes\"]\n")
-	list := adapters.For(cfg)
+	cfg := writeConfig(t, "machine = \"testbox\"\nintegrations = [\"claude\", \"codex\", \"hermes\"]\n")
+	list, err := adapters.Resolve(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(list) != 3 {
 		t.Fatalf("got %d agents, want 3", len(list))
 	}
@@ -59,13 +62,13 @@ func TestAdapterVendorDefaults(t *testing.T) {
 		t.Errorf("claude should have a settings file — it is the agent with hooks")
 	}
 
-	// Codex and Hermes retain an empty legacy flat settings field. Hermes's new
-	// registrar target is exposed through hook metadata without changing this output.
+	// Codex and Hermes have no Claude settings registrar. Hermes exposes its
+	// registrar target through hook metadata.
 	if a := agentByName(t, list, "codex"); a.SettingsFile != "" {
 		t.Errorf("codex settings = %q, want empty", a.SettingsFile)
 	}
 	if a := agentByName(t, list, "hermes"); a.SettingsFile != "" {
-		t.Errorf("hermes settings = %q, want empty legacy field", a.SettingsFile)
+		t.Errorf("hermes settings = %q, want empty", a.SettingsFile)
 	} else if len(a.Hooks) != 1 || a.Hooks[0].Settings != filepath.Join(home, ".hermes", "config.yaml") {
 		t.Errorf("hermes registrar target = %+v, want config.yaml", a.Hooks)
 	}
@@ -90,23 +93,24 @@ func TestAdapterVendorDefaults(t *testing.T) {
 
 func TestAdapterConfigOverridesWin(t *testing.T) {
 	cfg := writeConfig(t, `machine = "testbox"
-agents = ["claude", "codex"]
+integrations = ["claude", "codex"]
 
-[skills_dirs]
-claude = "~/.agents/skills"
+[integrations.claude]
+skills_dir = "~/.agents/skills"
+instructions_file = "~/.dotfiles/AGENTS.md"
+settings_file = "~/somewhere/settings.json"
 
-[instructions]
-claude = "~/.dotfiles/AGENTS.md"
-codex = "~/.dotfiles/AGENTS.md"
-
-[settings_files]
-claude = "~/somewhere/settings.json"
+[integrations.codex]
+instructions_file = "~/.dotfiles/AGENTS.md"
 `)
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	list := adapters.For(cfg)
+	list, err := adapters.Resolve(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	claude := agentByName(t, list, "claude")
 	if want := filepath.Join(home, ".agents", "skills"); claude.SkillsDir != want {
@@ -125,42 +129,18 @@ claude = "~/somewhere/settings.json"
 	}
 }
 
-func TestUnknownAgentIsReportedNotSkipped(t *testing.T) {
-	cfg := writeConfig(t, "machine = \"testbox\"\nagents = [\"claude\", \"some_agent\"]\n")
-	list := adapters.For(cfg)
+func TestUnknownIntegrationUsesGenericProfile(t *testing.T) {
+	cfg := writeConfig(t, "machine = \"testbox\"\nintegrations = [\"claude\", \"some_agent\"]\n")
+	list, err := adapters.Resolve(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	a := agentByName(t, list, "some_agent")
-	if a.SkillsDir != "" {
-		t.Errorf("unknown agent got a guessed skills dir %q", a.SkillsDir)
+	if a.ProfileID != "generic" || a.DefaultTrust != "quarantine" {
+		t.Errorf("unknown integration did not resolve through generic profile: %+v", a)
 	}
-	// Returned rather than dropped, so the installer can warn instead of
-	// silently doing nothing for an agent the user asked for.
 	if len(list) != 2 {
-		t.Errorf("got %d agents, want 2 including the unknown one", len(list))
-	}
-}
-
-func TestAdapterLegacyUnknownAgentOverrideTablesRemainUsable(t *testing.T) {
-	cfg := writeConfig(t, `agents = ["some_agent"]
-[skills_dirs]
-some_agent = "/tmp/some-agent/skills"
-[instructions]
-some_agent = "/tmp/some-agent/AGENTS.md"
-[settings_files]
-some_agent = "/tmp/some-agent/settings.json"
-[memory_dirs]
-some_agent = "/tmp/some-agent/memory/*"
-`)
-	a := agentByName(t, adapters.For(cfg), "some_agent")
-	if a.SkillsDir != "/tmp/some-agent/skills" || a.InstructionsFile != "/tmp/some-agent/AGENTS.md" || a.SettingsFile != "/tmp/some-agent/settings.json" || a.MemoryGlob != "/tmp/some-agent/memory/*" {
-		t.Errorf("legacy unknown overrides were lost: %+v", a)
-	}
-}
-
-func TestAdapterLegacyDuplicateAgentsRemainDuplicates(t *testing.T) {
-	cfg := writeConfig(t, "agents = [\"some_agent\", \"some_agent\"]\n")
-	got := adapters.For(cfg)
-	if len(got) != 2 || got[0].Name != "some_agent" || got[1].Name != "some_agent" {
-		t.Errorf("legacy duplicates changed: %+v", got)
+		t.Errorf("got %d integrations, want 2", len(list))
 	}
 }
 
@@ -215,13 +195,10 @@ func TestAdapterProfileAwareDetectionIgnoresMissingAndNonExecutableCommands(t *t
 
 func TestArbitrarySectionsParseAndExpandHome(t *testing.T) {
 	cfg := writeConfig(t, `machine = "testbox"
-agents = ["claude"]
+	integrations = ["claude"]
 
 [projects]
 "aurora-2" = "aurora"
-
-[skills_dirs]
-claude = "~/.agents/skills"
 
 [future_thing]
 key = "value"
@@ -234,9 +211,5 @@ key = "value"
 	}
 	if got := cfg.Section("nope"); len(got) != 0 {
 		t.Errorf("absent section should be an empty map, got %v", got)
-	}
-	home, _ := os.UserHomeDir()
-	if got := cfg.Section("skills_dirs")["claude"]; !strings.HasPrefix(got, home) {
-		t.Errorf("~ not expanded in section value: %q", got)
 	}
 }

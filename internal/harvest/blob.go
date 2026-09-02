@@ -19,25 +19,17 @@ import (
 // disk and nothing else, while the inbox — which *is* synced and committed —
 // carries only what changed.
 
-func blobRelativePath(cfg *config.Config, agent, key string) string {
-	return filepath.Join(".state", cfg.Machine, agent, "last",
-		strings.ReplaceAll(key, "/", "__"))
-}
-
-func sourceBlobRelativePath(cfg *config.Config, agent, sourceID string, legacy bool, key string) string {
-	if legacy {
-		return blobRelativePath(cfg, agent, key)
-	}
+func sourceBlobRelativePath(cfg *config.Config, agent, sourceID, key string) string {
 	return filepath.Join(".state", cfg.Machine, agent, "sources", sourceID, "last",
 		strings.ReplaceAll(key, "/", "__"))
 }
 
-func readSourceBlob(kbFS *os.Root, cfg *config.Config, agent, sourceID string, legacy bool, key string) ([]byte, error) {
-	return readRootFile(kbFS, sourceBlobRelativePath(cfg, agent, sourceID, legacy, key))
+func readSourceBlob(kbFS *os.Root, cfg *config.Config, agent, sourceID, key string) ([]byte, error) {
+	return readRootFile(kbFS, sourceBlobRelativePath(cfg, agent, sourceID, key))
 }
 
-func writeSourceBlob(kbFS *os.Root, cfg *config.Config, agent, sourceID string, legacy bool, key string, data []byte) error {
-	return writeRootAtomic(kbFS, sourceBlobRelativePath(cfg, agent, sourceID, legacy, key), data, 0o644)
+func writeSourceBlob(kbFS *os.Root, cfg *config.Config, agent, sourceID, key string, data []byte) error {
+	return writeRootAtomic(kbFS, sourceBlobRelativePath(cfg, agent, sourceID, key), data, 0o644)
 }
 
 // unifiedDiff renders old→new as a unified diff. It reports false when a diff

@@ -41,7 +41,7 @@ func buildStandaloneEngine(t *testing.T) string {
 
 func engineInstance(t *testing.T) *config.Config {
 	t.Helper()
-	return writeInstance(t, "agents = [\"claude\"]\nmachine = \"testbox\"\n", "")
+	return writeInstance(t, "integrations = [\"claude\"]\nmachine = \"testbox\"\n", "")
 }
 
 func writeBinary(t *testing.T, cfg *config.Config, mode os.FileMode) string {

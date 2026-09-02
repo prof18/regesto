@@ -15,7 +15,7 @@ regesto init --dir ~/regesto-kb --examples
 ~/regesto-kb/bin/regesto-install
 ```
 
-`regesto-install` is a compatibility shim over `regesto install`. Installation is
+`regesto-install` is a thin launcher for `regesto install`. Installation is
 idempotent, backs up every host file it edits, and takes `--dry-run` (plus `--json` for a
 versioned machine-readable plan). The Go installer does three things:
 
@@ -27,7 +27,7 @@ versioned machine-readable plan). The Go installer does three things:
    `regesto:section:start` / `:end` markers so it can be updated later without touching
    the rest of the file.
 
-In an engine source checkout, the compatibility shim also builds the real binary before a
+In an engine source checkout, the launcher also builds the real binary before a
 non-dry install. Release-backed instances already have an engine and simply forward to it.
 
 Then open a session in a project. Its facts should be in context before you type anything.

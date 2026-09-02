@@ -10,8 +10,9 @@ that has no section, so this file cannot fall behind.
 Codex.** A declarative profile describes detection, skills, instructions, hooks,
 native-memory sources, and default trust. Built-in profiles cover Claude Code,
 Codex, Hermes, and a generic local integration; additional local profiles can be
-added without changing the engine. Existing `agents = [...]` configuration remains
-supported byte for byte, while new instances use `integrations = [...]`.
+added without changing the engine. Configuration now uses `integrations = [...]` and
+per-integration override sections; old single-user instances are updated manually rather
+than carrying an automatic migration layer.
 
 `regesto install` now plans and applies those profiles through the Go engine. Its
 versioned JSON dry-run reports canonical targets, ownership, current and intended
@@ -28,7 +29,7 @@ one declared target without duplicating content.
 
 Native Markdown memory can now be harvested from every declared source with a
 separate persisted baseline. Overlapping declarations deduplicate publication,
-legacy snapshots still load, untrusted sources remain quarantined, and all reads
+untrusted sources remain quarantined, and all reads
 and writes stay within descriptor-verified roots. No proprietary cloud-memory
 connector or network transport was added.
 
@@ -45,9 +46,7 @@ tools, and MCP clients.
 
 The release gate now builds the engine away from its knowledge-base instance and
 drives init, inert install dry-run, install, doctor, lint, upgrade, and an MCP
-handshake inside a disposable HOME. A committed v0.3.1 package fixture also proves
-that the current binary upgrades historical engine-owned files and manifests while
-leaving the legacy config untouched.
+handshake inside a disposable HOME.
 
 ## 0.3.1
 

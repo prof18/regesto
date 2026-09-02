@@ -40,8 +40,7 @@ not invent a host-owned file. Installation then links a separate portable render
 merges the shared instruction section without a source change. If the host has a hook,
 describe it in an instance-owned profile with a
 supported protocol plus `manual` registrar; installation prints the exact event/command
-recipe instead of guessing a settings format. Legacy `agents` and override tables remain
-accepted for existing configurations.
+recipe instead of guessing a settings format.
 
 Run `regesto doctor --integration someagent` after installation. It reports configured and
 detected state separately, every planned or current artifact, unsupported capabilities,

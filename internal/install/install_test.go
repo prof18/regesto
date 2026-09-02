@@ -285,10 +285,10 @@ func TestInstallRefusesRenderedStageSymlinkOutsideKB(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".state"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(root, ".state", "skills")); err != nil {
+	if err := os.Symlink(outside, filepath.Join(root, ".state", "integrations")); err != nil {
 		t.Fatal(err)
 	}
-	cfg := loadTestConfig(t, root, "integrations = []\n")
+	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
 	_, err := Build(cfg, Options{})
 	if err == nil || !strings.Contains(err.Error(), "outside the knowledge base") {
 		t.Fatalf("outside stage error = %v", err)
@@ -302,9 +302,9 @@ func TestInstallRefusesRenderedStageSymlinkOutsideKB(t *testing.T) {
 func TestInstallPreservesUnownedDirectoryInRenderedStage(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	personal := filepath.Join(root, ".state", "skills", "my-personal", "notes.txt")
+	personal := filepath.Join(root, ".state", "integrations", "claude", "skills", "my-personal", "notes.txt")
 	writeTestFile(t, personal, "keep me\n")
-	cfg := loadTestConfig(t, root, "integrations = []\n")
+	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
 	plan, err := Build(cfg, Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -364,32 +364,6 @@ func TestInstallRejectsCrossKindCanonicalTargetConflict(t *testing.T) {
 	}
 }
 
-func TestLegacySettingsOverrideStillRegistersSessionHook(t *testing.T) {
-	root, home := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", home)
-	settings := filepath.Join(home, ".mystery", "settings.json")
-	cfg := loadTestConfig(t, root, "agents = [\"mystery\"]\n[settings_files]\nmystery = \""+settings+"\"\n")
-	plan, err := Build(cfg, Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, item := range plan.Items {
-		if item.Kind == "hook" && strings.Join(item.Owners, ",") == "mystery" && item.CanonicalTarget == mustCanonical(t, settings) {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("legacy settings override has no hook plan: %+v", plan.Items)
-	}
-	if _, err := Apply(plan); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(mustReadTest(t, settings)), "SessionStart") {
-		t.Fatal("legacy settings override did not receive SessionStart hook")
-	}
-}
-
 func TestInstallRejectsMissingOrNonExecutableHook(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
@@ -414,8 +388,8 @@ func TestRetiredSkillDirectoryAndLiveLinkPruneInOneInstall(t *testing.T) {
 	t.Setenv("HOME", home)
 	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
 	canonicalRoot := mustCanonical(t, root)
-	retiredStage := filepath.Join(root, ".state", "skills", "retired")
-	writeTestFile(t, filepath.Join(retiredStage, ".regesto-owned"), string(stageMarker(canonicalRoot, "retired")))
+	retiredStage := filepath.Join(root, ".state", "integrations", "claude", "skills", "retired")
+	writeTestFile(t, filepath.Join(retiredStage, ".regesto-owned"), string(stageMarker(canonicalRoot, "claude", "retired")))
 	writeTestFile(t, filepath.Join(retiredStage, "SKILL.md"), "retired\n")
 	link := filepath.Join(home, ".claude", "skills", "retired")
 	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
@@ -445,245 +419,13 @@ func TestRetiredSkillDirectoryAndLiveLinkPruneInOneInstall(t *testing.T) {
 	}
 }
 
-func TestLegacyRenderedSkillMigratesToIntegrationTree(t *testing.T) {
-	root, home := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", home)
-	canonicalRoot := mustCanonical(t, root)
-	legacy := filepath.Join(root, ".state", "skills", "regesto-search")
-	writeTestFile(t, filepath.Join(legacy, ".regesto-owned"), string(stageMarker(canonicalRoot, "regesto-search")))
-	writeTestFile(t, filepath.Join(legacy, "SKILL.md"), "legacy rendered skill\n")
-	link := filepath.Join(home, ".claude", "skills", "regesto-search")
-	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(legacy, link); err != nil {
-		t.Fatal(err)
-	}
-	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
-	plan, err := Build(cfg, Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Apply(plan); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Lstat(legacy); !os.IsNotExist(err) {
-		t.Fatalf("legacy stage remains: %v", err)
-	}
-	want := filepath.Join(root, ".state", "integrations", "claude", "skills", "regesto-search")
-	if got, err := os.Readlink(link); err != nil || got != want {
-		t.Fatalf("migrated skill link = %q, err=%v, want %q", got, err, want)
-	}
-	second, err := Build(cfg, Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second.Changes() != 0 {
-		t.Fatalf("second migrated plan has %d changes", second.Changes())
-	}
-}
-
-func TestUnmarkedExactLegacyRenderedSkillRequiresAndAcceptsByteProof(t *testing.T) {
-	root, home := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", home)
-	source := "---\nname: sample\ndescription: Sample legacy migration proof.\n---\n\nRoot: {{kb_root}}\n\n"
-	writeTestFile(t, filepath.Join(root, "adapters", "skills", "sample", "SKILL.md"), source)
-	legacy := filepath.Join(root, ".state", "skills", "sample")
-	rendered := strings.ReplaceAll(source, "{{kb_root}}", root)
-	writeTestFile(t, filepath.Join(legacy, "SKILL.md"), strings.TrimRight(rendered, "\n")+"\n")
-	link := filepath.Join(home, "maker", "skills", "sample")
-	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(legacy, link); err != nil {
-		t.Fatal(err)
-	}
-	cfg := loadTestConfig(t, root, "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\nskills_dir = \""+filepath.Join(home, "maker", "skills")+"\"\n")
-
-	unproved, err := Build(cfg, Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := skillLinkAction(t, unproved, link); got != "skip" {
-		t.Fatalf("unproved legacy link action = %q, want skip", got)
-	}
-	proof, err := ProvenLegacySkills(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := proof["sample"]; !ok {
-		t.Fatal("exact historical render was not proven")
-	}
-	proved, err := Build(cfg, Options{ProvenLegacySkills: proof})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := skillLinkAction(t, proved, link); got != "replace" {
-		t.Fatalf("proved legacy link action = %q, want replace", got)
-	}
-	writeTestFile(t, filepath.Join(legacy, "SKILL.md"), "changed after planning\n")
-	if _, err := Apply(proved); err == nil || !strings.Contains(err.Error(), "proven legacy skill contents changed") {
-		t.Fatalf("changed proof apply error = %v", err)
-	}
-	if got, err := os.Readlink(link); err != nil || got != legacy {
-		t.Fatalf("changed proof replaced link = %q, err=%v", got, err)
-	}
-	writeTestFile(t, filepath.Join(legacy, "SKILL.md"), strings.TrimRight(rendered, "\n")+"\n")
-	proved, err = Build(cfg, Options{ProvenLegacySkills: proof})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Apply(proved); err != nil {
-		t.Fatal(err)
-	}
-	want := filepath.Join(root, ".state", "integrations", "maker", "skills", "sample")
-	if got, err := os.Readlink(link); err != nil || got != want {
-		t.Fatalf("migrated link = %q, err=%v, want %q", got, err, want)
-	}
-	if _, err := os.Stat(filepath.Join(legacy, "SKILL.md")); err != nil {
-		t.Fatalf("unmarked legacy evidence should remain preserved: %v", err)
-	}
-}
-
-func TestLegacyRenderedSkillProofRejectsChangedOrUnexpectedTrees(t *testing.T) {
-	for _, test := range []struct {
-		name   string
-		mutate func(t *testing.T, legacy string)
-	}{
-		{name: "changed payload", mutate: func(t *testing.T, legacy string) {
-			writeTestFile(t, filepath.Join(legacy, "SKILL.md"), "changed\n")
-		}},
-		{name: "unexpected file", mutate: func(t *testing.T, legacy string) {
-			writeTestFile(t, filepath.Join(legacy, "notes.txt"), "foreign\n")
-		}},
-		{name: "unexpected empty directory", mutate: func(t *testing.T, legacy string) {
-			if err := os.Mkdir(filepath.Join(legacy, "foreign"), 0o755); err != nil {
-				t.Fatal(err)
-			}
-		}},
-		{name: "non-regular payload", mutate: func(t *testing.T, legacy string) {
-			if err := os.Remove(filepath.Join(legacy, "SKILL.md")); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Symlink(filepath.Join(legacy, "missing"), filepath.Join(legacy, "SKILL.md")); err != nil {
-				t.Fatal(err)
-			}
-		}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			root := t.TempDir()
-			source := "---\nname: sample\ndescription: Sample.\n---\n"
-			writeTestFile(t, filepath.Join(root, "adapters", "skills", "sample", "SKILL.md"), source)
-			legacy := filepath.Join(root, ".state", "skills", "sample")
-			writeTestFile(t, filepath.Join(legacy, "SKILL.md"), source)
-			test.mutate(t, legacy)
-			proof, err := ProvenLegacySkills(root)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, ok := proof["sample"]; ok {
-				t.Fatal("unsafe legacy tree was proven")
-			}
-		})
-	}
-}
-
-func TestLegacyRenderedSkillProofRejectsEmptyPayloadEvidence(t *testing.T) {
-	root := t.TempDir()
-	writeTestFile(t, filepath.Join(root, "adapters", "skills", "sample", ".ignored"), "hidden\n")
-	if err := os.MkdirAll(filepath.Join(root, ".state", "skills", "sample"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	proof, err := ProvenLegacySkills(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := proof["sample"]; ok {
-		t.Fatal("empty legacy stage was proven without SKILL.md evidence")
-	}
-}
-
-func TestProvenLegacyLinkPublicationRollsBackIfProofChangesInFinalWindow(t *testing.T) {
-	root, home := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", home)
-	source := "---\nname: sample\ndescription: Sample.\n---\n"
-	writeTestFile(t, filepath.Join(root, "adapters", "skills", "sample", "SKILL.md"), source)
-	legacy := filepath.Join(root, ".state", "skills", "sample")
-	writeTestFile(t, filepath.Join(legacy, "SKILL.md"), source)
-	link := filepath.Join(home, "maker", "skills", "sample")
-	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(legacy, link); err != nil {
-		t.Fatal(err)
-	}
-	cfg := loadTestConfig(t, root, "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\nskills_dir = \""+filepath.Join(home, "maker", "skills")+"\"\n")
-	proof, err := ProvenLegacySkills(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan, err := Build(cfg, Options{ProvenLegacySkills: proof})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var item Item
-	for _, candidate := range plan.Items {
-		if candidate.Kind == "skill-link" && candidate.CanonicalTarget == mustCanonicalLink(t, link) {
-			item = candidate
-			break
-		}
-	}
-	if item.legacyProofPath == "" {
-		t.Fatal("planned link has no retained legacy proof")
-	}
-	if err := verifyLegacySkillProof(item); err != nil {
-		t.Fatal(err)
-	}
-	linkRoot, name, err := openTargetRoot(item.CanonicalTarget)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer linkRoot.Close()
-	tmpName, err := randomTempName(".regesto-link-test-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := linkRoot.Symlink(item.linkTarget, tmpName); err != nil {
-		t.Fatal(err)
-	}
-	defer linkRoot.Remove(tmpName)
-	rawLink, err := linkRoot.Readlink(name)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeTestFile(t, filepath.Join(legacy, "SKILL.md"), "changed in final window\n")
-	if rawLink == "" {
-		t.Fatal("original link target is empty")
-	}
-	if err := publishProvenLink(linkRoot, name, tmpName, item); err == nil || !strings.Contains(err.Error(), "proven legacy skill contents changed") {
-		t.Fatalf("publication race error = %v", err)
-	}
-	if got, err := os.Readlink(link); err != nil || got != legacy {
-		t.Fatalf("publication race did not restore original link: got=%q err=%v", got, err)
-	}
-	entries, err := os.ReadDir(filepath.Dir(link))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), ".regesto-link-rollback-") {
-			t.Fatalf("rollback directory leaked: %s", entry.Name())
-		}
-	}
-}
-
 func TestRetiredSkillDirectoryChangeAfterPlanIsRefused(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
 	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
 	canonicalRoot := mustCanonical(t, root)
-	retired := filepath.Join(root, ".state", "skills", "retired")
-	writeTestFile(t, filepath.Join(retired, ".regesto-owned"), string(stageMarker(canonicalRoot, "retired")))
+	retired := filepath.Join(root, ".state", "integrations", "claude", "skills", "retired")
+	writeTestFile(t, filepath.Join(retired, ".regesto-owned"), string(stageMarker(canonicalRoot, "claude", "retired")))
 	writeTestFile(t, filepath.Join(retired, "SKILL.md"), "retired\n")
 	plan, err := Build(cfg, Options{})
 	if err != nil {
@@ -1002,26 +744,6 @@ func TestPortableSkillValidationEnforcesCompatibilityLength(t *testing.T) {
 				t.Fatal("invalid compatibility was accepted")
 			}
 		})
-	}
-}
-
-func TestDuplicateLegacyIntegrationRendersAndAppliesOnce(t *testing.T) {
-	root, home := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", home)
-	cfg := loadTestConfig(t, root, "agents = [\"claude\", \"claude\"]\n")
-	plan, err := Build(cfg, Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Apply(plan); err != nil {
-		t.Fatal(err)
-	}
-	second, err := Build(cfg, Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second.Changes() != 0 {
-		t.Fatalf("duplicate legacy second plan has %d changes", second.Changes())
 	}
 }
 

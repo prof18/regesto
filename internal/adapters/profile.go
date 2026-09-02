@@ -275,8 +275,6 @@ func oneOf(v string, choices ...string) bool {
 }
 
 // Resolve converts the configured integration list into concrete targets.
-// Legacy unknown agents deliberately remain empty, preserving the old warning
-// path; only new-vocabulary unknown integrations inherit the generic template.
 func Resolve(cfg *config.Config) ([]Agent, error) {
 	return ResolveFrom(cfg, cfg.KBRoot)
 }
@@ -291,13 +289,6 @@ func ResolveFrom(cfg *config.Config, profileRoot string) ([]Agent, error) {
 		return nil, err
 	}
 	ids := cfg.IntegrationIDs()
-	if cfg.UsesLegacyAgents() {
-		for section := range cfg.Sections {
-			if strings.HasPrefix(section, "integrations.") {
-				return nil, fmt.Errorf("config uses legacy agents; use either agents or integrations, not [%s]", section)
-			}
-		}
-	}
 	seen := map[string]bool{}
 	out := make([]Agent, 0, len(ids))
 	for _, id := range ids {
@@ -307,17 +298,11 @@ func ResolveFrom(cfg *config.Config, profileRoot string) ([]Agent, error) {
 		if id == "human" {
 			return nil, fmt.Errorf("config integration id %q is reserved for human authority", id)
 		}
-		if seen[id] && !cfg.UsesLegacyAgents() {
+		if seen[id] {
 			return nil, fmt.Errorf("config lists integration %q more than once", id)
 		}
 		seen[id] = true
 		p, found := profiles[id]
-		if !found && cfg.UsesLegacyAgents() {
-			a := legacyUnknown(cfg, id)
-			applyLegacyOverrides(cfg, &a)
-			out = append(out, a)
-			continue
-		}
 		if !safeID.MatchString(id) {
 			return nil, fmt.Errorf("config integration id %q must match %s", id, safeID.String())
 		}
@@ -339,9 +324,6 @@ func ResolveFrom(cfg *config.Config, profileRoot string) ([]Agent, error) {
 		a, err := resolveProfile(cfg, id, p, values)
 		if err != nil {
 			return nil, err
-		}
-		if cfg.UsesLegacyAgents() {
-			applyLegacyOverrides(cfg, &a)
 		}
 		out = append(out, a)
 	}
@@ -431,43 +413,11 @@ func resolveProfile(cfg *config.Config, id string, p Profile, values map[string]
 	if err := validateResolvedMemory(id, a.MemorySources); err != nil {
 		return a, err
 	}
-	// SettingsFile is the legacy flat Claude-settings compatibility field. New
-	// registrars expose their targets through Hooks so adding one does not change
-	// established `regesto config` text output for existing integrations.
+	// SettingsFile is the flat projection used by text diagnostics.
 	if len(a.Hooks) > 0 && a.Hooks[0].Registrar == "claude-settings-json-v1" {
 		a.SettingsFile = a.Hooks[0].Settings
 	}
 	return a, nil
-}
-
-func legacyUnknown(cfg *config.Config, id string) Agent {
-	return Agent{Name: id, ProfileID: "", DisplayName: id, MaxCaptureBytes: maxCaptureBytes(cfg), ExcludeGlobs: excludes(cfg, id, nil)}
-}
-
-func applyLegacyOverrides(cfg *config.Config, a *Agent) {
-	if v := cfg.Section("skills_dirs")[a.Name]; v != "" {
-		a.SkillsDir, a.SkillsDirs = expandHome(v), []string{expandHome(v)}
-	}
-	if v := cfg.Section("instructions")[a.Name]; v != "" {
-		a.InstructionsFile, a.InstructionsFiles = expandHome(v), []string{expandHome(v)}
-	}
-	if v := cfg.Section("settings_files")[a.Name]; v != "" {
-		setHookSettings(a, expandHome(v))
-	}
-	if v := cfg.Section("memory_dirs")[a.Name]; v != "" {
-		a.MemoryGlob = expandHome(v)
-		if !filepath.IsAbs(a.MemoryGlob) {
-			a.MemoryGlob = filepath.Join(cfg.KBRoot, a.MemoryGlob)
-		}
-		a.MemorySources = []MemorySource{{Kind: "markdown-glob-v1", Location: a.MemoryGlob}}
-	}
-}
-
-func setHookSettings(a *Agent, settings string) {
-	a.SettingsFile = settings
-	if len(a.Hooks) > 0 {
-		a.Hooks[0].Settings = settings
-	}
 }
 
 func setNewHookSettings(a *Agent, settings string) error {
@@ -586,8 +536,7 @@ func ProfileIDs(kbRoot string) ([]string, error) {
 
 // DetectProfiles reports profiles detected from their declarative path or
 // command signals. Unlike Detect, it includes instance profile overrides and
-// treats commands as an explicit signal; legacy init intentionally remains
-// path-only through Detect.
+// treats commands as an explicit signal; init remains path-only through Detect.
 func DetectProfiles(kbRoot string) ([]string, error) {
 	profiles, err := Profiles(kbRoot)
 	if err != nil {

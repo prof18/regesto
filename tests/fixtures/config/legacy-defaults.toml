@@ -1,3 +1,0 @@
-# Legacy configuration accepted by v0.3.x instances.
-machine = "fixture-box"
-agents = ["claude", "codex", "hermes"]

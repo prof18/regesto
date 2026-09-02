@@ -1,6 +1,6 @@
 # Fixture instance for tests. Everything here is invented.
 machine = "testbox"
-agents = ["claude", "codex"]
+integrations = ["claude", "codex"]
 
 [projects]
 "aurora-2" = "aurora"

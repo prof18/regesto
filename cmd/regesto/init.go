@@ -320,27 +320,19 @@ func instanceConfig(detected []string) string {
 # command = "~/bin/my-notifier" # receives: <title> <message>
 # renag_hours = "24"            # 0 to report each transition once and never nag
 
-# Legacy exact sources trusted enough to normalise automatically. A private
+# Exact sources trusted enough to normalise automatically. A private
 # channel alone does not grant trust: the human records an exact source approval.
 # Unknown or shared surfaces stay raw in the inbox until a human promotes them.
 # [trusted_sources]
 # "hermes@studio" = "private single-user Telegram channel"
 
-# Source trust rules: exact entries beat legacy approvals; trailing-* patterns
+# Source trust rules: exact entries beat trusted-source approvals; trailing-* patterns
 # apply after them and before integration defaults.
 # Keys are exact <integration>@<machine> IDs or one trailing-* prefix pattern;
 # values are exactly supervised or quarantine. Exact rules beat every other rule.
 # [source_policies]
 # "hermes@studio-public" = "quarantine"
 # "hermes-private@studio-*" = "supervised"
-
-# Legacy install-location tables remain accepted for existing configurations. New
-# configurations should use [integrations.<id>] below so one declarative profile owns
-# skills, instructions, hooks, memory, exclusions, detection, and trust together.
-# [skills_dirs]
-# claude = "~/.agents/skills"
-# [instructions]
-# claude = "~/.dotfiles/AGENTS.md"
 
 # Add a custom host with the portable generic profile. The generated integrations = [...]
 # line above is the canonical vocabulary; add the custom ID to that list.
@@ -371,8 +363,7 @@ func instanceConfig(detected []string) string {
 }
 
 // integrationsLine renders the canonical `integrations = [...]` config line.
-// Keep the empty list active so a new no-detection instance still uses the new
-// vocabulary rather than accidentally falling through to legacy mode.
+// Keep the empty list active so the generated config is explicit.
 func integrationsLine(detected []string) string {
 	if len(detected) == 0 {
 		return "integrations = []   # no known integration detected — add yours here"
