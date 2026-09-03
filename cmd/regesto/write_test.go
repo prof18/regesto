@@ -62,6 +62,36 @@ func TestWriteJSONInputAndOutputContract(t *testing.T) {
 	}
 }
 
+func TestWriteTitleLengthHardLimit(t *testing.T) {
+	cfg := normalizeTestConfig(t)
+
+	atLimit := strings.Replace(validWriteJSON("dec-title-at-limit", "global"), `"title":"Validated write"`, `"title":"`+strings.Repeat("é", 100)+`"`, 1)
+	_, err := captureNormalizeStdout(t, func() error {
+		return withWriteStdin(t, atLimit, func() error {
+			return runWrite(cfg, []string{"--source", "codex@testbox", "--json-input", "--json"})
+		})
+	})
+	if err != nil {
+		t.Fatalf("title at hard limit was rejected: %v", err)
+	}
+
+	overLimit := strings.Replace(validWriteJSON("dec-title-over-limit", "global"), `"title":"Validated write"`, `"title":"`+strings.Repeat("é", 101)+`"`, 1)
+	out, err := captureNormalizeStdout(t, func() error {
+		return withWriteStdin(t, overLimit, func() error {
+			return runWrite(cfg, []string{"--source", "codex@testbox", "--json-input", "--json"})
+		})
+	})
+	if err == nil || !strings.Contains(err.Error(), "title is 101 characters; maximum is 100 (aim for 80)") {
+		t.Fatalf("title above hard limit was not rejected clearly: %v", err)
+	}
+	if out != "" {
+		t.Fatalf("rejected title contaminated stdout: %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.KBRoot, "knowledge", "facts", "global", "dec-title-over-limit.md")); !os.IsNotExist(err) {
+		t.Fatalf("rejected title reached disk: %v", err)
+	}
+}
+
 func TestWriteJSONInputRejectsForgedAuthorityWithoutWriting(t *testing.T) {
 	cfg := normalizeTestConfig(t)
 	body := strings.TrimSuffix(validWriteJSON("dec-forged-write", "global"), "}") +

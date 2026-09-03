@@ -383,8 +383,8 @@ func validateAndPath(f facts.Fact) (string, error) {
 	if f.Title == "" || strings.ContainsAny(f.Title, "\r\n\x00") {
 		return "", fmt.Errorf("title is required and must fit on one line")
 	}
-	if len([]rune(f.Title)) > 80 {
-		return "", fmt.Errorf("title is longer than 80 characters")
+	if n := len([]rune(f.Title)); n > facts.TitleMaxLength {
+		return "", fmt.Errorf("title is %d characters; maximum is %d (aim for %d)", n, facts.TitleMaxLength, facts.TitleTargetLength)
 	}
 	for name, value := range map[string]string{"subject": f.Subject, "relation": f.Relation} {
 		if value == "" || strings.ContainsAny(value, "\r\n\x00") {

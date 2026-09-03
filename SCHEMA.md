@@ -66,7 +66,7 @@ duplicate implementations per platform.
 | Field | Required | Values |
 |---|---|---|
 | `id` | yes | `<prefix>-<kebab-slug>`. Stable once written — never renamed by hand; the only exception is lint's collision rule below, which also fixes the references. |
-| `title` | yes | One line, ≤80 chars. What the claim asserts. Used to build `INDEX.md`. |
+| `title` | yes | One line. Aim for ≤80 chars; lint and validated writes reject titles above 100. What the claim asserts. Used to build `INDEX.md`. |
 | `type` | yes | `decision` · `preference` · `fact` · `pattern` |
 | `scope` | yes | `global` or `project:<name>` — exactly one; it determines the file's path. A claim true for several projects is `global`, with the projects in `topics` |
 | `subject` | yes | what the claim is about — **reuse existing terms** |

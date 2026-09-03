@@ -135,8 +135,8 @@ func validate(r *Report, f facts.Fact, seen map[string]facts.Fact, now time.Time
 	if !validStatuses[f.Status] {
 		r.errorf(f, "status %q is not one of active/proposed/superseded", f.Status)
 	}
-	if n := len([]rune(f.Title)); n > 80 {
-		r.warnf(f, "title is %d chars, SCHEMA says ≤80", n)
+	if n := len([]rune(f.Title)); n > facts.TitleMaxLength {
+		r.errorf(f, "title is %d chars; maximum is %d (aim for %d)", n, facts.TitleMaxLength, facts.TitleTargetLength)
 	}
 	if f.Source == "" {
 		r.errorf(f, "source is required — provenance is what makes trust rules work")

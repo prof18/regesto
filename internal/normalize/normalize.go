@@ -175,7 +175,7 @@ func Prompt(c Capture, vocabulary []string, existingIDs []string, projects ...st
 	b.WriteString("Emit zero or more facts, each in its own fenced block tagged `regesto-fact`,\n")
 	b.WriteString("containing YAML frontmatter then the claim and a `**Why:**` line:\n\n")
 	b.WriteString("```regesto-fact\n---\nschema_version: 1\nid: <prefix>-<kebab-slug>\n")
-	b.WriteString("title: <one line, at most 80 chars>\ntype: decision|preference|fact|pattern\n")
+	b.WriteString("title: <one line; aim for 80 chars, never exceed 100>\ntype: decision|preference|fact|pattern\n")
 	b.WriteString("scope: global\nsubject: <term>\nrelation: <term>\ntopics: [a, b]\n")
 	b.WriteString("status: active\nsource: " + factSource(c) + "\n---\n\n<the claim>\n\n")
 	b.WriteString("**Why:** <the reasoning>\n```\n\n")

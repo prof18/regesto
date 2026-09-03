@@ -18,6 +18,10 @@ const (
 	StatusActive     = "active"
 	StatusProposed   = "proposed"
 	StatusSuperseded = "superseded"
+
+	// Title lengths separate concise authoring guidance from enforcement.
+	TitleTargetLength = 80
+	TitleMaxLength    = 100
 )
 
 // Fact is one claim: SCHEMA.md frontmatter plus the body text.

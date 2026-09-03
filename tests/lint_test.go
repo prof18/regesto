@@ -5,6 +5,7 @@ package tests
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -67,6 +68,44 @@ func TestCleanStoreHasNoFindings(t *testing.T) {
 	}, lintNow)
 	if r.Errors() != 0 || len(r.Actions) != 0 {
 		t.Fatalf("clean store produced findings/actions:\n%s%v", messages(r), r.Actions)
+	}
+}
+
+func TestTitleLengthFailsAboveHardLimit(t *testing.T) {
+	atMaximum := fact("dec-title-at-maximum", "titles", "at-maximum", facts.StatusActive, "human", "2026-07-02T10:00:00Z")
+	atMaximum.Title = strings.Repeat("é", facts.TitleMaxLength)
+	overMaximum := fact("dec-title-over-maximum", "titles", "over-maximum", facts.StatusActive, "human", "2026-07-02T10:00:00Z")
+	overMaximum.Title = strings.Repeat("é", facts.TitleMaxLength+1)
+
+	r := lint.Run([]facts.Fact{atMaximum, overMaximum}, lintNow)
+	got := messages(r)
+	if strings.Contains(got, atMaximum.ID) {
+		t.Fatalf("title at hard maximum produced a finding:\n%s", got)
+	}
+	if !strings.Contains(got, "error "+overMaximum.ID+": title is 101 chars") || r.Errors() != 1 {
+		t.Fatalf("title above hard maximum did not fail lint:\n%s", got)
+	}
+}
+
+func TestLintCommandFailsForTitleAboveHardLimit(t *testing.T) {
+	cfg := normalizeInstance(t)
+	path := filepath.Join(cfg.KBRoot, "knowledge", "facts", "global", "dec-overlong-title.md")
+	body := "---\nschema_version: 1\nid: dec-overlong-title\ntitle: " + strings.Repeat("é", facts.TitleMaxLength+1) +
+		"\ntype: decision\nscope: global\nsubject: titles\nrelation: cli-limit\nstatus: active\n" +
+		"source: human\ncreated: 2026-07-02T10:00:00Z\nmodified: 2026-07-02T10:00:00Z\n---\n\nA claim.\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("go", "run", "./cmd/regesto", "--config", cfg.Path, "lint", "--quiet")
+	cmd.Dir = repoRoot(t)
+	cmd.Env = append(os.Environ(), "GOTELEMETRY=off", "GOCACHE="+t.TempDir())
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("lint accepted a title above the hard limit:\n%s", out)
+	}
+	if !strings.Contains(string(out), "error "+filepath.ToSlash(strings.TrimPrefix(path, cfg.KBRoot+string(filepath.Separator)))+": title is 101 chars") {
+		t.Fatalf("lint did not report the overlong title clearly: %v\n%s", err, out)
 	}
 }
 

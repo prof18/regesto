@@ -43,7 +43,7 @@ for explicit human promotion or the documented human inbox workflow.
 {{kb_root}}/bin/regesto-write --source <integration>@<machine> --dir <repo> --json-input --json <<'JSON'
 {
   "id": "<prefix>-<kebab-slug>",
-  "title": "<one line, at most 80 characters>",
+  "title": "<one line; aim for 80 characters, never exceed 100>",
   "type": "fact",
   "scope": "project",
   "subject": "<controlled-subject>",
