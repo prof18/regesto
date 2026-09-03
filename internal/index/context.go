@@ -11,6 +11,10 @@ import (
 type ContextOptions struct {
 	// Project is the canonical current project name; "" injects global only.
 	Project string
+	// Alert is urgent instance health information that must appear before the
+	// fact manifest. It is supplied by the caller because index owns rendering,
+	// not scheduler state.
+	Alert string
 	// MaxBytes caps the payload. This lands in every session, and
 	// accumulation is unbounded (DESIGN §12), so the cap is the mechanism
 	// that keeps a growing store from silently inflating every prompt.
@@ -42,7 +46,7 @@ func BuildContext(all []facts.Fact, opts ContextOptions) string {
 		project = scopeFacts(live, opts.Project)
 	}
 
-	header := contextHeader(all)
+	header := contextHeader(all, opts.Alert)
 	hasProject := opts.Project != "" && len(project) > 0
 	globalBlock, _ := factBlock("Global", globals, -1)
 	projectBlock := ""
@@ -58,10 +62,10 @@ func BuildContext(all []facts.Fact, opts ContextOptions) string {
 		return header + globalBlock + projectBlock + vocab
 	}
 	// A payload that cannot retain the complete search header is worse than no
-	// payload. Returning empty is also the only honest way to keep MaxBytes a
-	// strict cap for impractically small values.
+	// payload. If an alert is active, retain that warning in the smallest useful
+	// context whenever it fits; otherwise keep the existing fail-open behavior.
 	if len(header) > opts.MaxBytes {
-		return ""
+		return BuildMaintenanceContext(opts.Alert, opts.MaxBytes)
 	}
 	base := header + globalBlock + projectBlock
 	if len(base) <= opts.MaxBytes {
@@ -82,7 +86,7 @@ func BuildContext(all []facts.Fact, opts ContextOptions) string {
 	dropped := len(globals) + len(project)
 	fixed := len(header) + len(globalHead) + len(projectHead) + len(droppedFooter(dropped))
 	if fixed > opts.MaxBytes {
-		return ""
+		return BuildMaintenanceContext(opts.Alert, opts.MaxBytes)
 	}
 	remaining := opts.MaxBytes - fixed
 	projectLines, globalLines := make([]string, 0, len(project)), make([]string, 0, len(globals))
@@ -117,9 +121,10 @@ func BuildContext(all []facts.Fact, opts ContextOptions) string {
 	return b.String()
 }
 
-func contextHeader(all []facts.Fact) string {
+func contextHeader(all []facts.Fact, alert string) string {
 	var b strings.Builder
 	b.WriteString("# Knowledge base\n\n")
+	b.WriteString(maintenanceBlock(alert))
 	b.WriteString("Canonical knowledge for this machine, technical and not. Consult it before\n")
 	b.WriteString("any answer or decision a recorded claim could settle.\n\n")
 	b.WriteString("- Search: `bin/regesto-search [--subject S] [--relation R] [--scope SC] [terms...]`\n")
@@ -129,6 +134,30 @@ func contextHeader(all []facts.Fact) string {
 	b.WriteString("- `[proposed]` claims await human review: rely on them only with a caveat.\n")
 	b.WriteString("  Superseded claims are hidden unless you pass `--history`.\n")
 	return b.String()
+}
+
+// BuildMaintenanceContext preserves the health warning when malformed facts
+// prevent the ordinary fact manifest from being built. That is the moment the
+// warning is most important; failing the hook open with no context would hide
+// the cause from the next agent too.
+func BuildMaintenanceContext(alert string, maxBytes int) string {
+	block := maintenanceBlock(alert)
+	if block == "" {
+		return ""
+	}
+	context := "# Knowledge base\n\n" + block
+	if maxBytes > 0 && len(context) > maxBytes {
+		return ""
+	}
+	return context
+}
+
+func maintenanceBlock(alert string) string {
+	alert = strings.TrimSpace(alert)
+	if alert == "" {
+		return ""
+	}
+	return "## Maintenance warning\n\n" + alert + "\n\n"
 }
 
 func vocabularyBlock(all []facts.Fact) string {

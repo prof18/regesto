@@ -48,6 +48,47 @@ func TestContextInjectsGlobalAndProjectScopes(t *testing.T) {
 	}
 }
 
+func TestContextPutsMaintenanceAlertBeforeKnowledge(t *testing.T) {
+	alert := "Regesto's cycle has been failing since 2026-09-03T08:00:00Z.\n" +
+		"First error: knowledge/facts/global/fact-broken.md: status is invalid.\n" +
+		"Treat generated indexes as stale until the cycle is fixed."
+	out := index.BuildContext(loadFixtures(t), index.ContextOptions{Project: "aurora", Alert: alert})
+
+	if !strings.Contains(out, "## Maintenance warning\n\n"+alert) {
+		t.Fatalf("maintenance alert missing from context:\n%s", out)
+	}
+	if strings.Index(out, "## Maintenance warning") > strings.Index(out, "Canonical knowledge") {
+		t.Fatalf("maintenance alert appears after ordinary context:\n%s", out)
+	}
+}
+
+func TestMaintenanceContextSurvivesUnavailableFacts(t *testing.T) {
+	alert := "Regesto's cycle is failing: one fact has no frontmatter."
+	out := index.BuildMaintenanceContext(alert, 0)
+	if out != "# Knowledge base\n\n## Maintenance warning\n\n"+alert+"\n\n" {
+		t.Fatalf("alert-only context = %q", out)
+	}
+	if got := index.BuildMaintenanceContext("  \n", 0); got != "" {
+		t.Fatalf("empty alert produced context %q", got)
+	}
+	if got := index.BuildMaintenanceContext(alert, 1); got != "" {
+		t.Fatalf("one-byte cap produced context %q", got)
+	}
+}
+
+func TestContextBudgetIncludesMaintenanceAlert(t *testing.T) {
+	alert := strings.Repeat("cycle failure details ", 4)
+	out := index.BuildContext(loadFixtures(t), index.ContextOptions{
+		Project: "aurora", Alert: alert, MaxBytes: 900,
+	})
+	if len(out) > 900 {
+		t.Fatalf("context with alert is %d bytes, want at most 900", len(out))
+	}
+	if !strings.Contains(out, strings.TrimSpace(alert)) {
+		t.Fatalf("bounded context dropped the maintenance alert:\n%s", out)
+	}
+}
+
 func TestContextOmitsOtherProjects(t *testing.T) {
 	out := index.BuildContext(loadFixtures(t), index.ContextOptions{Project: "aurora"})
 	if strings.Contains(out, "## Project: borealis") {
@@ -113,6 +154,45 @@ func TestContextRespectsByteBudget(t *testing.T) {
 func TestContextReturnsEmptyWhenCapCannotFitSearchHeader(t *testing.T) {
 	if got := index.BuildContext(loadFixtures(t), index.ContextOptions{Project: "aurora", MaxBytes: 1}); got != "" {
 		t.Fatalf("one-byte cap returned %d bytes, want an empty fail-open payload", len(got))
+	}
+}
+
+func TestContextSmallCapRetainsMaintenanceAlert(t *testing.T) {
+	alert := "cycle failure: malformed fact"
+	want := "# Knowledge base\n\n## Maintenance warning\n\n" + alert + "\n\n"
+	got := index.BuildContext(loadFixtures(t), index.ContextOptions{
+		Alert: alert, MaxBytes: len(want),
+	})
+	if got != want {
+		t.Fatalf("small-cap context = %q, want alert-only context %q", got, want)
+	}
+	if len(got) > len(want) {
+		t.Fatalf("alert-only context is %d bytes, want at most %d", len(got), len(want))
+	}
+}
+
+func TestContextSmallCapRetainsAlertWhenHeadingsCannotFit(t *testing.T) {
+	alert := "cycle failure: malformed fact"
+	want := "# Knowledge base\n\n## Maintenance warning\n\n" + alert + "\n\n"
+	// Cap at the end of the complete header: the header fits, but the required
+	// scope headings and truncation footer do not.
+	full := index.BuildContext(loadFixtures(t), index.ContextOptions{Alert: alert})
+	globalHeading := strings.Index(full, "\n## Global")
+	if globalHeading < 0 {
+		t.Fatalf("complete context missing global heading:\n%s", full)
+	}
+	cap := globalHeading
+	if cap < len(want) {
+		t.Fatalf("test cap %d cannot fit alert-only context of %d bytes", cap, len(want))
+	}
+	got := index.BuildContext(loadFixtures(t), index.ContextOptions{
+		Project: "aurora", Alert: alert, MaxBytes: cap,
+	})
+	if got != want {
+		t.Fatalf("heading-overflow context = %q, want alert-only context %q", got, want)
+	}
+	if len(got) > cap {
+		t.Fatalf("alert-only context is %d bytes, want at most %d", len(got), cap)
 	}
 }
 

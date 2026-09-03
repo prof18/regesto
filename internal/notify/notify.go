@@ -1,5 +1,6 @@
-// Package notify tells the human when a scheduled pass stops working, once per
-// change of state rather than once per run.
+// Package notify records scheduled-pass health and optionally tells the human
+// through an explicitly configured command, once per change of state rather
+// than once per run.
 //
 // The cycle aborts on the first validation error and commits nothing — correct,
 // since applying half a reconciliation is worse than applying none. But it runs
@@ -18,11 +19,12 @@
 package notify
 
 import (
+	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -34,6 +36,19 @@ import (
 // a day — which is how a notification channel gets muted, taking the first
 // useful alert with it — and short enough that a failure cannot be forgotten.
 const DefaultRenagHours = 24
+
+const defaultDispatchTimeout = 10 * time.Second
+
+const defaultDispatchWaitDelay = 100 * time.Millisecond
+
+// dispatchTimeout is a variable so the timeout behavior can be tested without
+// making the test suite wait for a real hung notifier.
+var dispatchTimeout = defaultDispatchTimeout
+
+// dispatchWaitDelay bounds how long exec waits for pipes to close after a
+// timed-out notifier is killed. It is a variable so tests can keep cleanup
+// checks fast without waiting for the production grace period.
+var dispatchWaitDelay = defaultDispatchWaitDelay
 
 // Health is the outcome of one pass, as reported to the human.
 type Health struct {
@@ -48,14 +63,17 @@ type Health struct {
 // State is what the last run of a pass recorded about its health.
 type State struct {
 	Failing  bool
+	Message  string    // current failure message; empty after recovery
 	Since    time.Time // when the current state began
 	Notified time.Time // when the human was last told about it
 	LastOK   time.Time // when the pass last completed cleanly
 }
 
-// Report records this pass's health and notifies if the human needs to know:
-// on entering failure, on recovering from it, and once per renag interval while
-// a failure persists. It returns whether a notification was actually sent.
+// Report records this pass's health and dispatches through the configured
+// command if the human needs to know: on entering failure, on recovering from
+// it, and once per renag interval while a failure persists. It returns whether
+// a notification was dispatched; with no command configured, health is still
+// recorded but the return value is false.
 //
 // Nothing here is fatal to the caller. The markdown files are the knowledge and
 // this is a courtesy on top (DESIGN §9.1) — a missing notifier, a locked state
@@ -65,7 +83,12 @@ func Report(cfg *config.Config, h Health, now time.Time) (bool, error) {
 	path := statePath(cfg, h.Key)
 	prev, known := readState(path)
 
-	next := State{Failing: h.Failing, Since: prev.Since, Notified: prev.Notified, LastOK: prev.LastOK}
+	next := State{Failing: h.Failing, Message: prev.Message, Since: prev.Since, Notified: prev.Notified, LastOK: prev.LastOK}
+	if h.Failing {
+		next.Message = h.Message
+	} else {
+		next.Message = ""
+	}
 	if !h.Failing {
 		next.LastOK = now
 	}
@@ -88,18 +111,26 @@ func Report(cfg *config.Config, h Health, now time.Time) (bool, error) {
 		send = renagDue(cfg, prev.Notified, now)
 	}
 
-	if send {
+	// A state transition is still recorded when notifications are disabled, but
+	// it must not consume the transition: enabling a command later should alert
+	// immediately about the still-active failure.
+	if send && Enabled(cfg) {
 		next.Notified = now
 	}
-	// Written before dispatching: a notifier that hangs or crashes must not
+	// Written before dispatching: an enabled notifier that hangs or crashes must not
 	// cause the same alert to fire again on the next pass.
 	if err := writeState(path, next); err != nil {
 		return false, err
 	}
-	if !send {
+	if !send || !Enabled(cfg) {
 		return false, nil
 	}
-	return true, dispatch(cfg, h)
+	if err := dispatch(cfg, h); err != nil {
+		// Notified was intentionally persisted above. A broken notifier should
+		// not turn into an alert storm on every scheduled pass.
+		return false, err
+	}
+	return true, nil
 }
 
 // Load reports what the last pass recorded, so `schedule status` can answer the
@@ -156,6 +187,12 @@ func readState(path string) (State, bool) {
 		switch key {
 		case "state":
 			s.Failing = value == "failing"
+		case "message": // legacy/plain-text form
+			s.Message = value
+		case "message_b64":
+			if decoded, err := base64.StdEncoding.DecodeString(value); err == nil {
+				s.Message = string(decoded)
+			}
 		case "since":
 			s.Since, _ = time.Parse(time.RFC3339, value)
 		case "notified":
@@ -178,7 +215,40 @@ func writeState(path string, s State) error {
 	writeStamp(&b, "since", s.Since)
 	writeStamp(&b, "notified", s.Notified)
 	writeStamp(&b, "ok_at", s.LastOK)
-	return os.WriteFile(path, []byte(b.String()), 0o644)
+	if s.Message != "" {
+		fmt.Fprintf(&b, "message_b64=%s\n", base64.StdEncoding.EncodeToString([]byte(s.Message)))
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".notify-state-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	removeTemp := true
+	defer func() {
+		if removeTemp {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.WriteString(b.String()); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	removeTemp = false
+	return nil
 }
 
 func writeStamp(b *strings.Builder, key string, t time.Time) {
@@ -188,26 +258,15 @@ func writeStamp(b *strings.Builder, key string, t time.Time) {
 	fmt.Fprintf(b, "%s=%s\n", key, t.UTC().Format(time.RFC3339))
 }
 
-// command builds the argv to run. A configured command wins; otherwise the
-// platform's own always-present notifier is used, so this works before anyone
-// has configured anything and on a machine with nothing extra installed.
+// command builds the argv to run. Notifications are opt-in and portable: the
+// configured command is the only dispatch mechanism.
 func command(cfg *config.Config, h Health) []string {
 	if custom := strings.Fields(cfg.Section("notify")["command"]); len(custom) > 0 {
-		// Title and message go on the end, which is what `notify-send` and most
-		// wrapper scripts expect. Anything needing them elsewhere reads the
-		// REGESTO_NOTIFY_* environment instead.
+		// Title and message go on the end for simple wrapper scripts. Anything
+		// needing them elsewhere reads the REGESTO_NOTIFY_* environment instead.
 		return append(custom, h.Title, h.Message)
 	}
-	switch runtime.GOOS {
-	case "darwin":
-		return []string{"osascript", "-e", fmt.Sprintf(
-			"display notification %s with title %s",
-			appleScriptString(h.Message), appleScriptString(h.Title))}
-	case "linux":
-		return []string{"notify-send", h.Title, h.Message}
-	default:
-		return nil
-	}
+	return nil
 }
 
 func dispatch(cfg *config.Config, h Health) error {
@@ -216,9 +275,13 @@ func dispatch(cfg *config.Config, h Health) error {
 	}
 	argv := command(cfg, h)
 	if len(argv) == 0 {
-		return nil // no notifier for this platform and none configured
+		return nil // no external notifier configured
 	}
-	cmd := exec.Command(argv[0], argv[1:]...)
+	ctx, cancel := context.WithTimeout(context.Background(), dispatchTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	configureProcessGroup(cmd)
+	cmd.WaitDelay = dispatchWaitDelay
 	cmd.Env = append(os.Environ(),
 		"REGESTO_NOTIFY_KEY="+h.Key,
 		"REGESTO_NOTIFY_STATE="+map[bool]string{true: "failing", false: "ok"}[h.Failing],
@@ -226,19 +289,10 @@ func dispatch(cfg *config.Config, h Health) error {
 		"REGESTO_NOTIFY_MESSAGE="+h.Message,
 	)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("%s: notifier timed out after %s: %s", argv[0], dispatchTimeout, strings.TrimSpace(string(out)))
+		}
 		return fmt.Errorf("%s: %v: %s", argv[0], err, strings.TrimSpace(string(out)))
 	}
 	return nil
-}
-
-// appleScriptString quotes a Go string as an AppleScript literal. Notification
-// text is built from lint output, which contains file paths and quoted field
-// values, so this is the difference between an alert and a syntax error.
-func appleScriptString(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	// Notification Center collapses whitespace anyway; folding it here keeps the
-	// literal on one line so the escaping stays simple.
-	s = strings.Join(strings.Fields(s), " ")
-	return `"` + s + `"`
 }

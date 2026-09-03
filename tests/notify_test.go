@@ -197,9 +197,8 @@ func TestNotificationsCanBeTurnedOff(t *testing.T) {
 	}
 }
 
-// Lint messages carry file paths and quoted field values, and on macOS they are
-// interpolated into an AppleScript literal. A quote in a fact's title must not
-// be able to turn an alert into a syntax error.
+// Lint messages carry file paths, quoted field values, and backslashes. They
+// must survive direct argv and environment dispatch unchanged.
 func TestQuotesInTheMessageSurviveDispatch(t *testing.T) {
 	cfg, log := notifyInstance(t)
 	nasty := `status "draft" is not one of active/proposed \ superseded`
@@ -210,5 +209,67 @@ func TestQuotesInTheMessageSurviveDispatch(t *testing.T) {
 	lines := sent(t, log)
 	if len(lines) != 1 || !strings.Contains(lines[0], `status "draft" is not one of`) {
 		t.Fatalf("the message did not survive dispatch: %q", lines)
+	}
+}
+
+func TestFailureMessageIsPersistedAndClearedOnRecovery(t *testing.T) {
+	cfg, _ := notifyInstance(t)
+	message := "validation failed: \"draft\"\nfile=notes/today.md\nline 4"
+	when := time.Now().UTC().Truncate(time.Second)
+	if _, err := notify.Report(cfg, failing(message), when); err != nil {
+		t.Fatalf("Report failure: %v", err)
+	}
+	state, ok := notify.Load(cfg, "cycle")
+	if !ok || state.Message != message {
+		t.Fatalf("persisted message = %q, want %q (ok=%v)", state.Message, message, ok)
+	}
+	if _, err := notify.Report(cfg, healthy(), when.Add(time.Hour)); err != nil {
+		t.Fatalf("Report recovery: %v", err)
+	}
+	state, ok = notify.Load(cfg, "cycle")
+	if !ok || state.Message != "" {
+		t.Fatalf("recovery message = %q, want empty (ok=%v)", state.Message, ok)
+	}
+}
+
+func TestNoCommandDisablesNotifications(t *testing.T) {
+	cfg := writeInstance(t, "machine = \"testbox\"\n", "")
+	if notify.Enabled(cfg) {
+		t.Fatal("notifications enabled without [notify].command")
+	}
+	if did, err := notify.Report(cfg, failing("broken"), time.Now().UTC()); err != nil || did {
+		t.Fatalf("Report = (%v, %v), want no dispatch without command", did, err)
+	}
+	state, ok := notify.Load(cfg, "cycle")
+	if !ok || !state.Failing || state.Message != "broken" {
+		t.Fatalf("disabled notification did not persist failure state: %+v (ok=%v)", state, ok)
+	}
+	if !state.Notified.IsZero() {
+		t.Fatalf("disabled notification consumed the alert transition at %s", state.Notified)
+	}
+
+	script := filepath.Join(cfg.KBRoot, "notifier")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Sections["notify"] = map[string]string{"command": script}
+	if did, err := notify.Report(cfg, failing("still broken"), time.Now().UTC().Add(time.Minute)); err != nil || !did {
+		t.Fatalf("Report after configuring command = (%v, %v), want immediate dispatch", did, err)
+	}
+}
+
+func TestOldStateWithoutMessageRemainsReadable(t *testing.T) {
+	cfg := writeInstance(t, "machine = \"testbox\"\n", "")
+	path := filepath.Join(cfg.KBRoot, ".state", cfg.Machine, "notify", "cycle.state")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := "state=failing\nsince=2026-09-03T08:00:00Z\nnotified=2026-09-03T08:00:00Z\n"
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state, ok := notify.Load(cfg, "cycle")
+	if !ok || !state.Failing || state.Message != "" {
+		t.Fatalf("old state = %+v (ok=%v), want readable failing state with empty message", state, ok)
 	}
 }

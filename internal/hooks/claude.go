@@ -3,10 +3,12 @@ package hooks
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/prof18/regesto/internal/config"
 	"github.com/prof18/regesto/internal/facts"
 	"github.com/prof18/regesto/internal/index"
+	"github.com/prof18/regesto/internal/notify"
 	"github.com/prof18/regesto/internal/project"
 )
 
@@ -48,9 +50,17 @@ func usableDirectory(path string) string {
 
 func buildContext(cfg *config.Config, dir string) (string, error) {
 	resolution := project.Resolve(cfg, dir)
+	alert := notify.ContextAlert(cfg, "cycle", time.Now().UTC())
 	all, err := facts.LoadAll(cfg.KBRoot)
 	if err != nil {
+		if context := index.BuildMaintenanceContext(alert, 4096); context != "" {
+			return context, nil
+		}
 		return "", err
 	}
-	return index.BuildContext(all, index.ContextOptions{Project: resolution.Name, MaxBytes: 4096}), nil
+	return index.BuildContext(all, index.ContextOptions{
+		Project:  resolution.Name,
+		Alert:    alert,
+		MaxBytes: 4096,
+	}), nil
 }

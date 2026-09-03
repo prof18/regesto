@@ -147,6 +147,43 @@ The scheduled workflow runs two operations:
 On macOS, `schedule install` uses launchd. On other systems, schedule `regesto harvest`
 and `regesto cycle` with your preferred job runner.
 
+### Cycle health and external alerts
+
+When a cycle is failing, `regesto context` on the machine that runs it puts the failure
+reason and start time at the top of agent context and tells the agent to treat generated
+indexes as stale. Claude and Hermes receive that warning through their context hooks.
+Codex has no startup hook, so use `regesto context` or `regesto schedule status` when
+diagnosing its instance.
+
+Regesto does not send desktop notifications itself. A CLI cannot provide a consistent
+click action across macOS, Linux, and other environments. If you want an external alert,
+configure the executable or CLI you already use:
+
+```toml
+[notify]
+command = "/absolute/path/to/my-notifier --fixed-option"
+renag_hours = "24"
+```
+
+`notify.command` is whitespace-separated: the executable path and each fixed argument
+must not contain spaces. Shell syntax, or a path with spaces, requires a wrapper script
+at a whitespace-free path; the command is not run through a shell.
+
+Regesto executes the command directly when the cycle starts failing, recovers, or reaches
+the reminder interval. It appends the notification title and message as the final two
+arguments and also sets these environment variables:
+
+- `REGESTO_NOTIFY_KEY` — currently `cycle`;
+- `REGESTO_NOTIFY_STATE` — `failing` or `ok`;
+- `REGESTO_NOTIFY_TITLE`;
+- `REGESTO_NOTIFY_MESSAGE`.
+
+The command is optional; without it, cycle health still appears in agent context on the
+cycle machine and in `regesto schedule status`. Set `on = "off"` to temporarily disable a
+configured command, or `renag_hours = "0"` to report state transitions without reminders.
+Because the command is not run through a shell, put pipelines, redirections, quoting, or
+other shell behavior inside that wrapper script.
+
 ## More than one machine
 
 Regesto has no sync server. Put the knowledge-base folder in a file-sync tool that keeps

@@ -44,6 +44,19 @@ with concrete remediation. The documentation now includes a profile-derived
 capability matrix and setup recipes for Claude Code, Codex, Hermes, generic local
 tools, and MCP clients.
 
+**Cycle alert delivery is now explicit and portable.** Regesto no longer posts built-in
+desktop notifications through macOS `osascript` or Linux `notify-send`; the former opens
+Script Editor when clicked and neither backend can offer one coherent CLI interaction.
+External alerts are sent only when `[notify].command` names a user-chosen executable. The
+existing argument and `REGESTO_NOTIFY_*` environment contract is unchanged. Independently
+of that optional delivery, the current failure reason and age now appear at the top of
+agent context, so an agent is warned before relying on stale generated indexes.
+
+**If you are upgrading an existing 0.3.x instance, configure `[notify].command` if you
+want external alerts.** With no command, desktop alerts stop after the upgrade; see the
+[README alert configuration](README.md#cycle-health-and-external-alerts) for the small
+configuration block.
+
 The release gate now builds the engine away from its knowledge-base instance and
 drives init, inert install dry-run, install, doctor, lint, upgrade, and an MCP
 handshake inside a disposable HOME.

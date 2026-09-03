@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	regesto "github.com/prof18/regesto"
 	"github.com/prof18/regesto/internal/config"
 	regestohooks "github.com/prof18/regesto/internal/hooks"
+	"github.com/prof18/regesto/internal/notify"
 )
 
 func hookFixture(t *testing.T, name, cwd string) []byte {
@@ -85,6 +87,74 @@ func TestClaudeHookPlainContextAndFailOpenFraming(t *testing.T) {
 		if err != nil || stdout != "" || stderr == "" {
 			t.Fatalf("%s Claude hook: stdout=%q stderr=%q err=%v", name, stdout, stderr, err)
 		}
+	}
+}
+
+func TestAgentContextSurfacesCurrentCycleFailure(t *testing.T) {
+	cfg, cwd := hookConfig(t)
+	failedAt := time.Now().UTC().Add(-2 * time.Hour)
+	_, err := notify.Report(cfg, notify.Health{
+		Key:     "cycle",
+		Failing: true,
+		Title:   "regesto: the cycle is failing",
+		Message: "2 validation errors; first is knowledge/facts/global/fact-broken.md",
+	}, failedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, err := runHookDirect(t, cfg, "claude-session-start-v1", hookFixture(t, "claude-cwd.json", cwd))
+	if err != nil || stderr != "" {
+		t.Fatalf("Claude hook: err=%v stderr=%q", err, stderr)
+	}
+	for _, want := range []string{
+		"## Maintenance warning",
+		"has been failing since",
+		"(2h ago)",
+		"2 validation errors; first is knowledge/facts/global/fact-broken.md",
+		"Treat `INDEX.md` and generated topic pages as stale",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("agent context missing %q:\n%s", want, stdout)
+		}
+	}
+
+	_, err = notify.Report(cfg, notify.Health{Key: "cycle"}, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err = runHookDirect(t, cfg, "claude-session-start-v1", hookFixture(t, "claude-cwd.json", cwd))
+	if err != nil || stderr != "" {
+		t.Fatalf("Claude hook after recovery: err=%v stderr=%q", err, stderr)
+	}
+	if strings.Contains(stdout, "## Maintenance warning") {
+		t.Fatalf("recovered cycle still appears as failing:\n%s", stdout)
+	}
+}
+
+func TestAgentContextKeepsCycleWarningWhenFactsCannotLoad(t *testing.T) {
+	cfg, cwd := hookConfig(t)
+	_, err := notify.Report(cfg, notify.Health{
+		Key:     "cycle",
+		Failing: true,
+		Message: "knowledge/facts/global.md: no frontmatter",
+	}, time.Now().UTC().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.KBRoot, "knowledge", "facts", "global.md"), []byte("not a fact\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, err := runHookDirect(t, cfg, "claude-session-start-v1", hookFixture(t, "claude-cwd.json", cwd))
+	if err != nil || stderr != "" {
+		t.Fatalf("Claude hook: err=%v stderr=%q", err, stderr)
+	}
+	if !strings.Contains(stdout, "## Maintenance warning") || !strings.Contains(stdout, "no frontmatter") {
+		t.Fatalf("malformed facts hid the cycle warning:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "Hook fixture fact") {
+		t.Fatalf("unavailable fact appeared in context:\n%s", stdout)
 	}
 }
 

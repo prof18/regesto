@@ -5,10 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/prof18/regesto/internal/config"
 	"github.com/prof18/regesto/internal/facts"
 	"github.com/prof18/regesto/internal/index"
+	"github.com/prof18/regesto/internal/notify"
 	"github.com/prof18/regesto/internal/project"
 )
 
@@ -41,12 +43,19 @@ func runContext(cfg *config.Config, args []string) error {
 		}
 	}
 
+	alert := notify.ContextAlert(cfg, "cycle", time.Now().UTC())
 	all, err := facts.LoadAll(cfg.KBRoot)
 	if err != nil {
+		// Preserve the CLI's non-zero failure contract, but do not hide the
+		// already-recorded maintenance warning from a human invoking it.
+		if context := index.BuildMaintenanceContext(alert, *maxBytes); context != "" {
+			fmt.Fprint(os.Stderr, context)
+		}
 		return err
 	}
 	context := index.BuildContext(all, index.ContextOptions{
 		Project:    r.Name,
+		Alert:      alert,
 		MaxBytes:   *maxBytes,
 		Vocabulary: *vocabulary,
 	})

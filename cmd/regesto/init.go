@@ -307,17 +307,16 @@ func instanceConfig(detected []string) string {
 # [schedule]
 # extra_path = "~/.local/share/mise/shims"
 
-# How the cycle tells you it has stopped working. It runs unattended, so a
-# failure is otherwise a line in a log nobody opens — and every hour after the
-# first one adds facts that are written but never committed. Notifications fire
-# on the transition into failure and back out of it, plus once a day while it
-# stays broken; a healthy pass says nothing. macOS uses osascript and Linux
-# notify-send unless you name something else here. A custom command is run with
-# the title and message as its last two arguments, and the same values in
-# $REGESTO_NOTIFY_TITLE and $REGESTO_NOTIFY_MESSAGE.
+# On the cycle machine, agent context and ` + "`regesto schedule status`" + ` report
+# current cycle health. For an external alert, name a notifier executable here;
+# Regesto has no built-in desktop notifier. The command runs on the transition
+# into failure and back out of it, plus at the configured reminder interval
+# (default 24h) while failure persists. It receives the title and message as its
+# last two arguments and through $REGESTO_NOTIFY_TITLE and
+# $REGESTO_NOTIFY_MESSAGE. It is executed directly, not through a shell.
 # [notify]
-# on = "off"                    # default is on wherever a notifier exists
-# command = "~/bin/my-notifier" # receives: <title> <message>
+# command = "/absolute/path/to/my-notifier" # optional; receives: <title> <message>
+# on = "off"                    # temporarily disable the configured command
 # renag_hours = "24"            # 0 to report each transition once and never nag
 
 # Exact sources trusted enough to normalise automatically. A private

@@ -231,7 +231,7 @@ func scheduleStatus(cfg *config.Config, isLintHost bool) error {
 			fmt.Printf("  %-20s no pass recorded yet on this machine\n", "cycle health")
 		}
 		if !notify.Enabled(cfg) {
-			fmt.Printf("  %-20s off — failures will be silent; see [notify] in config.toml\n", "notifications")
+			fmt.Printf("  %-20s not configured or off — agent context still reports failures; see [notify]\n", "external alerts")
 		}
 	}
 	return nil
