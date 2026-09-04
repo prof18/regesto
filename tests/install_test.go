@@ -416,9 +416,19 @@ func TestInstallShimFallsBackToExistingCheckoutEngineWithoutGo(t *testing.T) {
 	if err := os.Chmod(filepath.Join(root, "bin", "regesto"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	tools := t.TempDir()
+	for _, name := range []string{"bash", "basename", "dirname"} {
+		target, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, filepath.Join(tools, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	home := t.TempDir()
 	cmd := exec.Command(shim, "--dry-run")
-	cmd.Env = append(os.Environ(), "HOME="+home, "PATH=/usr/bin:/bin")
+	cmd.Env = append(os.Environ(), "HOME="+home, "PATH="+tools)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("install shim fallback: %v\n%s", err, out)
