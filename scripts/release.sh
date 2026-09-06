@@ -245,7 +245,7 @@ with open(transcript, encoding="utf-8") as stream:
 assert [message["id"] for message in messages] == [1, 2, 3, 4]
 assert all(message["jsonrpc"] == "2.0" and "result" in message for message in messages)
 assert messages[0]["result"]["protocolVersion"] == "2025-06-18"
-assert [tool["name"] for tool in messages[1]["result"]["tools"] == [
+assert [tool["name"] for tool in messages[1]["result"]["tools"]] == [
     "regesto_search", "regesto_get_fact", "regesto_resolve_project", "regesto_write_fact"
 ]
 assert messages[2]["result"]["resources"][0]["uri"] == "regesto://index"
