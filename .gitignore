@@ -5,6 +5,10 @@
 # Binaries are not released through git; the bin/ shims fall back to `go run`.
 /bin/regesto
 
+# Locally prepared release archives. They are uploaded explicitly after review,
+# never committed.
+/dist/
+
 # A checkout used as its own instance while hacking on it: an instance's config
 # and its per-machine state are never engine content.
 /config.toml

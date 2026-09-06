@@ -68,12 +68,32 @@ The shipped skills carry a `{{kb_root}}` placeholder rather than a resolved path
 ## Releases
 
 Every release publishes what `CHANGELOG.md` says about it. Add a `## <version>` section
-before tagging — the workflow reads it from there and **refuses to publish a tag with no
-section**, so the changelog cannot drift behind the releases.
+before preparing it — the local release script reads it from there and **refuses to build
+a version with no section**, so the changelog cannot drift behind the releases.
 
 Write it for someone using regesto, not for someone maintaining it: what changed, what they
 have to do about it, and what they can ignore. A generated list of commit subjects is not
 release notes.
+
+Releases are prepared on macOS so the Darwin binaries can use the maintainer's local
+Developer ID identity and ASC authentication without copying either credential into CI:
+
+```bash
+scripts/release.sh vX.Y.Z
+```
+
+That command runs the local gate, builds all four target archives, signs and notarizes the
+two macOS binaries, and writes reviewable output under `dist/vX.Y.Z/`. It publishes nothing.
+After reviewing those files, publish them explicitly:
+
+```bash
+scripts/publish-release.sh vX.Y.Z
+```
+
+Publication requires clean `main` to match `origin/main`. It creates the GitHub release and
+then starts the tap repository's secret-free updater, which rewrites and install-tests the
+Homebrew formula from the public archives. The publish command creates external state; do
+not run it speculatively.
 
 ## Before you open a pull request
 

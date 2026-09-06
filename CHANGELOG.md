@@ -1,8 +1,20 @@
 # Changelog
 
 What changed, for the people using it. Each release's section is what the release
-publishes as its notes — `release.yml` reads it from here and refuses to publish a tag
-that has no section, so this file cannot fall behind.
+publishes as its notes — the local release scripts read it from here and refuse to prepare
+or publish a version that has no section, so this file cannot fall behind.
+
+## 0.4.1
+
+**macOS release binaries are now Developer ID signed and notarized.** Background jobs
+installed with `regesto schedule install` can therefore be attributed to the identified
+developer instead of appearing in System Settings as items from an unidentified developer.
+
+Release preparation now runs on the signing Mac and stops with reviewable archives and
+checksums before any publication. Publishing remains an explicit second command and then
+starts the Homebrew tap's existing secret-free updater. Apple signing certificates and
+notarization credentials are never copied into GitHub Actions. Linux binaries and the
+installation commands are unchanged.
 
 ## 0.4.0
 

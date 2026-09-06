@@ -94,7 +94,7 @@ remediation for manual steps.
 Open a new session from one of your projects so the agent reloads its hooks, skills, and
 instructions. Then try:
 
-> Remember that release builds run on CI.
+> Remember that Regesto releases are built and signed on the release Mac.
 
 The installed `regesto-write` skill records the fact through Regesto's validated write
 path. In a future session, the agent can find that decision before acting.

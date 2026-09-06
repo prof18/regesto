@@ -32,6 +32,13 @@ jobs:
             echo "not gofmt'd:"; echo "$unformatted"; exit 1
           fi
 
+      - name: release script syntax
+        run: |
+          bash -n scripts/release.sh
+          bash -n scripts/publish-release.sh
+          scripts/release.sh --help >/dev/null
+          scripts/publish-release.sh --help >/dev/null
+
       - name: vet
         run: go vet ./...
 
