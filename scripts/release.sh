@@ -75,6 +75,7 @@ awk -v want="## ${version#v}" '
   found { print }
 ' CHANGELOG.md > "$notes_file"
 [ -s "$notes_file" ] || die "CHANGELOG.md has no ## ${version#v} release section"
+git rev-parse HEAD > "$artifact_dir/source-commit.txt"
 
 identity="${REGESTO_SIGNING_IDENTITY:-}"
 if [ -z "$identity" ]; then
@@ -151,6 +152,7 @@ for target in $targets; do
       fi
       die "notarization returned ${notary_status:-an unknown status} for $os/$arch"
     fi
+    cp "$notary_result" "$artifact_dir/notarization_${os}_${arch}.json"
 
     # spctl's execute assessment is for app-like bundles and rejects a valid,
     # notarized bare CLI with "does not seem to be an app". The embedded

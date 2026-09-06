@@ -37,7 +37,7 @@ fi
 
 [ "$(uname -s)" = "Darwin" ] || die "release publication must run on macOS"
 
-for command_name in awk cmp codesign gh git shasum tar; do
+for command_name in awk cmp codesign gh git grep jq shasum tar tr; do
   require_command "$command_name"
 done
 
@@ -53,10 +53,12 @@ tap_repo="${REGESTO_HOMEBREW_TAP_REPOSITORY:-prof18/homebrew-tap}"
 output_dir="$repo_root/dist/$version"
 notes_file="$output_dir/release-notes.md"
 checksums_file="$output_dir/checksums.txt"
+source_commit_file="$output_dir/source-commit.txt"
 
 [ -d "$output_dir" ] || die "missing $output_dir; run scripts/release.sh $version first"
 [ -s "$notes_file" ] || die "missing release notes: $notes_file"
 [ -s "$checksums_file" ] || die "missing checksums: $checksums_file"
+[ -s "$source_commit_file" ] || die "missing prepared source commit: $source_commit_file"
 
 expected_targets="darwin_arm64 darwin_amd64 linux_arm64 linux_amd64"
 verify_root="$(mktemp -d "${TMPDIR:-/tmp}/regesto-publish.XXXXXX")"
@@ -76,6 +78,18 @@ for target in $expected_targets; do
   tar -xzf "$archive" -C "$target_dir"
   if [[ "$target" == darwin_* ]]; then
     codesign --verify --strict --verbose=2 "$target_dir/regesto"
+    signature_details="$(codesign -dvvv "$target_dir/regesto" 2>&1)"
+    printf '%s\n' "$signature_details" | grep -Fq 'Authority=Developer ID Application:' || \
+      die "$archive is not signed with a Developer ID Application identity"
+    printf '%s\n' "$signature_details" | grep -Eq '^Timestamp=.+' || \
+      die "$archive has no secure signing timestamp"
+    printf '%s\n' "$signature_details" | grep -Eq '^TeamIdentifier=[A-Z0-9]+$' || \
+      die "$archive has no signing team identifier"
+
+    notary_receipt="$output_dir/notarization_${target}.json"
+    [ -s "$notary_receipt" ] || die "missing notarization receipt: $notary_receipt"
+    jq -e '.data.attributes.status == "Accepted"' "$notary_receipt" >/dev/null || \
+      die "notarization was not accepted for $archive"
   fi
 done
 
@@ -99,6 +113,9 @@ git fetch origin main --tags
 head_sha="$(git rev-parse HEAD)"
 [ "$head_sha" = "$(git rev-parse origin/main)" ] || \
   die "local main is not the published origin/main; push or update it before releasing"
+prepared_sha="$(tr -d '[:space:]' < "$source_commit_file")"
+[ "$prepared_sha" = "$head_sha" ] || \
+  die "artifacts were prepared from $prepared_sha, not the current commit $head_sha"
 
 if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
   [ "$(git rev-list -n 1 "$version")" = "$head_sha" ] || \
