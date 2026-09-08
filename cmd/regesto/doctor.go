@@ -108,6 +108,7 @@ func runDoctor(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	integrationID := fs.String("integration", "", "report only one configured or detected integration")
 	jsonOutput := fs.Bool("json", false, "print the versioned diagnostic report as JSON")
+	verbose := fs.Bool("verbose", false, "include healthy artifacts and full trust rules")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -123,7 +124,7 @@ func runDoctor(cfg *config.Config, args []string) error {
 		enc.SetEscapeHTML(false)
 		return enc.Encode(report)
 	}
-	printDoctorReport(report)
+	printDoctorReport(report, *verbose)
 	return nil
 }
 
@@ -580,39 +581,89 @@ func appendUnique(values []string, value string) []string {
 	return append(values, value)
 }
 
-func printDoctorReport(report doctorReport) {
-	fmt.Printf("regesto doctor: %s\n", report.Status)
-	fmt.Printf("instance: %s\nmachine: %s (%s)\n", report.KBRoot, report.Machine.Name, report.Machine.Source)
-	for _, integration := range report.Integrations {
-		fmt.Printf("integration %s (%s): %s; detected=%t\n", integration.ID, integration.ProfileID, integration.Status, integration.Detected)
-		fmt.Printf("  skills=%s instructions=%s trust=%s\n", integration.Capabilities.Skills.Status, integration.Capabilities.Instructions.Status, integration.Capabilities.Trust.Detail)
-		for _, hook := range integration.Capabilities.Hooks {
-			fmt.Printf("  hook %s via %s: %s\n", hook.Protocol, hook.Registrar, hook.Status)
+func printDoctorReport(report doctorReport, verbose bool) {
+	fmt.Printf("Regesto doctor — %s\n\n", strings.ToUpper(report.Status))
+	fmt.Printf("  Instance: %s\n  Machine:  %s (%s)\n", report.KBRoot, report.Machine.Name, report.Machine.Source)
+	if len(report.Remediations) > 0 {
+		fmt.Println("\nNext steps")
+		for i, remediation := range report.Remediations {
+			printWrapped(fmt.Sprintf("  %d. ", i+1), "     ", remediation)
 		}
-		for _, memory := range integration.Capabilities.Memory {
-			fmt.Printf("  memory %s %s: %s\n", memory.Kind, memory.Location, memory.Status)
-		}
-		for _, artifact := range integration.Artifacts {
-			fmt.Printf("  artifact %-18s %-8s %s\n", artifact.Kind, artifact.Action, artifact.CanonicalTarget)
-		}
-	}
-	fmt.Printf("trust precedence: %s\n", strings.Join(report.Trust.Precedence, " → "))
-	for _, rule := range report.Trust.SourcePolicies {
-		suffix := ""
-		if rule.Pattern {
-			suffix = "*"
-		}
-		fmt.Printf("trust source-policy %s%s: %s\n", rule.Source, suffix, rule.Trust)
-	}
-	for _, rule := range report.Trust.TrustedSources {
-		fmt.Printf("trust trusted-source %s: %s\n", rule.Source, rule.Reason)
 	}
 	for _, check := range report.Checks {
-		if check.Status != "ok" {
-			fmt.Printf("check %s: %s — %s\n", check.ID, check.Status, check.Message)
+		if check.Status != "ok" || verbose {
+			printWrapped("\n  ["+strings.ToUpper(check.Status)+"] "+check.ID+": ", "    ", check.Message)
 		}
 	}
-	for _, remediation := range report.Remediations {
-		fmt.Printf("remedy: %s\n", remediation)
+	fmt.Println("\nIntegrations")
+	if len(report.Integrations) == 0 {
+		fmt.Println("  No configured or detected integrations.")
+	}
+	for _, integration := range report.Integrations {
+		fmt.Printf("\n  %s (%s) — %s\n", integration.DisplayName, integration.ID, strings.ToUpper(integration.Status))
+		configured, detected := "no", "no"
+		if integration.Configured {
+			configured = "yes"
+		}
+		if integration.Detected {
+			detected = "yes"
+		}
+		fmt.Printf("    Configured: %s   Detected: %s\n", configured, detected)
+		printDoctorCapability("Detection", integration.Capabilities.Detection, verbose)
+		printDoctorCapability("Skills", integration.Capabilities.Skills, verbose)
+		printDoctorCapability("Instructions", integration.Capabilities.Instructions, verbose)
+		for _, hook := range integration.Capabilities.Hooks {
+			printDoctorCapability("Hook ("+hook.Protocol+")", doctorCapability{Status: hook.Status, Detail: hook.Detail}, verbose)
+			if verbose {
+				printWrapped("      Registrar: ", "        ", hook.Registrar)
+				if hook.Settings != "" {
+					fmt.Printf("      Settings: %s\n", hook.Settings)
+				}
+			}
+		}
+		for _, memory := range integration.Capabilities.Memory {
+			printDoctorCapability("Memory ("+memory.Kind+")", doctorCapability{Status: memory.Status, Detail: memory.Detail}, verbose)
+			if verbose || memory.Status != "ok" {
+				fmt.Printf("      %s\n", memory.Location)
+			}
+		}
+		printWrapped("    Trust: ", "      ", integration.Capabilities.Trust.Detail)
+		current := 0
+		for _, artifact := range integration.Artifacts {
+			if artifact.Action == "current" && !verbose {
+				current++
+				continue
+			}
+			fmt.Printf("\n    %s — %s\n", artifact.Kind, artifact.Action)
+			fmt.Printf("      %s\n", artifact.CanonicalTarget)
+		}
+		if current > 0 {
+			fmt.Printf("    Files and links: %d current\n", current)
+		}
+	}
+	if verbose {
+		fmt.Println("\nTrust rules (first match wins)")
+		for i, precedence := range report.Trust.Precedence {
+			fmt.Printf("  %d. %s\n", i+1, precedence)
+		}
+		for _, rule := range report.Trust.SourcePolicies {
+			suffix := ""
+			if rule.Pattern {
+				suffix = "*"
+			}
+			printWrapped("\n  Source policy: ", "    ", rule.Source+suffix+": "+rule.Trust)
+		}
+		for _, rule := range report.Trust.TrustedSources {
+			printWrapped("\n  Trusted source: ", "    ", rule.Source+": "+rule.Reason)
+		}
+	} else {
+		fmt.Println("\nUse regesto doctor --verbose for all files, links, and trust rules.")
+	}
+}
+
+func printDoctorCapability(label string, capability doctorCapability, verbose bool) {
+	printWrapped("    ", "      ", label+": "+capability.Status)
+	if verbose || capability.Status != "ok" {
+		printWrapped("      ", "      ", capability.Detail)
 	}
 }

@@ -4,6 +4,18 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — the local release scripts read it from here and refuse to prepare
 or publish a version that has no section, so this file cannot fall behind.
 
+## 0.4.2
+
+The command-line output is easier to scan. The main help now groups commands by purpose,
+and command help works without an existing instance. Install,
+lint, normalize, schedule, and related reports now use clearer headings, spacing, and
+summaries; healthy details are condensed unless they need attention.
+
+`regesto doctor` now opens with a readable status summary and remediation steps. Use
+`regesto doctor --verbose` when you need healthy artifacts and the full trust rules as
+well. Machine-readable JSON and MCP output remain unchanged, so existing automation can
+continue to consume the same reports.
+
 ## 0.4.1
 
 **macOS release binaries are now Developer ID signed and notarized.** Background jobs

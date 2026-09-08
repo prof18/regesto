@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -16,51 +17,51 @@ import (
 	"github.com/prof18/regesto/internal/version"
 )
 
-const usage = `usage: regesto [--config <path>] <command> [args]
+const usage = `Regesto — a shared knowledge base for your agents
 
-commands:
-  search [--json] [--subject S] [--relation R] [--scope SC] [--history] [terms...]
-        query knowledge/facts/; superseded hidden unless --history
-  index
-        regenerate INDEX.md and knowledge/topics/ from knowledge/facts/
-  context [--json] [--dir D] [--project P] [--max-bytes N] [--vocabulary]
-        compact SessionStart payload: what exists, scoped to the current project
-  config [--json]
-        print the resolved instance config as key=value lines
-  write --source SOURCE [--dir D] --json-input [--json]
-        validate and atomically create one fact from a JSON object on stdin
-  mcp
-        serve local Regesto resources and tools over MCP on stdin/stdout
-  install [--dry-run] [--json]
-        plan or apply integration skills, instructions, and hook registration
-  doctor [--integration ID] [--json]
-        diagnose integration detection, artifacts, capabilities, memory, and trust
-  hook <protocol>
-        translate one host hook payload on stdin using host-valid framing
-  harvest [--dry-run] [-v]
-        capture new native-memory writes into inbox/<agent>@<machine>/
-  init [--dir D] [--machine NAME] [--examples] [--force]
-        scaffold a new instance: tree, config, adapters, shims, machine identity
-  upgrade [--dry-run] [--force]
-        refresh this instance's engine-owned files after the engine changed
-  version
-        which engine this is
-  promote [file|-] [--source S] [--name N] [--dry-run]
-        chat transcript → facts → archive/chat-exports/ (reads stdin if no file)
-  cycle [--dry-run] [--push] [--no-commit]
-        the downstream pass: normalise, reconcile, rebuild, commit
-  schedule [status|print|install|uninstall]
-        run harvest and cycle automatically (launchd on macOS)
-  normalize [--dry-run] [--command CMD] [--show-prompt]
-        turn inbox captures into canonical facts
-  lint [--fix] [--rebuild] [--quiet]
-        validate knowledge/facts/ against SCHEMA.md and reconcile contradictions
-  project [--json] [--dir D] [--scope] [-v]
-        print the canonical project name for a directory
+Usage: regesto [--config <path>] <command> [args]
+
+Find and record knowledge
+  search       Find facts by subject, relation, scope, or search terms.
+  write        Validate and save a fact supplied as JSON on stdin.
+  promote      Extract facts from a chat transcript (file or stdin).
+  project      Show the project name for a directory.
+
+Maintain your knowledge base
+  harvest      Collect new agent memories into the inbox.
+  normalize    Turn inbox captures into facts.
+  lint         Check facts and reconcile contradictions.
+  index        Rebuild INDEX.md and topic pages from facts.
+  cycle        Normalize, reconcile, rebuild, and commit changes.
+
+Set up and troubleshoot
+  init         Create a knowledge base. Start with: regesto init --dir <path>
+  install      Set up agent skills, instructions, and hooks.
+  doctor       Check integrations and show what needs attention.
+  upgrade      Refresh the files managed by Regesto in this instance.
+  schedule     Manage scheduled runs: status, print, install, uninstall.
+  config       Show the resolved configuration.
+  version      Show the engine version.
+
+Agent interfaces
+  context      Produce knowledge-base context for an agent session.
+  hook         Respond to a host hook request on stdin.
+  mcp          Serve local resources and tools over MCP on stdin/stdout.
+
+Help
+  regesto <command> --help     Show command options.
+  regesto help                Show this overview.
+
+Examples
+  regesto search --scope aurora caching
+  regesto doctor
+  regesto install --dry-run
+
+Use --config <path> before the command to select a knowledge base.
 `
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := run(os.Args[1:]); err != nil && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, "regesto:", err)
 		os.Exit(1)
 	}
@@ -69,7 +70,7 @@ func main() {
 func run(args []string) error {
 	global := flag.NewFlagSet("regesto", flag.ContinueOnError)
 	configPath := global.String("config", "", "path to config.toml (default: walk up from cwd; REGESTO_CONFIG overrides)")
-	global.Usage = func() { fmt.Fprint(os.Stderr, usage) }
+	global.Usage = func() { fmt.Fprint(os.Stdout, usage) }
 	if err := global.Parse(args); err != nil {
 		return err
 	}
@@ -79,16 +80,21 @@ func run(args []string) error {
 		return fmt.Errorf("no command given")
 	}
 
-	// These two must work without an instance: init runs before one exists, and
-	// `version` is the first thing anyone runs to check the install. Every other
-	// command resolves the instance first.
+	// Setup, version, and help must also work before an instance exists.
 	switch rest[0] {
+	case "help":
+		fmt.Fprint(os.Stdout, usage)
+		return nil
 	case "init":
 		return runInit(rest[1:])
 	case "version", "--version", "-version":
 		fmt.Println("regesto", version.Current())
 		return nil
 	case "hook":
+		if len(rest) == 2 && (rest[1] == "--help" || rest[1] == "-h" || rest[1] == "-help") {
+			fmt.Println("Usage: regesto hook <protocol>\n\nRead a host hook request from stdin.\nProtocols: claude-session-start-v1, hermes-pre-llm-v1")
+			return nil
+		}
 		cfg, err := loadConfig(*configPath)
 		if err != nil {
 			return failOpenHook(rest[1:], os.Stdout, os.Stderr, err)
@@ -99,9 +105,20 @@ func run(args []string) error {
 		return runHook(cfg, rest[1:])
 	}
 
-	cfg, err := loadConfig(*configPath)
-	if err != nil {
-		return err
+	var cfg *config.Config
+	var err error
+	if len(rest) == 2 && (rest[1] == "--help" || rest[1] == "-h" || rest[1] == "-help") {
+		switch rest[0] {
+		case "index", "mcp":
+			fmt.Printf("Usage: regesto %s\n\nThis command takes no options.\n", rest[0])
+			return nil
+		}
+		cfg = &config.Config{}
+	} else {
+		cfg, err = loadConfig(*configPath)
+		if err != nil {
+			return err
+		}
 	}
 	// Applied once, before any command can load a fact: the loader skips
 	// conflict copies, so it and the conflict finder have to agree on what one

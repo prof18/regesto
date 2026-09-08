@@ -349,7 +349,7 @@ func TestDoctorTextPrintsTrustAndGlobalRemediation(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "run", "./cmd/regesto", "--config", cfgPath, "doctor")
+	cmd := exec.Command("go", "run", "./cmd/regesto", "--config", cfgPath, "doctor", "--verbose")
 	cmd.Dir = repoRoot(t)
 	cmd.Env = append(os.Environ(), "PATH=/usr/bin:/bin", "GOTELEMETRY=off", "GOCACHE="+t.TempDir(), "GOPATH="+t.TempDir())
 	var stdout, stderr bytes.Buffer
@@ -357,7 +357,7 @@ func TestDoctorTextPrintsTrustAndGlobalRemediation(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("doctor text: %v\nstderr: %s", err, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "trust source-policy generic@*: quarantine") || !strings.Contains(stdout.String(), "remedy:") {
+	if !strings.Contains(stdout.String(), "Source policy: generic@*: quarantine") || !strings.Contains(stdout.String(), "Next steps") {
 		t.Fatalf("text diagnostics omit trust/remediation:\n%s", stdout.String())
 	}
 }

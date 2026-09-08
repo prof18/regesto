@@ -94,6 +94,11 @@ func runNormalize(cfg *config.Config, args []string) error {
 			rejected++
 		}
 	}
+	if *dry {
+		fmt.Printf("\nDry run — %d fact(s) would be written, %d candidate(s) rejected.\n", written, rejected)
+		fmt.Println("No facts were written.")
+		return nil
+	}
 	fmt.Printf("%d fact(s) written, %d candidate(s) rejected\n", written, rejected)
 	if written > 0 {
 		fmt.Println("run `regesto lint --fix --rebuild` to reconcile and regenerate")

@@ -82,7 +82,7 @@ regesto install
 regesto doctor
 ```
 
-The dry run shows every file Regesto would touch. Installation adds the appropriate
+The dry run shows planned changes and summarizes files already up to date. Installation adds the appropriate
 skills and instructions, registers supported hooks, and backs up host files before
 editing them. It is safe to run again.
 

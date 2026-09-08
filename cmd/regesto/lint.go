@@ -80,12 +80,18 @@ func runLint(cfg *config.Config, args []string) error {
 		fmt.Printf("checked %d fact(s)\n", report.Checked)
 	}
 
+	if len(report.Findings) > 0 {
+		fmt.Println("\nfindings:")
+	}
 	for _, f := range report.Findings {
 		fmt.Printf("%-5s %s: %s\n", f.Severity, f.Path, f.Message)
 	}
 
 	// Report before applying: the run summary is the whole point, and a
 	// wrongly-merged pair is only catchable if you see it happen.
+	if len(report.Actions) > 0 {
+		fmt.Println("\nactions:")
+	}
 	for _, a := range report.Actions {
 		verb := "would"
 		if *apply {
@@ -93,11 +99,20 @@ func runLint(cfg *config.Config, args []string) error {
 		}
 		fmt.Printf("%s %-10s %s — %s\n", verb, a.Kind, a.ID, a.Message)
 	}
+	if len(report.Reviews) > 0 {
+		fmt.Println("\nreview:")
+	}
 	for _, r := range report.Reviews {
 		fmt.Printf("review    %s\n", r)
 	}
+	if len(report.NearDuplicates) > 0 {
+		fmt.Println("\nvocabulary:")
+	}
 	for _, d := range report.NearDuplicates {
 		fmt.Printf("vocab     %s\n", d)
+	}
+	if len(report.Due) > 0 {
+		fmt.Println("\ndue:")
 	}
 	for _, d := range report.Due {
 		fmt.Printf("due       %s\n", d)
@@ -131,7 +146,7 @@ func runLint(cfg *config.Config, args []string) error {
 	}
 
 	if !*quiet {
-		fmt.Printf("%d error(s), %d warning(s), %d action(s), %d pending review(s)\n",
+		fmt.Printf("\n%d error(s), %d warning(s), %d action(s), %d pending review(s)\n",
 			report.Errors(), len(report.Findings)-report.Errors(), len(report.Actions), len(report.Reviews))
 	}
 	if report.Errors() > 0 {

@@ -20,7 +20,7 @@ type installResponse struct {
 
 func runInstall(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
-	dryRun := fs.Bool("dry-run", false, "print the complete plan and write nothing")
+	dryRun := fs.Bool("dry-run", false, "preview planned changes and write nothing")
 	jsonOutput := fs.Bool("json", false, "print the versioned install plan as JSON")
 	engineLink := fs.String("engine-link", "", "launcher: PATH link to plan")
 	engineTarget := fs.String("engine-target", "", "launcher: engine target for PATH link")
@@ -58,22 +58,37 @@ func runInstall(cfg *config.Config, args []string) error {
 }
 
 func printInstallPlan(plan *regestoinstall.Plan, dryRun bool) {
-	fmt.Printf("instance %s\n", plan.KBRoot)
+	fmt.Printf("Instance: %s\n", plan.KBRoot)
+	current := 0
 	for _, item := range plan.Items {
+		if item.Action == "current" {
+			current++
+			continue
+		}
 		verb := item.Action
 		if dryRun && item.Action != "current" && item.Action != "skip" && item.Action != "manual" {
 			verb = "would " + item.Action
 		}
-		owners := strings.Join(item.Owners, ",")
+		owners := strings.Join(item.Owners, ", ")
 		if owners == "" {
 			owners = "regesto"
 		}
-		fmt.Printf("  %-12s %-18s %s\n", verb, item.Kind, item.CanonicalTarget)
-		fmt.Printf("    owners: %s\n", owners)
+		fmt.Printf("\n  %s — %s\n", verb, item.Kind)
+		fmt.Printf("    Target: %s\n", item.CanonicalTarget)
+		printWrapped("    Used by: ", "      ", owners)
 		for _, declared := range item.DeclaredTargets {
-			fmt.Printf("    declared: %s\n", declared)
+			if declared != item.CanonicalTarget {
+				fmt.Printf("    Declared: %s\n", declared)
+			}
 		}
-		fmt.Printf("    current: %s\n    intended: %s\n    backup: %s\n    dry-run: %s\n",
-			item.CurrentState, item.IntendedState, item.BackupAction, item.DryRun)
+		printWrapped("    Current: ", "      ", item.CurrentState)
+		printWrapped("    Planned: ", "      ", item.IntendedState)
+		printWrapped("    Backup: ", "      ", item.BackupAction)
+		if dryRun {
+			printWrapped("    Dry run: ", "      ", item.DryRun)
+		}
+	}
+	if current > 0 {
+		fmt.Printf("\n  Already current: %d files or links.\n", current)
 	}
 }

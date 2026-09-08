@@ -47,6 +47,9 @@ func jobs(cfg *config.Config) []job {
 
 func runSchedule(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("schedule", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintln(fs.Output(), "Usage: regesto schedule [status|print|install|uninstall]\n\n  status     Show jobs and cycle health (default).\n  print      Print launchd job definitions.\n  install    Install scheduled harvest and cycle jobs.\n  uninstall  Remove this instance's scheduled jobs.")
+	}
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -196,6 +199,8 @@ func scheduleStatus(cfg *config.Config, isLintHost bool) error {
 	if runtime.GOOS != "darwin" {
 		fmt.Printf("scheduling here targets launchd; on %s use cron or a systemd timer with the same two commands\n", runtime.GOOS)
 	}
+	fmt.Println()
+	fmt.Println("jobs:")
 	for _, j := range jobs(cfg) {
 		if !j.everyMachine && !isLintHost {
 			fmt.Printf("  %-20s not for this machine — [roles].lint names another host\n", j.label)
@@ -217,6 +222,8 @@ func scheduleStatus(cfg *config.Config, isLintHost bool) error {
 	// engine that has moved — reports nothing at all. A stale last clean pass is
 	// the only evidence of that, so print it whether or not anything is wrong.
 	if isLintHost {
+		fmt.Println()
+		fmt.Println("health:")
 		if s, ok := notify.Load(cfg, "cycle"); ok {
 			now := time.Now().UTC()
 			switch {
@@ -231,6 +238,8 @@ func scheduleStatus(cfg *config.Config, isLintHost bool) error {
 			fmt.Printf("  %-20s no pass recorded yet on this machine\n", "cycle health")
 		}
 		if !notify.Enabled(cfg) {
+			fmt.Println()
+			fmt.Println("alerts:")
 			fmt.Printf("  %-20s not configured or off — agent context still reports failures; see [notify]\n", "external alerts")
 		}
 	}
