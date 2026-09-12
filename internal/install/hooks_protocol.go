@@ -152,6 +152,8 @@ func protocolHookCommand(root, sourceRoot, protocol string) (command, event stri
 	switch protocol {
 	case "claude-session-start-v1":
 		relative, event = filepath.Join("adapters", "claude", "hooks", "session-start.sh"), "SessionStart"
+	case "copilot-session-start-v1":
+		relative, event = filepath.Join("adapters", "copilot", "hooks", "session-start.sh"), "SessionStart"
 	case "hermes-pre-llm-v1":
 		relative, event = filepath.Join("adapters", "hermes", "hooks", "pre-llm.sh"), "pre_llm_call"
 	default:

@@ -21,6 +21,7 @@ doctor` show their resolved local values.
 |---|---|---|---|---|---|---|---|---|
 | `claude` | Claude Code | paths=`~/.claude`; commands=`claude` | variant=`claude`; targets=`~/.claude/skills` | targets=`~/.claude/CLAUDE.md`; create=`false` | `claude-session-start-v1` / `claude-settings-json-v1` / `~/.claude/settings.json` | `markdown-glob-v1` / `~/.claude/projects/*/memory` | none | `supervised` |
 | `codex` | Codex | paths=`~/.codex`; commands=`codex` | variant=`portable`; targets=`~/.codex/skills` | targets=`~/.codex/AGENTS.md`; create=`false` | none | `markdown-glob-v1` / `~/.codex/memories` | `raw_memories.md` | `supervised` |
+| `copilot` | GitHub Copilot CLI | paths=`~/.copilot`; commands=`copilot` | variant=`portable`; targets=`~/.copilot/skills` | targets=`~/.copilot/instructions/regesto.instructions.md`; create=`true` | `copilot-session-start-v1` / `copilot-hooks-json-v1` / `~/.copilot/hooks/regesto.json` | `none` | none | `supervised` |
 | `generic` | Generic integration | paths=none; commands=none | variant=`portable`; targets=none | targets=none; create=`false` | `none` / `none` | `none` | none | `quarantine` |
 | `hermes` | Hermes | paths=`~/.hermes`; commands=`hermes` | variant=`portable`; targets=`~/.hermes/skills` | targets=`~/.hermes/SOUL.md`; create=`false` | `hermes-pre-llm-v1` / `hermes-config-yaml-v1` / `~/.hermes/config.yaml` | `markdown-glob-v1` / `~/.hermes/memories` | none | `quarantine` |
 <!-- regesto:profile-matrix:end -->
@@ -29,11 +30,20 @@ doctor` show their resolved local values.
 memory capabilities so absence remains visible. Codex also excludes `raw_memories.md` from
 harvest; exclusions and all raw profile fields are available in the profile JSON.
 
+Copilot declares `memory: none` because its session store is SQLite, not markdown. Its
+skills live in `~/.copilot/skills`, a personal location Copilot CLI and Copilot in VS Code
+both discover; on machines where `~/.claude/skills` symlinks to the shared `~/.agents/skills`,
+keep the separate `~/.copilot/skills` target or override `skills_dir` deliberately — one
+canonical directory can only carry one skill variant. Its hook registers in a Regesto-owned
+file (`~/.copilot/hooks/regesto.json`) that both hosts also read. The instructions target is
+created by Regesto (`create: true`) because Copilot does not ship one.
+
 ## Behavior and evidence
 
 | Integration | Consultation path | Guarantee | Evidence in this repository |
 |---|---|---|---|
 | Claude Code | `SessionStart` injects context | deterministic at the declared hook event | protocol, merge, fail-open, and installer contract tests; live-host verification is release evidence |
+| Copilot CLI | `SessionStart` injects JSON `additionalContext` | deterministic at the declared hook event | protocol, merge, fail-open, and installer contract tests; live-host verification is release evidence |
 | Hermes | first `pre_llm_call` per session injects JSON context | deterministic on the first turn when registration is current | protocol, session-bound, YAML recipe, allowlist, and installer contract tests; live-host verification is release evidence |
 | Codex | always-loaded instructions plus portable skills | advisory, not enforced | renderer and installer contract tests |
 | Generic/custom | whichever declared targets and supported protocol the instance profile supplies | determined by declared capabilities | profile validation, renderer, and installer contract tests |

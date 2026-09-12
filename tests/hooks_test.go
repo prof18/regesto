@@ -90,6 +90,34 @@ func TestClaudeHookPlainContextAndFailOpenFraming(t *testing.T) {
 	}
 }
 
+func TestCopilotHookJSONContextAndFailOpenFraming(t *testing.T) {
+	cfg, cwd := hookConfig(t)
+	stdout, stderr, err := runHookDirect(t, cfg, "copilot-session-start-v1", hookFixture(t, "copilot-session.json", cwd))
+	if err != nil || stderr != "" {
+		t.Fatalf("Copilot SessionStart: err=%v stderr=%q", err, stderr)
+	}
+	var response struct {
+		AdditionalContext string `json:"additionalContext"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &response); err != nil {
+		t.Fatalf("Copilot response is not one JSON object: %q (%v)", stdout, err)
+	}
+	if !strings.Contains(response.AdditionalContext, "Hook fixture fact") {
+		t.Fatalf("Copilot additionalContext missing the scoped index:\n%s", stdout)
+	}
+	for name, payload := range map[string][]byte{
+		"malformed":          hookFixture(t, "malformed.json", cwd),
+		"duplicate key":      []byte(`{"cwd":"` + cwd + `","cwd":"` + cwd + `"}`),
+		"missing cwd":        []byte(`{}`),
+		"unusable directory": []byte(`{"cwd":"/path/that/does/not/exist"}`),
+	} {
+		stdout, stderr, err = runHookDirect(t, cfg, "copilot-session-start-v1", payload)
+		if err != nil || stdout != "{}" || stderr == "" {
+			t.Fatalf("%s Copilot hook: stdout=%q stderr=%q err=%v", name, stdout, stderr, err)
+		}
+	}
+}
+
 func TestAgentContextSurfacesCurrentCycleFailure(t *testing.T) {
 	cfg, cwd := hookConfig(t)
 	failedAt := time.Now().UTC().Add(-2 * time.Hour)
@@ -252,6 +280,10 @@ func TestKnownHookFailuresRemainHostValidAndUnknownProtocolErrors(t *testing.T) 
 	if err != nil || hermes != "{}" {
 		t.Fatalf("Hermes operational failure: stdout=%q err=%v", hermes, err)
 	}
+	copilot, _, err := runHookDirect(t, cfg, "copilot-session-start-v1", []byte(`{"cwd":"`+validDir+`"}`))
+	if err != nil || copilot != "{}" {
+		t.Fatalf("Copilot operational failure: stdout=%q err=%v", copilot, err)
+	}
 	unknown, _, err := runHookDirect(t, cfg, "not-a-protocol", []byte(`{}`))
 	if err == nil || unknown != "" {
 		t.Fatalf("unknown protocol: stdout=%q err=%v", unknown, err)
@@ -293,7 +325,7 @@ func TestHookCompatibilityWrappersForwardAndFailOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
-	for _, relative := range []string{"adapters/claude/hooks/session-start.sh", "adapters/hermes/hooks/pre-llm.sh"} {
+	for _, relative := range []string{"adapters/claude/hooks/session-start.sh", "adapters/copilot/hooks/session-start.sh", "adapters/hermes/hooks/pre-llm.sh"} {
 		writeAt(t, root, relative, string(files[relative]))
 		if err := os.Chmod(filepath.Join(root, filepath.FromSlash(relative)), 0o755); err != nil {
 			t.Fatal(err)
@@ -309,6 +341,11 @@ func TestHookCompatibilityWrappersForwardAndFailOpen(t *testing.T) {
 	if output, err := claude.CombinedOutput(); err != nil || string(output) != "plain-context\n" {
 		t.Fatalf("Claude wrapper: output=%q err=%v", output, err)
 	}
+	copilot := exec.Command(filepath.Join(root, "adapters", "copilot", "hooks", "session-start.sh"))
+	copilot.Stdin = strings.NewReader("{malformed")
+	if output, err := copilot.CombinedOutput(); err != nil || string(output) != "plain-context" {
+		t.Fatalf("Copilot wrapper: output=%q err=%v", output, err)
+	}
 	writeAt(t, root, "bin/regesto-hook", "#!/bin/sh\ncat >/dev/null\nexit 42\n")
 	if err := os.Chmod(engine, 0o755); err != nil {
 		t.Fatal(err)
@@ -317,6 +354,11 @@ func TestHookCompatibilityWrappersForwardAndFailOpen(t *testing.T) {
 	hermes.Stdin = strings.NewReader("{malformed")
 	if output, err := hermes.CombinedOutput(); err != nil || string(output) != "{}" {
 		t.Fatalf("Hermes wrapper fail-open: output=%q err=%v", output, err)
+	}
+	copilot = exec.Command(filepath.Join(root, "adapters", "copilot", "hooks", "session-start.sh"))
+	copilot.Stdin = strings.NewReader("{malformed")
+	if output, err := copilot.CombinedOutput(); err != nil || string(output) != "{}" {
+		t.Fatalf("Copilot wrapper fail-open: output=%q err=%v", output, err)
 	}
 }
 

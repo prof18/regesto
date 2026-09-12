@@ -16,6 +16,8 @@ type hookGroup struct {
 	declared  []string
 	owners    []string
 	commands  []string
+	registrar string
+	merge     func([]byte, []string) ([]byte, bool, error)
 }
 
 func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
@@ -44,9 +46,9 @@ func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 						return err
 					}
 				}
-			case "claude-settings-json-v1":
+			case "claude-settings-json-v1", "copilot-hooks-json-v1":
 				if hook.Settings == "" {
-					return fmt.Errorf("integration %q: claude settings registrar has no target", agent.Name)
+					return fmt.Errorf("integration %q: hook registrar %s has no target", agent.Name, hook.Registrar)
 				}
 				canonical, err := CanonicalTarget(hook.Settings)
 				if err != nil {
@@ -56,6 +58,15 @@ func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 				if g == nil {
 					g = &hookGroup{canonical: canonical}
 					groups[canonical] = g
+				}
+				if g.registrar == "" {
+					g.registrar = hook.Registrar
+					g.merge = mergeClaudeSettings
+					if hook.Registrar == "copilot-hooks-json-v1" {
+						g.merge = mergeCopilotHooks
+					}
+				} else if g.registrar != hook.Registrar {
+					return fmt.Errorf("integration %q: hook settings %s shared by incompatible registrars %s and %s", agent.Name, hook.Settings, g.registrar, hook.Registrar)
 				}
 				g.declared = append(g.declared, hook.Settings)
 				g.owners = append(g.owners, agent.Name)
@@ -86,7 +97,7 @@ func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 		} else if err != nil {
 			return err
 		}
-		desired, already, err := mergeClaudeSettings(current, g.commands)
+		desired, already, err := g.merge(current, g.commands)
 		if err != nil {
 			return fmt.Errorf("plan hook settings %s: %w", key, err)
 		}
@@ -156,41 +167,58 @@ func nonempty(value string) []string {
 	return []string{value}
 }
 
-func mergeClaudeSettings(body []byte, commands []string) ([]byte, bool, error) {
+// hooksSettings is a parsed hooks-style settings file: a JSON object whose
+// hooks object maps event names to arrays of command entries. Both supported
+// hosts use this shape; they differ only in the entry layout they emit.
+type hooksSettings struct {
+	root     map[string]any
+	sessions []any
+	found    map[string]bool
+}
+
+// readHooksSettings parses one settings file and indexes the commands already
+// registered for the event. Flat entries (`{"type":"command","command":...}`,
+// Copilot's native layout) and Claude-style nested matcher groups are both
+// recognized, so an install never duplicates a command a host already loaded
+// from either layout.
+func readHooksSettings(body []byte, event string) (*hooksSettings, error) {
 	if err := validateUniqueJSON(body); err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	var root map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	if err := decoder.Decode(&root); err != nil {
-		return nil, false, fmt.Errorf("invalid JSON: %w", err)
+		return nil, fmt.Errorf("invalid JSON: %w", err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		if err == nil {
-			return nil, false, fmt.Errorf("settings must contain exactly one JSON object")
+			return nil, fmt.Errorf("settings must contain exactly one JSON object")
 		}
-		return nil, false, fmt.Errorf("invalid trailing JSON: %w", err)
+		return nil, fmt.Errorf("invalid trailing JSON: %w", err)
 	}
 	if root == nil {
-		return nil, false, fmt.Errorf("settings must be a JSON object")
+		return nil, fmt.Errorf("settings must be a JSON object")
 	}
 	hooks, ok := root["hooks"].(map[string]any)
 	if !ok {
 		if root["hooks"] != nil {
-			return nil, false, fmt.Errorf("hooks must be a JSON object")
+			return nil, fmt.Errorf("hooks must be a JSON object")
 		}
 		hooks = map[string]any{}
 		root["hooks"] = hooks
 	}
-	sessions, ok := hooks["SessionStart"].([]any)
-	if !ok && hooks["SessionStart"] != nil {
-		return nil, false, fmt.Errorf("hooks.SessionStart must be an array")
+	sessions, ok := hooks[event].([]any)
+	if !ok && hooks[event] != nil {
+		return nil, fmt.Errorf("hooks.%s must be an array", event)
 	}
 	found := map[string]bool{}
 	for _, rawSession := range sessions {
 		session, _ := rawSession.(map[string]any)
+		if command, _ := session["command"].(string); command != "" {
+			found[command] = true
+		}
 		entries, _ := session["hooks"].([]any)
 		for _, rawEntry := range entries {
 			entry, _ := rawEntry.(map[string]any)
@@ -200,20 +228,63 @@ func mergeClaudeSettings(body []byte, commands []string) ([]byte, bool, error) {
 			}
 		}
 	}
-	allPresent := true
-	for _, command := range commands {
-		if found[command] {
-			continue
-		}
-		allPresent = false
-		sessions = append(sessions, map[string]any{"hooks": []any{map[string]any{"type": "command", "command": command}}})
+	return &hooksSettings{root: root, sessions: sessions, found: found}, nil
+}
+
+func (s *hooksSettings) write(event string) ([]byte, error) {
+	s.root["hooks"].(map[string]any)[event] = s.sessions
+	out, err := json.MarshalIndent(s.root, "", "  ")
+	if err != nil {
+		return nil, err
 	}
-	hooks["SessionStart"] = sessions
-	out, err := json.MarshalIndent(root, "", "  ")
+	return append(out, '\n'), nil
+}
+
+func (s *hooksSettings) allPresent(commands []string) bool {
+	for _, command := range commands {
+		if !s.found[command] {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeClaudeSettings(body []byte, commands []string) ([]byte, bool, error) {
+	s, err := readHooksSettings(body, "SessionStart")
 	if err != nil {
 		return nil, false, err
 	}
-	return append(out, '\n'), allPresent, nil
+	for _, command := range commands {
+		if s.found[command] {
+			continue
+		}
+		s.sessions = append(s.sessions, map[string]any{"hooks": []any{map[string]any{"type": "command", "command": command}}})
+	}
+	out, err := s.write("SessionStart")
+	if err != nil {
+		return nil, false, err
+	}
+	return out, s.allPresent(commands), nil
+}
+
+// mergeCopilotHooks registers SessionStart commands in Copilot's native flat
+// entry layout, preserving every foreign key in the settings file.
+func mergeCopilotHooks(body []byte, commands []string) ([]byte, bool, error) {
+	s, err := readHooksSettings(body, "SessionStart")
+	if err != nil {
+		return nil, false, err
+	}
+	for _, command := range commands {
+		if s.found[command] {
+			continue
+		}
+		s.sessions = append(s.sessions, map[string]any{"type": "command", "command": command})
+	}
+	out, err := s.write("SessionStart")
+	if err != nil {
+		return nil, false, err
+	}
+	return out, s.allPresent(commands), nil
 }
 
 func validateUniqueJSON(body []byte) error {

@@ -34,7 +34,7 @@ func trustCapture(agent, machine string) normalize.Capture {
 }
 
 func TestAdapterDetectionIdentifiers(t *testing.T) {
-	wantAgents := []string{"claude", "codex", "hermes"}
+	wantAgents := []string{"claude", "codex", "copilot", "hermes"}
 	if got := adapters.KnownAgents(); strings.Join(got, ",") != strings.Join(wantAgents, ",") {
 		t.Fatalf("known agents = %v, want exactly %v", got, wantAgents)
 	}
@@ -44,7 +44,7 @@ func TestAdapterDetectionIdentifiers(t *testing.T) {
 	}{
 		{name: "none", home: t.TempDir()},
 		{name: "one", home: t.TempDir(), dirs: []string{".claude"}, want: []string{"claude"}},
-		{name: "all", home: t.TempDir(), dirs: []string{".claude", ".codex", ".hermes"}, want: wantAgents},
+		{name: "all", home: t.TempDir(), dirs: []string{".claude", ".codex", ".copilot", ".hermes"}, want: wantAgents},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("HOME", tc.home)

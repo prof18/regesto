@@ -42,7 +42,7 @@ func materializeInstallHook(t *testing.T, root string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, relative := range []string{"adapters/claude/hooks/session-start.sh", "adapters/hermes/hooks/pre-llm.sh"} {
+	for _, relative := range []string{"adapters/claude/hooks/session-start.sh", "adapters/copilot/hooks/session-start.sh", "adapters/hermes/hooks/pre-llm.sh"} {
 		path := filepath.Join(root, filepath.FromSlash(relative))
 		writeAt(t, root, relative, string(files[relative]))
 		if err := os.Chmod(path, 0o755); err != nil {
@@ -208,6 +208,94 @@ func TestInstallApplyAndSecondPlanAreNoOp(t *testing.T) {
 			}
 		}
 		t.Fatalf("second plan still mutates: %s", strings.Join(changes, ", "))
+	}
+}
+
+func TestCopilotHookRegistrationMergesLosslesslyInFlatLayout(t *testing.T) {
+	home := installHome(t)
+	if err := os.MkdirAll(filepath.Join(home, ".copilot", "hooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	cfg := installConfig(t, root, `"copilot"`)
+	hookCommand := filepath.Join(root, "adapters", "copilot", "hooks", "session-start.sh")
+	existing := `{
+  "hooks": {
+    "SessionStart": [
+      { "type": "command", "command": "keep-me-foreign" }
+    ]
+  },
+  "defaultMode": "plan"
+}
+`
+	settings := filepath.Join(home, ".copilot", "hooks", "regesto.json")
+	if err := os.WriteFile(settings, []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := regestoinstall.Build(cfg, regestoinstall.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hookItem *regestoinstall.Item
+	for i := range plan.Items {
+		if plan.Items[i].Kind == "hook" {
+			hookItem = &plan.Items[i]
+			break
+		}
+	}
+	if hookItem == nil || hookItem.Action != "update" {
+		t.Fatalf("copilot hook plan = %+v", hookItem)
+	}
+	if _, err := regestoinstall.Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	body := string(mustRead(t, settings))
+	for _, want := range []string{"keep-me-foreign", `"defaultMode": "plan"`, hookCommand} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("merged copilot hooks lost %q:\n%s", want, body)
+		}
+	}
+	var parsed struct {
+		Hooks struct {
+			SessionStart []struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			} `json:"SessionStart"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal([]byte(body), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	regestoEntries := 0
+	for _, entry := range parsed.Hooks.SessionStart {
+		if entry.Command == hookCommand {
+			regestoEntries++
+			if entry.Type != "command" {
+				t.Fatalf("copilot entry is not a flat command: %+v", entry)
+			}
+		}
+	}
+	if regestoEntries != 1 {
+		t.Fatalf("regesto registered %d times, want once", regestoEntries)
+	}
+	second, err := regestoinstall.Build(cfg, regestoinstall.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Changes() != 0 {
+		t.Fatalf("second copilot plan has %d changes", second.Changes())
+	}
+	// A Claude-style nested entry with the same command must not be duplicated.
+	nested := `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"` + hookCommand + `"}]}]},"foreign":true}`
+	if err := os.WriteFile(settings, []byte(nested), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	third, err := regestoinstall.Build(cfg, regestoinstall.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third.Changes() != 0 {
+		t.Fatalf("nested equivalent command re-registered: %d changes", third.Changes())
 	}
 }
 

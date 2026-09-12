@@ -24,6 +24,9 @@ func failOpenHook(args []string, output, diagnostic io.Writer, cause error) erro
 	switch args[0] {
 	case "claude-session-start-v1":
 		return nil
+	case "copilot-session-start-v1":
+		_, _ = io.WriteString(output, "{}")
+		return nil
 	case "hermes-pre-llm-v1":
 		_, _ = io.WriteString(output, "{}")
 		return nil

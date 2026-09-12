@@ -35,6 +35,29 @@ func Run(cfg *config.Config, protocol string, input io.Reader, output, diagnosti
 		}
 		return nil
 
+	case "copilot-session-start-v1":
+		// Copilot parses hook stdout as one JSON object and injects a
+		// top-level additionalContext string. Every failure path answers
+		// with an empty object: the session must still start.
+		response := []byte("{}")
+		if readErr != nil {
+			diagnose(diagnostic, protocol, readErr)
+		} else if context, err := runCopilot(cfg, payload); err != nil {
+			diagnose(diagnostic, protocol, err)
+		} else if context != "" {
+			response, err = json.Marshal(struct {
+				AdditionalContext string `json:"additionalContext"`
+			}{AdditionalContext: context})
+			if err != nil {
+				diagnose(diagnostic, protocol, err)
+				response = []byte("{}")
+			}
+		}
+		if _, err := output.Write(response); err != nil {
+			diagnose(diagnostic, protocol, err)
+		}
+		return nil
+
 	case "hermes-pre-llm-v1":
 		response := []byte("{}")
 		if readErr != nil {

@@ -100,7 +100,7 @@ func codeValue(value string) string {
 }
 
 func TestDocsProductPagesLinkCanonicalMatrix(t *testing.T) {
-	for _, name := range []string{"setup-claude-code.md", "setup-codex.md", "setup-hermes.md", "setup-other-agents.md"} {
+	for _, name := range []string{"setup-claude-code.md", "setup-codex.md", "setup-copilot.md", "setup-hermes.md", "setup-other-agents.md"} {
 		body, err := os.ReadFile(filepath.Join(repoRoot(t), "docs", name))
 		if err != nil {
 			t.Fatal(err)

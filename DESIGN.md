@@ -109,6 +109,7 @@ payload and emits host-valid context framing. The built-in deterministic paths a
 | Hook | Fires | Output behaviour |
 |---|---|---|
 | Claude `SessionStart` | startup, resume, clear, compact, fork | stdout added as context before the first prompt |
+| Copilot `SessionStart` | first prompt of a new session | JSON `additionalContext` added before the first turn |
 | Hermes `pre_llm_call` | first call for a session | JSON `context` added before the first model turn |
 
 That makes retrieval **deterministic**. The hook does the lookup; the model does not get a
@@ -295,6 +296,7 @@ happens in one place, or two machines mint competing vocabulary for the same cla
 |---|---|---|---|
 | Claude Code | per-project memory directory | per git repo | deterministic when startup hook is current |
 | Codex CLI | global memory directory | global | instructions + skills |
+| Copilot CLI | SQLite session store (not harvestable) | global | deterministic when startup hook is current |
 | Hermes | declared markdown memory directory | global | deterministic when hook and allowlist are current |
 | Host without local files or MCP | vendor-internal | — | manual promotion only |
 

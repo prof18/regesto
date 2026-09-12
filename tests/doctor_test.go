@@ -256,6 +256,52 @@ func TestDoctorIsolatesPlanFailuresAndFilteredRuns(t *testing.T) {
 	}
 }
 
+func TestDoctorCopilotCapabilitiesAndDeterministicPlan(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".copilot"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	materializeInstallHook(t, root)
+	cfgPath := filepath.Join(root, "config.toml")
+	if err := os.WriteFile(cfgPath, []byte("machine = \"copilotbox\"\nintegrations = [\"copilot\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := runDoctorJSON(t, cfgPath)
+	if got.Status != "warning" || len(got.Integrations) != 1 || got.Integrations[0].ID != "copilot" {
+		t.Fatalf("uninstalled copilot diagnostic = %q %+v", got.Status, got.Integrations)
+	}
+	installCmd := exec.Command("go", "run", "./cmd/regesto", "--config", cfgPath, "install")
+	installCmd.Dir = repoRoot(t)
+	installCmd.Env = append(os.Environ(), "GOTELEMETRY=off", "GOCACHE="+t.TempDir(), "GOPATH="+t.TempDir())
+	if out, err := installCmd.CombinedOutput(); err != nil {
+		t.Fatalf("copilot install: %v\n%s", err, out)
+	}
+	installed, raw := runDoctorJSON(t, cfgPath)
+	if installed.Status != "ok" {
+		t.Fatalf("installed copilot status = %q; json=%s", installed.Status, raw)
+	}
+	integration := installed.Integrations[0]
+	if len(integration.Capabilities.Hooks) != 1 ||
+		integration.Capabilities.Hooks[0].Protocol != "copilot-session-start-v1" ||
+		integration.Capabilities.Hooks[0].Status != "ok" {
+		t.Fatalf("copilot hook capability = %+v", integration.Capabilities.Hooks)
+	}
+	if len(integration.Capabilities.Memory) != 1 || integration.Capabilities.Memory[0].Kind != "none" || integration.Capabilities.Memory[0].Status != "unsupported" {
+		t.Fatalf("copilot memory capability = %+v", integration.Capabilities.Memory)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".copilot", "hooks", "regesto.json")); err != nil {
+		t.Fatalf("copilot hook registration missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".copilot", "instructions", "regesto.instructions.md")); err != nil {
+		t.Fatalf("copilot instructions missing: %v", err)
+	}
+	if link, err := os.Readlink(filepath.Join(home, ".copilot", "skills", "regesto-search")); err != nil || !strings.HasSuffix(link, filepath.Join(".state", "integrations", "copilot", "skills", "regesto-search")) {
+		t.Fatalf("copilot skill link = %q err=%v", link, err)
+	}
+}
+
 func TestDoctorUnsupportedTrustIsExplicit(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
