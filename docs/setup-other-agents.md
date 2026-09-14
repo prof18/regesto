@@ -1,6 +1,6 @@
 # Connect any agent to Regesto
 
-Use this guide when your client is not Claude Code, Codex, Copilot, or Hermes, or when you are
+Use this guide when your client is not Antigravity, Claude Code, Codex, Copilot, or Hermes, or when you are
 building an integration for a new agent. The [integration matrix](agent-integration.md) is
 the advanced reference for exact profiles and protocols.
 
@@ -10,7 +10,7 @@ Start with the first capability your client supports:
 
 | Client capability | Setup path | Result |
 |---|---|---|
-| Built-in Claude Code, Codex, Copilot, or Hermes profile | [Built-in integrations](#built-in-integrations) | Regesto already knows the client paths and supported hooks |
+| Built-in Antigravity, Claude Code, Codex, Copilot, or Hermes profile | [Built-in integrations](#built-in-integrations) | Regesto already knows the client paths and supported hooks |
 | Local skills or a persistent instructions file | [Custom local integration](#custom-local-integration) | Regesto installs only the capabilities you configure |
 | Local stdio MCP servers | [MCP client](#mcp-client) | The client gets Regesto search, read, project, and write tools |
 | None of these | [No local integration surface](#no-local-integration-surface) | Export a conversation and promote it manually |
@@ -30,11 +30,11 @@ Run the remaining commands from `~/regesto-kb`, or pass
 
 ## Built-in integrations
 
-For Claude Code, Codex, Copilot, or Hermes, add the built-in ID to `config.toml` and run the normal
+For Antigravity, Claude Code, Codex, Copilot, or Hermes, add the built-in ID to `config.toml` and run the normal
 installer. You do not need to configure paths or copy a custom profile:
 
 ```toml
-integrations = ["claude", "codex", "copilot", "hermes"]
+integrations = ["antigravity", "claude", "codex", "copilot", "hermes"]
 ```
 
 ```bash
@@ -45,8 +45,8 @@ regesto doctor
 ```
 
 Keep only the integrations you use. See the short setup notes for
-[Claude Code](setup-claude-code.md), [Codex](setup-codex.md),
-[Copilot](setup-copilot.md), or [Hermes](setup-hermes.md) if `doctor` reports a host-specific step.
+[Antigravity](setup-antigravity.md), [Claude Code](setup-claude-code.md),
+[Codex](setup-codex.md), [Copilot](setup-copilot.md), or [Hermes](setup-hermes.md) if `doctor` reports a host-specific step.
 
 ## Custom local integration
 

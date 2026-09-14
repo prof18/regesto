@@ -79,12 +79,12 @@ func assertNoPortableSkillLeak(t *testing.T, path, text string) {
 func TestSkillVariantsRenderPerIntegrationWithoutLeakage(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	for _, dir := range []string{".claude", ".codex", ".copilot", ".hermes"} {
+	for _, dir := range []string{".gemini/antigravity-cli", ".claude", ".codex", ".copilot", ".hermes"} {
 		if err := os.MkdirAll(filepath.Join(home, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	cfg := skillTestConfig(t, root, "integrations = [\"claude\", \"codex\", \"copilot\", \"hermes\"]\n")
+	cfg := skillTestConfig(t, root, "integrations = [\"antigravity\", \"claude\", \"codex\", \"copilot\", \"hermes\"]\n")
 	plan, err := regestoinstall.Build(cfg, regestoinstall.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -96,17 +96,18 @@ func TestSkillVariantsRenderPerIntegrationWithoutLeakage(t *testing.T) {
 		t.Helper()
 		return mustRead(t, filepath.Join(root, ".state", "integrations", id, "skills", "regesto-search", "SKILL.md"))
 	}
-	claude, codex, copilot, hermes := readRendered("claude"), readRendered("codex"), readRendered("copilot"), readRendered("hermes")
+	antigravity, claude, codex, copilot, hermes := readRendered("antigravity"), readRendered("claude"), readRendered("codex"), readRendered("copilot"), readRendered("hermes")
 	if !bytes.Contains(claude, []byte("$ARGUMENTS")) || !bytes.Contains(claude, []byte("!`")) {
 		t.Fatalf("Claude variant lacks its declared optimization:\n%s", claude)
 	}
-	if !bytes.Equal(codex, copilot) || !bytes.Equal(codex, hermes) {
-		t.Fatalf("portable variants differ:\nCodex:\n%s\nCopilot:\n%s\nHermes:\n%s", codex, copilot, hermes)
+	if !bytes.Equal(antigravity, codex) || !bytes.Equal(codex, copilot) || !bytes.Equal(codex, hermes) {
+		t.Fatalf("portable variants differ:\nAntigravity:\n%s\nCodex:\n%s\nCopilot:\n%s\nHermes:\n%s", antigravity, codex, copilot, hermes)
 	}
+	assertNoPortableSkillLeak(t, "antigravity rendered search", string(antigravity))
 	assertNoPortableSkillLeak(t, "codex rendered search", string(codex))
 	assertNoPortableSkillLeak(t, "copilot rendered search", string(copilot))
 	assertNoPortableSkillLeak(t, "hermes rendered search", string(hermes))
-	for id, target := range map[string]string{"claude": ".claude", "codex": ".codex", "copilot": ".copilot", "hermes": ".hermes"} {
+	for id, target := range map[string]string{"antigravity": ".gemini/antigravity-cli", "claude": ".claude", "codex": ".codex", "copilot": ".copilot", "hermes": ".hermes"} {
 		link := filepath.Join(home, target, "skills", "regesto-search")
 		got, err := os.Readlink(link)
 		if err != nil {

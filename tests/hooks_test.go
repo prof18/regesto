@@ -118,6 +118,47 @@ func TestCopilotHookJSONContextAndFailOpenFraming(t *testing.T) {
 	}
 }
 
+func TestAntigravityHookJSONContextAndFailOpenFraming(t *testing.T) {
+	cfg, cwd := hookConfig(t)
+	stdout, stderr, err := runHookDirect(t, cfg, "antigravity-pre-invocation-v1", hookFixture(t, "antigravity-invocation.json", cwd))
+	if err != nil || stderr != "" {
+		t.Fatalf("Antigravity PreInvocation: err=%v stderr=%q", err, stderr)
+	}
+	var response struct {
+		InjectSteps []struct {
+			EphemeralMessage string `json:"ephemeralMessage"`
+		} `json:"injectSteps"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &response); err != nil {
+		t.Fatalf("Antigravity response is not one JSON object: %q (%v)", stdout, err)
+	}
+	if len(response.InjectSteps) != 1 || !strings.Contains(response.InjectSteps[0].EphemeralMessage, "Hook fixture fact") {
+		t.Fatalf("Antigravity injectSteps missing the scoped index:\n%s", stdout)
+	}
+	for name, payload := range map[string][]byte{
+		"malformed":          hookFixture(t, "malformed.json", cwd),
+		"duplicate key":      []byte(`{"invocationNum":0,"invocationNum":1,"workspacePaths":["` + cwd + `"]}`),
+		"missing workspace":  []byte(`{"invocationNum":0}`),
+		"unusable workspace": []byte(`{"invocationNum":0,"workspacePaths":["/path/that/does/not/exist"]}`),
+	} {
+		stdout, stderr, err = runHookDirect(t, cfg, "antigravity-pre-invocation-v1", payload)
+		if err != nil || stdout != "{}" || stderr == "" {
+			t.Fatalf("%s Antigravity hook: stdout=%q stderr=%q err=%v", name, stdout, stderr, err)
+		}
+	}
+	// Later and unnumbered invocations are not the injection point, and
+	// staying silent about that is correct behaviour, not a failure.
+	for name, payload := range map[string][]byte{
+		"later invocation":      []byte(`{"invocationNum":3,"workspacePaths":["` + cwd + `"]}`),
+		"missing invocationNum": []byte(`{"workspacePaths":["` + cwd + `"]}`),
+	} {
+		stdout, stderr, err = runHookDirect(t, cfg, "antigravity-pre-invocation-v1", payload)
+		if err != nil || stdout != "{}" || stderr != "" {
+			t.Fatalf("%s Antigravity hook: stdout=%q stderr=%q err=%v", name, stdout, stderr, err)
+		}
+	}
+}
+
 func TestAgentContextSurfacesCurrentCycleFailure(t *testing.T) {
 	cfg, cwd := hookConfig(t)
 	failedAt := time.Now().UTC().Add(-2 * time.Hour)
@@ -284,6 +325,10 @@ func TestKnownHookFailuresRemainHostValidAndUnknownProtocolErrors(t *testing.T) 
 	if err != nil || copilot != "{}" {
 		t.Fatalf("Copilot operational failure: stdout=%q err=%v", copilot, err)
 	}
+	antigravity, _, err := runHookDirect(t, cfg, "antigravity-pre-invocation-v1", []byte(`{"invocationNum":0,"workspacePaths":["`+validDir+`"]}`))
+	if err != nil || antigravity != "{}" {
+		t.Fatalf("Antigravity operational failure: stdout=%q err=%v", antigravity, err)
+	}
 	unknown, _, err := runHookDirect(t, cfg, "not-a-protocol", []byte(`{}`))
 	if err == nil || unknown != "" {
 		t.Fatalf("unknown protocol: stdout=%q err=%v", unknown, err)
@@ -325,7 +370,7 @@ func TestHookCompatibilityWrappersForwardAndFailOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
-	for _, relative := range []string{"adapters/claude/hooks/session-start.sh", "adapters/copilot/hooks/session-start.sh", "adapters/hermes/hooks/pre-llm.sh"} {
+	for _, relative := range []string{"adapters/antigravity/hooks/pre-invocation.sh", "adapters/claude/hooks/session-start.sh", "adapters/copilot/hooks/session-start.sh", "adapters/hermes/hooks/pre-llm.sh"} {
 		writeAt(t, root, relative, string(files[relative]))
 		if err := os.Chmod(filepath.Join(root, filepath.FromSlash(relative)), 0o755); err != nil {
 			t.Fatal(err)
@@ -335,6 +380,11 @@ func TestHookCompatibilityWrappersForwardAndFailOpen(t *testing.T) {
 	writeAt(t, root, "bin/regesto-hook", "#!/bin/sh\ncat >/dev/null\nprintf 'plain-context\\n'\n")
 	if err := os.Chmod(engine, 0o755); err != nil {
 		t.Fatal(err)
+	}
+	antigravity := exec.Command(filepath.Join(root, "adapters", "antigravity", "hooks", "pre-invocation.sh"))
+	antigravity.Stdin = strings.NewReader("{malformed")
+	if output, err := antigravity.CombinedOutput(); err != nil || string(output) != "plain-context" {
+		t.Fatalf("Antigravity wrapper: output=%q err=%v", output, err)
 	}
 	claude := exec.Command(filepath.Join(root, "adapters", "claude", "hooks", "session-start.sh"))
 	claude.Stdin = strings.NewReader("{malformed")
@@ -359,6 +409,11 @@ func TestHookCompatibilityWrappersForwardAndFailOpen(t *testing.T) {
 	copilot.Stdin = strings.NewReader("{malformed")
 	if output, err := copilot.CombinedOutput(); err != nil || string(output) != "{}" {
 		t.Fatalf("Copilot wrapper fail-open: output=%q err=%v", output, err)
+	}
+	antigravity = exec.Command(filepath.Join(root, "adapters", "antigravity", "hooks", "pre-invocation.sh"))
+	antigravity.Stdin = strings.NewReader("{malformed")
+	if output, err := antigravity.CombinedOutput(); err != nil || string(output) != "{}" {
+		t.Fatalf("Antigravity wrapper fail-open: output=%q err=%v", output, err)
 	}
 }
 

@@ -17,6 +17,7 @@ type hookGroup struct {
 	owners    []string
 	commands  []string
 	registrar string
+	event     string
 	merge     func([]byte, []string) ([]byte, bool, error)
 }
 
@@ -46,7 +47,7 @@ func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 						return err
 					}
 				}
-			case "claude-settings-json-v1", "copilot-hooks-json-v1":
+			case "antigravity-hooks-json-v1", "claude-settings-json-v1", "copilot-hooks-json-v1":
 				if hook.Settings == "" {
 					return fmt.Errorf("integration %q: hook registrar %s has no target", agent.Name, hook.Registrar)
 				}
@@ -62,6 +63,9 @@ func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 				if g.registrar == "" {
 					g.registrar = hook.Registrar
 					g.merge = mergeClaudeSettings
+					if hook.Registrar == "antigravity-hooks-json-v1" {
+						g.merge = mergeAntigravityHooks
+					}
 					if hook.Registrar == "copilot-hooks-json-v1" {
 						g.merge = mergeCopilotHooks
 					}
@@ -70,9 +74,14 @@ func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 				}
 				g.declared = append(g.declared, hook.Settings)
 				g.owners = append(g.owners, agent.Name)
-				command, _, err := protocolHookCommand(p.KBRoot, sourceRoot, hook.Protocol)
+				command, event, err := protocolHookCommand(p.KBRoot, sourceRoot, hook.Protocol)
 				if err != nil {
 					return fmt.Errorf("integration %q: %w", agent.Name, err)
+				}
+				if g.event == "" {
+					g.event = event
+				} else if g.event != event {
+					return fmt.Errorf("integration %q: hook settings %s shared by incompatible events %s and %s", agent.Name, hook.Settings, g.event, event)
 				}
 				g.commands = append(g.commands, command)
 			default:
@@ -107,7 +116,7 @@ func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 			Owners:          g.owners,
 			DeclaredTargets: g.declared,
 			CanonicalTarget: key,
-			IntendedState:   "all declared SessionStart commands registered once; foreign JSON preserved",
+			IntendedState:   "all declared " + g.event + " commands registered once; foreign JSON preserved",
 			before:          current,
 			desired:         desired,
 			mode:            0o644,
@@ -121,20 +130,20 @@ func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 		}
 		if exists && already {
 			item.Action = "current"
-			item.CurrentState = "all SessionStart commands already registered"
+			item.CurrentState = "all " + g.event + " commands already registered"
 			item.BackupAction = "none"
 			item.DryRun = "leave hook settings byte-for-byte unchanged"
 		} else if exists {
 			item.Action = "update"
 			item.CurrentState = "settings present; one or more commands missing"
 			item.BackupAction = backupDescription(key, true)
-			item.DryRun = "back up settings and append missing SessionStart commands"
+			item.DryRun = "back up settings and append missing " + g.event + " commands"
 		} else {
 			item.Action = "create"
 			item.CurrentState = "settings missing"
 			item.before = nil
 			item.BackupAction = backupDescription(key, false)
-			item.DryRun = "create settings with the declared SessionStart commands"
+			item.DryRun = "create settings with the declared " + g.event + " commands"
 		}
 		p.Items = append(p.Items, item)
 	}
@@ -285,6 +294,65 @@ func mergeCopilotHooks(body []byte, commands []string) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	return out, s.allPresent(commands), nil
+}
+
+// mergeAntigravityHooks registers PreInvocation handlers under the
+// "regesto" hook name in Antigravity's named-hook map. Foreign hook names,
+// foreign keys inside the regesto definition (such as `enabled`), and
+// foreign handler entries are all preserved.
+func mergeAntigravityHooks(body []byte, commands []string) ([]byte, bool, error) {
+	if err := validateUniqueJSON(body); err != nil {
+		return nil, false, err
+	}
+	var root map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&root); err != nil {
+		return nil, false, fmt.Errorf("invalid JSON: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return nil, false, fmt.Errorf("settings must contain exactly one JSON object")
+		}
+		return nil, false, fmt.Errorf("invalid trailing JSON: %w", err)
+	}
+	if root == nil {
+		return nil, false, fmt.Errorf("settings must be a JSON object")
+	}
+	definition, ok := root["regesto"].(map[string]any)
+	if !ok {
+		if root["regesto"] != nil {
+			return nil, false, fmt.Errorf("regesto hook definition must be an object")
+		}
+		definition = map[string]any{}
+		root["regesto"] = definition
+	}
+	handlers, ok := definition["PreInvocation"].([]any)
+	if !ok && definition["PreInvocation"] != nil {
+		return nil, false, fmt.Errorf("regesto.PreInvocation must be an array")
+	}
+	found := map[string]bool{}
+	for _, rawHandler := range handlers {
+		handler, _ := rawHandler.(map[string]any)
+		if command, _ := handler["command"].(string); command != "" {
+			found[command] = true
+		}
+	}
+	allPresent := true
+	for _, command := range commands {
+		if found[command] {
+			continue
+		}
+		allPresent = false
+		handlers = append(handlers, map[string]any{"type": "command", "command": command})
+	}
+	definition["PreInvocation"] = handlers
+	out, err := json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return nil, false, err
+	}
+	return append(out, '\n'), allPresent, nil
 }
 
 func validateUniqueJSON(body []byte) error {

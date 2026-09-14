@@ -108,6 +108,7 @@ payload and emits host-valid context framing. The built-in deterministic paths a
 
 | Hook | Fires | Output behaviour |
 |---|---|---|
+| Antigravity `PreInvocation` | before every model call; injection on the first call of a conversation | JSON `injectSteps` ephemeral message added before the first model turn |
 | Claude `SessionStart` | startup, resume, clear, compact, fork | stdout added as context before the first prompt |
 | Copilot `SessionStart` | first prompt of a new session | JSON `additionalContext` added before the first turn |
 | Hermes `pre_llm_call` | first call for a session | JSON `context` added before the first model turn |
@@ -115,7 +116,7 @@ payload and emits host-valid context framing. The built-in deterministic paths a
 That makes retrieval **deterministic**. The hook does the lookup; the model does not get a
 choice about whether to consult.
 
-- `SessionStart` and the first Hermes `pre_llm_call` → inject the index plus facts scoped
+- `SessionStart`, the first Antigravity `PreInvocation`, and the first Hermes `pre_llm_call` → inject the index plus facts scoped
   to this repo. Cheap, once per session, and the agent starts already knowing what exists.
   This is what `regesto context` prints before protocol framing.
 - `UserPromptSubmit` → a *cheap* keyword match against the index, injecting only matching
@@ -294,6 +295,7 @@ happens in one place, or two machines mint competing vocabulary for the same cla
 
 | Agent | Native store | Scope | Consultation |
 |---|---|---|---|
+| Antigravity CLI | JSONL transcripts + SQLite session store (not harvestable) | global | deterministic when hook registration is current |
 | Claude Code | per-project memory directory | per git repo | deterministic when startup hook is current |
 | Codex CLI | global memory directory | global | instructions + skills |
 | Copilot CLI | SQLite session store (not harvestable) | global | deterministic when startup hook is current |

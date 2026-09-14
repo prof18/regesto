@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "antigravity",
+  "display_name": "Antigravity CLI",
+  "detect": {"paths": ["~/.gemini/antigravity-cli"], "commands": ["agy"]},
+  "skills": {"targets": ["~/.gemini/antigravity-cli/skills"], "variant": "portable"},
+  "instructions": {"targets": ["~/.gemini/GEMINI.md"], "create": true},
+  "hooks": [{"protocol": "antigravity-pre-invocation-v1", "registrar": "antigravity-hooks-json-v1", "settings": "~/.gemini/config/hooks.json"}],
+  "memory": [{"kind": "none"}],
+  "default_trust": "supervised"
+}

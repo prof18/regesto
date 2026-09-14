@@ -92,7 +92,7 @@ func run(args []string) error {
 		return nil
 	case "hook":
 		if len(rest) == 2 && (rest[1] == "--help" || rest[1] == "-h" || rest[1] == "-help") {
-			fmt.Println("Usage: regesto hook <protocol>\n\nRead a host hook request from stdin.\nProtocols: claude-session-start-v1, copilot-session-start-v1, hermes-pre-llm-v1")
+			fmt.Println("Usage: regesto hook <protocol>\n\nRead a host hook request from stdin.\nProtocols: antigravity-pre-invocation-v1, claude-session-start-v1, copilot-session-start-v1, hermes-pre-llm-v1")
 			return nil
 		}
 		cfg, err := loadConfig(*configPath)

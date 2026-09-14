@@ -22,6 +22,9 @@ func failOpenHook(args []string, output, diagnostic io.Writer, cause error) erro
 	}
 	fmt.Fprintf(diagnostic, "regesto hook %s: %v\n", args[0], cause)
 	switch args[0] {
+	case "antigravity-pre-invocation-v1":
+		_, _ = io.WriteString(output, "{}")
+		return nil
 	case "claude-session-start-v1":
 		return nil
 	case "copilot-session-start-v1":

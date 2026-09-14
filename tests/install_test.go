@@ -42,7 +42,7 @@ func materializeInstallHook(t *testing.T, root string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, relative := range []string{"adapters/claude/hooks/session-start.sh", "adapters/copilot/hooks/session-start.sh", "adapters/hermes/hooks/pre-llm.sh"} {
+	for _, relative := range []string{"adapters/antigravity/hooks/pre-invocation.sh", "adapters/claude/hooks/session-start.sh", "adapters/copilot/hooks/session-start.sh", "adapters/hermes/hooks/pre-llm.sh"} {
 		path := filepath.Join(root, filepath.FromSlash(relative))
 		writeAt(t, root, relative, string(files[relative]))
 		if err := os.Chmod(path, 0o755); err != nil {
@@ -296,6 +296,98 @@ func TestCopilotHookRegistrationMergesLosslesslyInFlatLayout(t *testing.T) {
 	}
 	if third.Changes() != 0 {
 		t.Fatalf("nested equivalent command re-registered: %d changes", third.Changes())
+	}
+}
+
+func TestAntigravityHookRegistrationMergesLosslesslyInNamedLayout(t *testing.T) {
+	home := installHome(t)
+	if err := os.MkdirAll(filepath.Join(home, ".gemini", "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	cfg := installConfig(t, root, `"antigravity"`)
+	hookCommand := filepath.Join(root, "adapters", "antigravity", "hooks", "pre-invocation.sh")
+	existing := `{
+  "foreign-linter": {
+    "PostToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [ { "command": "keep-me-foreign" } ]
+      }
+    ]
+  },
+  "regesto": {
+    "enabled": true,
+    "Stop": [ { "command": "keep-me-too" } ]
+  }
+}
+`
+	settings := filepath.Join(home, ".gemini", "config", "hooks.json")
+	if err := os.WriteFile(settings, []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := regestoinstall.Build(cfg, regestoinstall.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hookItem *regestoinstall.Item
+	for i := range plan.Items {
+		if plan.Items[i].Kind == "hook" {
+			hookItem = &plan.Items[i]
+			break
+		}
+	}
+	if hookItem == nil || hookItem.Action != "update" {
+		t.Fatalf("antigravity hook plan = %+v", hookItem)
+	}
+	if _, err := regestoinstall.Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	body := string(mustRead(t, settings))
+	for _, want := range []string{"foreign-linter", "keep-me-foreign", "keep-me-too", `"enabled": true`, hookCommand} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("merged antigravity hooks lost %q:\n%s", want, body)
+		}
+	}
+	var parsed struct {
+		Regesto struct {
+			Enabled       *bool `json:"enabled"`
+			PreInvocation []struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			} `json:"PreInvocation"`
+			Stop []struct {
+				Command string `json:"command"`
+			} `json:"Stop"`
+		} `json:"regesto"`
+	}
+	if err := json.Unmarshal([]byte(body), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Regesto.Enabled == nil || !*parsed.Regesto.Enabled {
+		t.Fatalf("regesto definition lost its enabled key:\n%s", body)
+	}
+	if len(parsed.Regesto.Stop) != 1 || parsed.Regesto.Stop[0].Command != "keep-me-too" {
+		t.Fatalf("regesto definition lost its foreign Stop handler:\n%s", body)
+	}
+	regestoEntries := 0
+	for _, entry := range parsed.Regesto.PreInvocation {
+		if entry.Command == hookCommand {
+			regestoEntries++
+			if entry.Type != "command" {
+				t.Fatalf("antigravity handler is not a command entry: %+v", entry)
+			}
+		}
+	}
+	if regestoEntries != 1 {
+		t.Fatalf("regesto registered %d times, want once", regestoEntries)
+	}
+	second, err := regestoinstall.Build(cfg, regestoinstall.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Changes() != 0 {
+		t.Fatalf("second antigravity plan has %d changes", second.Changes())
 	}
 }
 

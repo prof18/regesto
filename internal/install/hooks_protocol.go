@@ -150,6 +150,8 @@ func shellQuote(value string) string {
 func protocolHookCommand(root, sourceRoot, protocol string) (command, event string, err error) {
 	var relative string
 	switch protocol {
+	case "antigravity-pre-invocation-v1":
+		relative, event = filepath.Join("adapters", "antigravity", "hooks", "pre-invocation.sh"), "PreInvocation"
 	case "claude-session-start-v1":
 		relative, event = filepath.Join("adapters", "claude", "hooks", "session-start.sh"), "SessionStart"
 	case "copilot-session-start-v1":

@@ -19,6 +19,7 @@ doctor` show their resolved local values.
 <!-- regesto:profile-matrix:start -->
 | Profile | Display name | Detection | Skills | Instructions | Hooks | Memory | Exclusions | Default trust |
 |---|---|---|---|---|---|---|---|---|
+| `antigravity` | Antigravity CLI | paths=`~/.gemini/antigravity-cli`; commands=`agy` | variant=`portable`; targets=`~/.gemini/antigravity-cli/skills` | targets=`~/.gemini/GEMINI.md`; create=`true` | `antigravity-pre-invocation-v1` / `antigravity-hooks-json-v1` / `~/.gemini/config/hooks.json` | `none` | none | `supervised` |
 | `claude` | Claude Code | paths=`~/.claude`; commands=`claude` | variant=`claude`; targets=`~/.claude/skills` | targets=`~/.claude/CLAUDE.md`; create=`false` | `claude-session-start-v1` / `claude-settings-json-v1` / `~/.claude/settings.json` | `markdown-glob-v1` / `~/.claude/projects/*/memory` | none | `supervised` |
 | `codex` | Codex | paths=`~/.codex`; commands=`codex` | variant=`portable`; targets=`~/.codex/skills` | targets=`~/.codex/AGENTS.md`; create=`false` | none | `markdown-glob-v1` / `~/.codex/memories` | `raw_memories.md` | `supervised` |
 | `copilot` | GitHub Copilot CLI | paths=`~/.copilot`; commands=`copilot` | variant=`portable`; targets=`~/.copilot/skills` | targets=`~/.copilot/instructions/regesto.instructions.md`; create=`true` | `copilot-session-start-v1` / `copilot-hooks-json-v1` / `~/.copilot/hooks/regesto.json` | `none` | none | `supervised` |
@@ -38,10 +39,20 @@ canonical directory can only carry one skill variant. Its hook registers in a Re
 file (`~/.copilot/hooks/regesto.json`) that both hosts also read. The instructions target is
 created by Regesto (`create: true`) because Copilot does not ship one.
 
+Antigravity declares `memory: none` because its transcripts are JSONL plus SQLite under
+`~/.gemini/antigravity-cli/brain/`, not markdown. Its global skills live in
+`~/.gemini/antigravity-cli/skills`; a repository's `.agents/skills/` is a per-workspace
+surface and not an install target, because these integrations are machine-global and the
+hook resolves per-repo scope from the payload's `workspacePaths`. Its hook registers under
+the `regesto` name in `~/.gemini/config/hooks.json`, a host-owned customization directory
+whose foreign hook names the merge preserves. The instructions target `~/.gemini/GEMINI.md`
+is created by Regesto (`create: true`) because Antigravity does not ship one.
+
 ## Behavior and evidence
 
 | Integration | Consultation path | Guarantee | Evidence in this repository |
 |---|---|---|---|
+| Antigravity CLI | first `PreInvocation` per conversation injects JSON `injectSteps` | deterministic on the first model call when registration is current | protocol, merge, fail-open, and installer contract tests; live-host verification is release evidence |
 | Claude Code | `SessionStart` injects context | deterministic at the declared hook event | protocol, merge, fail-open, and installer contract tests; live-host verification is release evidence |
 | Copilot CLI | `SessionStart` injects JSON `additionalContext` | deterministic at the declared hook event | protocol, merge, fail-open, and installer contract tests; live-host verification is release evidence |
 | Hermes | first `pre_llm_call` per session injects JSON context | deterministic on the first turn when registration is current | protocol, session-bound, YAML recipe, allowlist, and installer contract tests; live-host verification is release evidence |

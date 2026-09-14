@@ -41,7 +41,7 @@ Regesto can find the previous claim exactly instead of relying on fuzzy similari
 
 ## Quick start
 
-This path is for the built-in **Claude Code**, **Codex**, **Copilot**, and **Hermes** integrations.
+This path is for the built-in **Antigravity**, **Claude Code**, **Codex**, **Copilot**, and **Hermes** integrations.
 For another client, skip to [Connect another agent](#connect-another-agent).
 
 ### 1. Install Regesto
@@ -68,7 +68,7 @@ During initialization, Regesto detects supported agents installed on this machin
 adds them to `config.toml`. Check that the list matches the agents you want to connect:
 
 ```toml
-integrations = ["claude", "codex", "copilot", "hermes"]
+integrations = ["antigravity", "claude", "codex", "copilot", "hermes"]
 ```
 
 Keep only the integrations you use. Detection is an initial suggestion, not a permanent
@@ -106,12 +106,13 @@ optional.
 
 | Agent | How it consults Regesto | Setup notes |
 |---|---|---|
+| Antigravity | A first-invocation hook injects relevant context as JSON steps before the first model call of each conversation | [Antigravity setup](docs/setup-antigravity.md) |
 | Claude Code | A session-start hook injects relevant context automatically | [Claude Code setup](docs/setup-claude-code.md) |
 | Hermes | A first-turn hook injects relevant context when its hook registration is current | [Hermes setup](docs/setup-hermes.md) |
 | Copilot | A session-start hook injects relevant context as JSON before the first turn; the same install covers Copilot in VS Code | [Copilot setup](docs/setup-copilot.md) |
 | Codex | Persistent instructions tell it when to search; skills provide the search and write procedures | [Codex setup](docs/setup-codex.md) |
 
-Claude, Copilot, and Hermes can enforce consultation at their supported hook boundaries. Codex has
+Antigravity, Claude, Copilot, and Hermes can enforce consultation at their supported hook boundaries. Codex has
 no equivalent built-in startup hook, so its consultation is instruction-driven. The
 [integration matrix](docs/agent-integration.md) contains the exact capability reference.
 
@@ -152,7 +153,7 @@ and `regesto cycle` with your preferred job runner.
 
 When a cycle is failing, `regesto context` on the machine that runs it puts the failure
 reason and start time at the top of agent context and tells the agent to treat generated
-indexes as stale. Claude, Copilot, and Hermes receive that warning through their context hooks.
+indexes as stale. Antigravity, Claude, Copilot, and Hermes receive that warning through their context hooks.
 Codex has no startup hook, so use `regesto context` or `regesto schedule status` when
 diagnosing its instance.
 

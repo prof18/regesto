@@ -20,6 +20,30 @@ const maxPayloadBytes = 1 << 20
 func Run(cfg *config.Config, protocol string, input io.Reader, output, diagnostic io.Writer) error {
 	payload, readErr := readPayload(input)
 	switch protocol {
+	case "antigravity-pre-invocation-v1":
+		// Antigravity parses hook stdout as one JSON object and injects
+		// a top-level injectSteps array into the trajectory before the
+		// model is called. Every failure path answers with an empty
+		// object: the invocation must still proceed.
+		response := []byte("{}")
+		if readErr != nil {
+			diagnose(diagnostic, protocol, readErr)
+		} else if context, err := runAntigravity(cfg, payload); err != nil {
+			diagnose(diagnostic, protocol, err)
+		} else if context != "" {
+			response, err = json.Marshal(struct {
+				InjectSteps []map[string]string `json:"injectSteps"`
+			}{InjectSteps: []map[string]string{{"ephemeralMessage": context}}})
+			if err != nil {
+				diagnose(diagnostic, protocol, err)
+				response = []byte("{}")
+			}
+		}
+		if _, err := output.Write(response); err != nil {
+			diagnose(diagnostic, protocol, err)
+		}
+		return nil
+
 	case "claude-session-start-v1":
 		if readErr != nil {
 			diagnose(diagnostic, protocol, readErr)

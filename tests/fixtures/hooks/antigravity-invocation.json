@@ -1,0 +1,9 @@
+{
+  "invocationNum": 0,
+  "initialNumSteps": 1,
+  "conversationId": "fixture-conversation",
+  "workspacePaths": ["{{cwd}}"],
+  "transcriptPath": "/tmp/fixture/transcript_full.jsonl",
+  "artifactDirectoryPath": "/tmp/fixture/artifacts",
+  "modelName": "gemini-3.8-flash-high"
+}

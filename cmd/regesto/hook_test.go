@@ -12,6 +12,7 @@ func TestHookConfigFailuresUseHostValidFraming(t *testing.T) {
 		protocol string
 		want     string
 	}{
+		{protocol: "antigravity-pre-invocation-v1", want: "{}"},
 		{protocol: "claude-session-start-v1", want: ""},
 		{protocol: "copilot-session-start-v1", want: "{}"},
 		{protocol: "hermes-pre-llm-v1", want: "{}"},
