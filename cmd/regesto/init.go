@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -29,6 +31,7 @@ func runInit(args []string) error {
 	machine := fs.String("machine", "", "short name for this machine (default: derived from the hostname)")
 	force := fs.Bool("force", false, "write into a directory that already has a config.toml")
 	examples := fs.Bool("examples", false, "populate knowledge/facts/ with the example facts")
+	integrations := fs.String("integrations", "", "comma-separated integration ids to configure, skipping the interactive picker; \",\" alone configures none")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -47,8 +50,53 @@ func runInit(args []string) error {
 	}
 
 	configPath := filepath.Join(root, config.FileName)
-	if _, err := os.Stat(configPath); err == nil && !*force {
-		return fmt.Errorf("%s already exists — this looks like an instance already; pass --force to write anyway", configPath)
+	configExists := false
+	if _, err := os.Stat(configPath); err == nil {
+		configExists = true
+		if !*force {
+			return fmt.Errorf("%s already exists — this looks like an instance already; pass --force to write anyway", configPath)
+		}
+		if *integrations != "" {
+			// An explicit flag that cannot take effect must not be swallowed.
+			return fmt.Errorf("--force keeps the existing config.toml, so --integrations has no effect — edit config.toml instead, or drop --force")
+		}
+	}
+
+	// Choose the integrations before anything is written: a user forbidden
+	// from a tool must be able to opt out here, and aborting the picker must
+	// leave the directory untouched. The picker appears when stdin and stdout
+	// are a terminal; anything else — pipes, CI — gets today's non-interactive
+	// behavior. Automation that allocates a pty (expect, Ansible pty: yes)
+	// reads as a terminal, so it must pass --integrations, which skips the
+	// picker entirely.
+	//
+	// Over an existing config (--force) the config file is kept, so there is
+	// nothing to choose — prompting would discard the user's answer.
+	detected := adapters.Detect()
+	chosen := detected
+	note := "(detected)"
+	if !configExists {
+		if *integrations != "" {
+			var err error
+			chosen, err = parseIntegrationsFlag(*integrations)
+			if err != nil {
+				return err
+			}
+			note = "(via --integrations)"
+		} else if len(detected) > 0 {
+			picked, err := selectIntegrations(os.Stdin, os.Stdout, detected)
+			switch {
+			case err == nil:
+				chosen = picked
+				note = "(selected)"
+			case errors.Is(err, errAborted):
+				return fmt.Errorf("%w — nothing written", errAborted)
+			case errors.Is(err, errNotATerminal):
+				// Scripted context: configure everything detected, as before.
+			default:
+				return err
+			}
+		}
 	}
 
 	// The tree. .gitkeep in every directory that would otherwise be empty,
@@ -102,13 +150,19 @@ func runInit(args []string) error {
 	}
 	fmt.Printf("  machine %s (%s) → .state/machine\n", name, origin)
 
-	detected := adapters.Detect()
-	if len(detected) > 0 {
-		fmt.Printf("  integrations  %s (detected) → config.toml\n", strings.Join(detected, ", "))
-	} else {
-		fmt.Println("  integrations  none detected — set `integrations` in config.toml once you have one")
+	// The integrations line reports a write to config.toml; when the config
+	// is being kept, printing one would describe a write that never happens.
+	if !configExists {
+		switch {
+		case len(chosen) > 0:
+			fmt.Printf("  integrations  %s %s → config.toml\n", strings.Join(chosen, ", "), note)
+		case len(detected) > 0:
+			fmt.Println("  integrations  none selected — set `integrations` in config.toml later")
+		default:
+			fmt.Println("  integrations  none detected — set `integrations` in config.toml once you have one")
+		}
 	}
-	if err := writeIfAbsent(root, config.FileName, instanceConfig(detected)); err != nil {
+	if err := writeIfAbsent(root, config.FileName, instanceConfig(chosen)); err != nil {
 		return err
 	}
 	if err := writeIfAbsent(root, ".gitignore", gitignoreTemplate); err != nil {
@@ -260,22 +314,22 @@ func writeIfAbsent(root, name, body string) error {
 	return nil
 }
 
-// instanceConfig renders the commented config.toml template. detected is what
-// adapters.Detect() found on this machine at init time — the whole point of
-// detecting instead of hardcoding a pair is that this list grows the moment
-// the engine ships a new adapter, with no line here to update.
-func instanceConfig(detected []string) string {
+// instanceConfig renders the commented config.toml template. chosen is what
+// the picker, --integrations or plain detection settled on — the ids that go
+// into the active config line.
+func instanceConfig(chosen []string) string {
 	return `# Regesto instance configuration.
 #
 # Everything machine- or person-specific lives here, never in the engine. Run
 # ` + "`regesto config`" + ` to see what these resolve to.
 
-# Integrations to install and harvest. init detected these as present on this
-# machine — edit freely. A configured integration may be absent on a particular
-# machine; ` + "`regesto doctor`" + ` reports configured and detected state separately.
+# Integrations to install and harvest. init listed what it detected on this
+# machine and you chose which to manage — edit freely. A configured
+# integration may be absent on a particular machine; ` + "`regesto doctor`" + ` reports
+# configured and detected state separately.
 # An integration present but not listed remains unmanaged, which is why
 # ` + "`regesto upgrade`" + ` mentions newly detected profiles.
-` + integrationsLine(detected) + `
+` + integrationsLine(chosen) + `
 
 # Machine identity is NOT set here. This file sits at the KB root, which a sync
 # client replicates, so a value here would be identical on every machine — while
@@ -369,15 +423,36 @@ func instanceConfig(detected []string) string {
 
 // integrationsLine renders the canonical `integrations = [...]` config line.
 // Keep the empty list active so the generated config is explicit.
-func integrationsLine(detected []string) string {
-	if len(detected) == 0 {
-		return "integrations = []   # no known integration detected — add yours here"
+func integrationsLine(chosen []string) string {
+	if len(chosen) == 0 {
+		return "integrations = []   # none chosen — add yours here"
 	}
-	quoted := make([]string, len(detected))
-	for i, a := range detected {
+	quoted := make([]string, len(chosen))
+	for i, a := range chosen {
 		quoted[i] = `"` + a + `"`
 	}
 	return "integrations = [" + strings.Join(quoted, ", ") + "]"
+}
+
+// parseIntegrationsFlag parses the --integrations value: comma-separated ids,
+// validated against the engine's known profiles so a typo cannot silently
+// configure an integration that will never install or harvest.
+func parseIntegrationsFlag(raw string) ([]string, error) {
+	known := adapters.KnownAgents()
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		id := strings.TrimSpace(part)
+		if id == "" {
+			continue
+		}
+		if !slices.Contains(known, id) {
+			return nil, fmt.Errorf("unknown integration %q — known: %s", id, strings.Join(known, ", "))
+		}
+		if !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 const gitignoreTemplate = `# macOS noise
