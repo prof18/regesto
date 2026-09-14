@@ -37,6 +37,7 @@ Maintain your knowledge base
 Set up and troubleshoot
   init         Create a knowledge base. Start with: regesto init --dir <path>
   install      Set up agent skills, instructions, and hooks.
+  integrations Add or remove integrations in config.toml.
   doctor       Check integrations and show what needs attention.
   upgrade      Refresh the files managed by Regesto in this instance.
   schedule     Manage scheduled runs: status, print, install, uninstall.
@@ -142,6 +143,8 @@ func run(args []string) error {
 		return runMCP(cfg, rest[1:])
 	case "install":
 		return runInstall(cfg, rest[1:])
+	case "integrations":
+		return runIntegrations(cfg, rest[1:])
 	case "doctor":
 		return runDoctor(cfg, rest[1:])
 	case "harvest":

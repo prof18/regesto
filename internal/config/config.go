@@ -263,6 +263,103 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
+// RewriteIntegrations replaces the active top-level `integrations = [...]`
+// line in a config body with list, leaving every other byte — comments
+// included — untouched. It is the writing counterpart of Load for the one line
+// a command is allowed to manage, and mirrors Load's reading semantics: with
+// duplicate active lines the last one is the effective one, so it is the one
+// replaced. A body with no active line (a hand-rolled config) gets one
+// inserted before the first `[table]` header — TOML requires top-level keys to
+// precede tables — or at the end when there are no tables.
+//
+// Callers must verify the result still parses before replacing a live file;
+// this function only edits text.
+func RewriteIntegrations(body string, list []string) string {
+	quoted := make([]string, len(list))
+	for i, id := range list {
+		quoted[i] = `"` + id + `"`
+	}
+	replacement := "integrations = [" + strings.Join(quoted, ", ") + "]"
+
+	lines := strings.Split(body, "\n")
+	target, firstSection := -1, -1
+	inTable := false
+	for i, raw := range lines {
+		code := strings.TrimSpace(stripComment(raw))
+		if code == "" {
+			continue
+		}
+		if strings.HasPrefix(code, "[") && strings.HasSuffix(code, "]") {
+			if firstSection < 0 {
+				firstSection = i
+			}
+			inTable = true
+			continue
+		}
+		if inTable {
+			continue
+		}
+		if key, _, ok := strings.Cut(code, "="); ok && unquote(strings.TrimSpace(key)) == "integrations" {
+			target = i
+		}
+	}
+	if target >= 0 {
+		lines[target] = replacement
+		return strings.Join(lines, "\n")
+	}
+	at := len(lines)
+	if firstSection >= 0 {
+		at = firstSection
+	} else if n := len(lines); n > 0 && lines[n-1] == "" {
+		at = n - 1 // body ends with a newline; keep it last
+	}
+	out := make([]string, 0, len(lines)+1)
+	out = append(out, lines[:at]...)
+	out = append(out, replacement)
+	out = append(out, lines[at:]...)
+	return strings.Join(out, "\n")
+}
+
+// RemoveIntegrationSections deletes the active `[integrations.<id>]` table for
+// each listed id — its header and every line up to the next section header —
+// and reports which ids actually had a section dropped. A removal from the
+// integrations list must also drop the id's override table: adapters.Resolve
+// rejects a section naming an unlisted integration, which would stop every
+// command from loading the config at all. Commented-out headers are comments,
+// not sections, and stay.
+func RemoveIntegrationSections(body string, ids ...string) (string, []string) {
+	if len(ids) == 0 {
+		return body, nil
+	}
+	drop := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		drop["integrations."+id] = true
+	}
+	var dropped []string
+	skipping := ""
+	lines := strings.Split(body, "\n")
+	out := make([]string, 0, len(lines))
+	for _, raw := range lines {
+		code := strings.TrimSpace(stripComment(raw))
+		if strings.HasPrefix(code, "[") && strings.HasSuffix(code, "]") {
+			name := strings.TrimSpace(code[1 : len(code)-1])
+			if drop[name] {
+				if skipping != name {
+					dropped = append(dropped, strings.TrimPrefix(name, "integrations."))
+				}
+				skipping = name
+				continue
+			}
+			skipping = "" // a new header always ends a dropped section
+		}
+		if skipping != "" {
+			continue
+		}
+		out = append(out, raw)
+	}
+	return strings.Join(out, "\n"), dropped
+}
+
 // MachineFile is the per-machine identity file, inside the unsynced .state/
 // directory.
 const MachineFile = "machine"

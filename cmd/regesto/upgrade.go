@@ -245,7 +245,8 @@ func upgradePlanSourceRoot(root string, changes, removals []manifest.Change, for
 // This only ever prints. config.toml is the one file upgrade never writes to
 // — "everything machine- or person-specific lives here, never in the engine"
 // — so silently appending to `agents` would be the one place upgrade crossed
-// that line. The user adds it themselves if they want it managed.
+// that line. The user adds it with `regesto integrations add` if they want it
+// managed.
 func noteNewAgents(cfg *config.Config) {
 	have := make(map[string]bool, len(cfg.IntegrationIDs()))
 	for _, a := range cfg.IntegrationIDs() {
@@ -265,8 +266,8 @@ func noteNewAgents(cfg *config.Config) {
 	if len(missing) == 0 {
 		return
 	}
-	fmt.Printf("note     %s detected but not in integrations = [...] in config.toml — add it yourself to have this instance manage it\n\n",
-		strings.Join(missing, ", "))
+	fmt.Printf("note     %s detected but not in integrations = [...] in config.toml — add them with: regesto integrations add %s\n\n",
+		strings.Join(missing, ", "), strings.Join(missing, " "))
 }
 
 // reinstallAdapters calls the same Go planner/applicator as `regesto install`.
