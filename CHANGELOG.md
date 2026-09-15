@@ -4,6 +4,25 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — the local release scripts read it from here and refuse to prepare
 or publish a version that has no section, so this file cannot fall behind.
 
+## 0.6.0
+
+**You can now import the memory your agents already have.** Until now the first harvest
+only noted existing memory as a starting point and collected what changed after it, so
+anything written before Regesto never reached the knowledge base. Run
+`regesto harvest --backfill` once to copy that memory into `inbox/`, or name agents to
+limit it, for example `regesto harvest --backfill claude`. The notes wait in the inbox
+until the next `regesto cycle` turns them into facts, so you can look through them first.
+Running it again does not import the same files twice. Scheduled harvests never import on
+their own.
+
+`regesto init` now offers the import right after you pick your agents, showing how many
+memory files each one has. Harvest reads Claude Code, Codex, and Hermes memory; Copilot and
+Antigravity keep no memory files.
+
+On a machine that was already harvesting, the import can include notes an earlier harvest
+collected. The normalizer skips facts it already has, so expect a longer first cycle rather
+than duplicate facts.
+
 ## 0.5.0
 
 **Two new built-in integrations: GitHub Copilot CLI and Antigravity CLI.** Both inject
