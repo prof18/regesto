@@ -320,8 +320,8 @@ func TestNoneAndUnsupportedMemoryKindsAreExplicit(t *testing.T) {
 		body string
 		want string
 	}{
-		{name: "none", body: "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\n", want: "kind none"},
-		{name: "unsupported", body: "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\nmemory_kind = \"sqlite-v1\"\n", want: "unsupported memory kind"},
+		{name: "none", body: "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\n", want: "no memory files to collect"},
+		{name: "unsupported", body: "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\nmemory_kind = \"sqlite-v1\"\n", want: "isn't supported"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := loadHarvestConfig(t, t.TempDir(), test.body)
@@ -429,7 +429,7 @@ func TestHarvestSkipsSymlinkedMarkdownEntries(t *testing.T) {
 	if got := captured(results); len(got) != 0 {
 		t.Fatalf("symlink capture = %v", got)
 	}
-	if len(results) != 1 || len(results[0].Skipped) != 1 || !strings.Contains(results[0].Skipped[0], "symlinked") {
+	if len(results) != 1 || len(results[0].Skipped) != 1 || !strings.Contains(results[0].Skipped[0], "symlink") {
 		t.Fatalf("symlink skip result = %#v", results)
 	}
 	if got, err := os.ReadFile(foreign); err != nil || string(got) != "do not capture" {

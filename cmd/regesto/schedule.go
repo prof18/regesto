@@ -21,6 +21,7 @@ import (
 // write authority lives.
 type job struct {
 	label        string
+	title        string // what the job does, in plain words
 	args         []string
 	interval     int // seconds
 	everyMachine bool
@@ -31,16 +32,18 @@ func jobs(cfg *config.Config) []job {
 	return []job{
 		{
 			label:        "com.regesto.harvest",
+			title:        "Collect agent memories",
 			args:         []string{"harvest"},
 			interval:     900, // 15 minutes
 			everyMachine: true,
-			why:          "captures native memory; the interval is the loss window for the prune race",
+			why:          "collects new agent memories into the inbox",
 		},
 		{
 			label:    "com.regesto.cycle",
+			title:    "Process the inbox and commit",
 			args:     []string{"cycle"},
 			interval: 3600,
-			why:      "normalise, reconcile, rebuild, commit — only where write authority lives",
+			why:      "turns inbox notes into facts, tidies them, rebuilds the index and commits",
 		},
 	}
 }
@@ -48,7 +51,13 @@ func jobs(cfg *config.Config) []job {
 func runSchedule(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("schedule", flag.ContinueOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "Usage: regesto schedule [status|print|install|uninstall]\n\n  status     Show jobs and cycle health (default).\n  print      Print launchd job definitions.\n  install    Install scheduled harvest and cycle jobs.\n  uninstall  Remove this instance's scheduled jobs.")
+		fmt.Fprintln(fs.Output(), "Usage: regesto schedule [status|install|uninstall|print]\n\n"+
+			"Run Regesto in the background: collect agent memories every 15 minutes and\n"+
+			"process the inbox every hour (macOS launchd).\n\n"+
+			"  status     Show the jobs and when processing last worked (default).\n"+
+			"  install    Start the background jobs.\n"+
+			"  uninstall  Stop and remove them.\n"+
+			"  print      Print the job files, e.g. to adapt them for cron or systemd.")
 	}
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -81,7 +90,7 @@ func runSchedule(cfg *config.Config, args []string) error {
 	case "uninstall":
 		return scheduleUninstall(cfg)
 	default:
-		return fmt.Errorf("unknown action %q; use status, print, install or uninstall", action)
+		return fmt.Errorf("unknown action %q; use status, install, uninstall or print", action)
 	}
 }
 
@@ -107,7 +116,7 @@ func schedulePath(cfg *config.Config, bin string) string {
 	dirs = append(dirs, filepath.SplitList(cfg.Section("schedule")["extra_path"])...)
 	dirs = append(dirs, filepath.Dir(bin))
 
-	commands := normalize.Commands("", cfg.Section("normalize")["commands"])
+	commands := normalize.CommandsFor("", cfg.Section("normalize")["commands"], cfg.IntegrationIDs())
 	if command := strings.TrimSpace(cfg.Section("notify")["command"]); command != "" {
 		commands = append(commands, command)
 	}
@@ -187,33 +196,23 @@ func plist(cfg *config.Config, j job, bin string) string {
 }
 
 func scheduleStatus(cfg *config.Config, isLintHost bool) error {
-	fmt.Printf("machine %s (from %s)\n", cfg.Machine, cfg.MachineSource)
-	// Which engine an install would schedule. Reported rather than fatal: a
-	// status that refuses to print because no binary is installed yet is the
-	// least useful moment to withhold the rest of it.
-	if bin, err := engineBinary(cfg); err == nil {
-		fmt.Printf("engine  %s\n", bin)
-	} else {
-		fmt.Printf("engine  none usable — %v\n", err)
-	}
+	fmt.Printf("Background jobs on %s\n\n", cfg.Machine)
 	if runtime.GOOS != "darwin" {
-		fmt.Printf("scheduling here targets launchd; on %s use cron or a systemd timer with the same two commands\n", runtime.GOOS)
+		fmt.Printf("  Background jobs use launchd, which %s doesn't have. Run `regesto schedule print`\n  and set up the same two commands with cron or a systemd timer.\n\n", runtime.GOOS)
 	}
-	fmt.Println()
-	fmt.Println("jobs:")
 	for _, j := range jobs(cfg) {
 		if !j.everyMachine && !isLintHost {
-			fmt.Printf("  %-20s not for this machine — [roles].lint names another host\n", j.label)
+			fmt.Printf("  %-30s runs on another machine (see [roles] in config.toml)\n", j.title)
 			continue
 		}
 		state := "not installed"
 		if _, err := os.Stat(plistPath(j.label)); err == nil {
-			state = "installed"
+			state = "installed, not running"
 			if out, err := exec.Command("launchctl", "list", j.label).Output(); err == nil && len(out) > 0 {
-				state = "installed and loaded"
+				state = "running"
 			}
 		}
-		fmt.Printf("  %-20s every %4ds  %s\n", j.label, j.interval, state)
+		fmt.Printf("  %-30s %-16s %s\n", j.title, every(j.interval), state)
 	}
 
 	// Installed is not the same as working, and the difference is the whole
@@ -221,29 +220,50 @@ func scheduleStatus(cfg *config.Config, isLintHost bool) error {
 	// /notify), but a job that never fires — unloaded, or holding a path to an
 	// engine that has moved — reports nothing at all. A stale last clean pass is
 	// the only evidence of that, so print it whether or not anything is wrong.
+	fmt.Println()
 	if isLintHost {
-		fmt.Println()
-		fmt.Println("health:")
 		if s, ok := notify.Load(cfg, "cycle"); ok {
 			now := time.Now().UTC()
 			switch {
 			case s.Failing:
-				fmt.Printf("  %-20s FAILING for %s\n", "cycle health", ago(now.Sub(s.Since)))
+				fmt.Printf("  Last processing   FAILING for %s; run `regesto cycle` to see the error\n", ago(now.Sub(s.Since)))
 			case s.LastOK.IsZero():
-				fmt.Printf("  %-20s no clean pass recorded yet\n", "cycle health")
+				fmt.Println("  Last processing   no successful run yet")
 			default:
-				fmt.Printf("  %-20s last clean pass %s ago\n", "cycle health", ago(now.Sub(s.LastOK)))
+				fmt.Printf("  Last processing   worked %s ago\n", ago(now.Sub(s.LastOK)))
 			}
 		} else {
-			fmt.Printf("  %-20s no pass recorded yet on this machine\n", "cycle health")
+			fmt.Println("  Last processing   hasn't run on this machine yet")
 		}
-		if !notify.Enabled(cfg) {
-			fmt.Println()
-			fmt.Println("alerts:")
-			fmt.Printf("  %-20s not configured or off — agent context still reports failures; see [notify]\n", "external alerts")
+		if notify.Enabled(cfg) {
+			fmt.Println("  Failure alerts    on")
+		} else {
+			fmt.Println("  Failure alerts    off (agents still see failures; set [notify] in config.toml for alerts)")
 		}
 	}
+	// Which engine an install would schedule. Reported rather than fatal: a
+	// status that refuses to print because no binary is installed yet is the
+	// least useful moment to withhold the rest of it.
+	if bin, err := engineBinary(cfg); err == nil {
+		fmt.Printf("  Regesto command   %s\n", tildePath(bin))
+	} else {
+		fmt.Printf("  Regesto command   not found: %v\n", err)
+	}
 	return nil
+}
+
+// every renders a job interval as "every 15 min" or "every hour".
+func every(seconds int) string {
+	switch {
+	case seconds == 3600:
+		return "every hour"
+	case seconds%3600 == 0:
+		return fmt.Sprintf("every %d hours", seconds/3600)
+	case seconds%60 == 0:
+		return fmt.Sprintf("every %d min", seconds/60)
+	default:
+		return fmt.Sprintf("every %ds", seconds)
+	}
 }
 
 // ago renders a duration the way someone reading a status line wants it: one
@@ -263,7 +283,7 @@ func ago(d time.Duration) string {
 
 func scheduleInstall(cfg *config.Config, isLintHost bool) error {
 	if runtime.GOOS != "darwin" {
-		return fmt.Errorf("install targets launchd and this is %s; run `regesto schedule print` and adapt the two commands to cron or a systemd timer", runtime.GOOS)
+		return fmt.Errorf("background jobs use macOS launchd, which %s doesn't have; run `regesto schedule print` and set up the same two commands with cron or a systemd timer", runtime.GOOS)
 	}
 	bin, err := engineBinary(cfg)
 	if err != nil {
@@ -278,7 +298,7 @@ func scheduleInstall(cfg *config.Config, isLintHost bool) error {
 
 	for _, j := range jobs(cfg) {
 		if !j.everyMachine && !isLintHost {
-			fmt.Printf("skip    %s — [roles].lint names another machine\n", j.label)
+			fmt.Printf("Skipped   %s: it runs on another machine (see [roles] in config.toml)\n", j.title)
 			continue
 		}
 		path := plistPath(j.label)
@@ -288,16 +308,17 @@ func scheduleInstall(cfg *config.Config, isLintHost bool) error {
 		// Unload first so a re-install picks up a changed interval or path.
 		_ = exec.Command("launchctl", "unload", path).Run()
 		if out, err := exec.Command("launchctl", "load", path).CombinedOutput(); err != nil {
-			return fmt.Errorf("loading %s: %v: %s", j.label, err, strings.TrimSpace(string(out)))
+			return fmt.Errorf("starting %s (%s): %v: %s", j.title, j.label, err, strings.TrimSpace(string(out)))
 		}
-		fmt.Printf("loaded  %s — every %ds\n", j.label, j.interval)
+		fmt.Printf("Started   %s, %s\n", j.title, every(j.interval))
 	}
-	fmt.Printf("engine  %s\n", bin)
-	fmt.Printf("logs in %s\n", filepath.Join(cfg.KBRoot, ".state", cfg.Machine, "logs"))
+	fmt.Printf("\nUsing   %s\n", tildePath(bin))
+	fmt.Printf("Logs    %s\n", tildePath(filepath.Join(cfg.KBRoot, ".state", cfg.Machine, "logs")))
 	return nil
 }
 
 func scheduleUninstall(cfg *config.Config) error {
+	removed := 0
 	for _, j := range jobs(cfg) {
 		path := plistPath(j.label)
 		if _, err := os.Stat(path); err != nil {
@@ -307,7 +328,11 @@ func scheduleUninstall(cfg *config.Config) error {
 		if err := os.Remove(path); err != nil {
 			return err
 		}
-		fmt.Printf("removed %s\n", j.label)
+		fmt.Printf("Removed   %s\n", j.title)
+		removed++
+	}
+	if removed == 0 {
+		fmt.Println("No background jobs were installed.")
 	}
 	return nil
 }

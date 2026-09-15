@@ -17,6 +17,6 @@ func runIndex(cfg *config.Config) error {
 	if err := index.Write(cfg.KBRoot, r); err != nil {
 		return err
 	}
-	fmt.Printf("indexed %d fact(s): INDEX.md + %d topic page(s) rebuilt\n", len(all), len(r.TopicPages))
+	fmt.Printf("Rebuilt INDEX.md and %s from %s.\n", plural(len(r.TopicPages), "topic page"), plural(len(all), "fact"))
 	return nil
 }

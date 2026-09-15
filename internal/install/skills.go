@@ -497,14 +497,14 @@ func planRenderedSkill(p *Plan, canonicalRoot string, rendered integrationRender
 	markerItem := Item{
 		ID: "skill-render:" + rendered.agent.Name + ":" + source.name + ":.regesto-owned", Kind: "skill-render",
 		Owners: []string{rendered.agent.Name}, DeclaredTargets: []string{markerTarget}, CanonicalTarget: markerCanonical,
-		IntendedState: "Regesto ownership marker for integration-specific generated skill", desired: marker, mode: 0o600,
+		IntendedState: "marker file for Regesto's copy of this skill", desired: marker, mode: 0o600,
 	}
 	current, readErr := os.ReadFile(markerCanonical)
 	switch {
 	case readErr == nil && bytes.Equal(current, marker):
 		markerOwned = true
-		markerItem.Action, markerItem.CurrentState = "current", "ownership marker current"
-		markerItem.BackupAction, markerItem.DryRun = "none", "leave ownership marker unchanged"
+		markerItem.Action, markerItem.CurrentState = "current", "up to date"
+		markerItem.BackupAction, markerItem.DryRun = "none", "no change"
 	case readErr == nil:
 		return fmt.Errorf("refuse rendered skill stage with mismatched ownership marker: %s", markerCanonical)
 	case os.IsNotExist(readErr):
@@ -515,8 +515,8 @@ func planRenderedSkill(p *Plan, canonicalRoot string, rendered integrationRender
 		if !adoptable {
 			return fmt.Errorf("refuse unowned rendered skill directory with unexpected files: %s", dir)
 		}
-		markerItem.Action, markerItem.CurrentState = "create", "ownership marker missing"
-		markerItem.BackupAction, markerItem.DryRun = "none (Regesto-owned stage)", "create integration skill ownership marker"
+		markerItem.Action, markerItem.CurrentState = "create", "not created yet"
+		markerItem.BackupAction, markerItem.DryRun = "none", "create the marker file"
 	default:
 		return readErr
 	}
@@ -543,18 +543,18 @@ func planRenderedSkill(p *Plan, canonicalRoot string, rendered integrationRender
 		item := Item{
 			ID: "skill-render:" + rendered.agent.Name + ":" + source.name + ":" + filepath.ToSlash(rel), Kind: "skill-render",
 			Owners: []string{rendered.agent.Name}, DeclaredTargets: []string{target}, CanonicalTarget: canonical,
-			IntendedState: "portable skill rendered for integration " + rendered.agent.Name + " with variant " + rendered.variant,
+			IntendedState: "copy of the skill prepared for " + rendered.agent.Name,
 			desired:       body, mode: 0o644, ownership: marker, ownershipTarget: markerCanonical,
 		}
 		current, err := os.ReadFile(canonical)
 		switch {
 		case err == nil && bytes.Equal(current, body):
-			item.Action, item.CurrentState, item.BackupAction, item.DryRun = "current", "rendered file current", "none", "leave rendered skill file unchanged"
+			item.Action, item.CurrentState, item.BackupAction, item.DryRun = "current", "up to date", "none", "no change"
 		case err == nil:
-			item.Action, item.CurrentState, item.BackupAction, item.DryRun = "update", "rendered file stale", "none (Regesto-owned stage)", "refresh Regesto-owned rendered skill file"
+			item.Action, item.CurrentState, item.BackupAction, item.DryRun = "update", "out of date", "none", "update Regesto's copy of the skill"
 			item.before = current
 		case os.IsNotExist(err):
-			item.Action, item.CurrentState, item.BackupAction, item.DryRun = "create", "rendered file missing", "none (target does not exist)", "create integration-specific rendered skill file"
+			item.Action, item.CurrentState, item.BackupAction, item.DryRun = "create", "not created yet", "none", "create Regesto's copy of the skill"
 		default:
 			return err
 		}
@@ -614,8 +614,8 @@ func planStaleSkillDirs(p *Plan, stage, canonicalStage string, sources []skillSo
 		if markerErr != nil || !bytes.Equal(marker, markerWant) {
 			p.Items = append(p.Items, Item{
 				ID: "skill-render-preserve:" + canonical, Kind: "skill-render", Action: "skip", Owners: []string{},
-				DeclaredTargets: []string{target}, CanonicalTarget: canonical, CurrentState: "unshipped stage directory without a matching Regesto ownership marker",
-				IntendedState: "foreign directory preserved", BackupAction: "none", DryRun: "leave unowned stage directory unchanged",
+				DeclaredTargets: []string{target}, CanonicalTarget: canonical, CurrentState: "folder not created by Regesto",
+				IntendedState: "left alone", BackupAction: "none", DryRun: "no change",
 			})
 			continue
 		}
@@ -625,8 +625,8 @@ func planStaleSkillDirs(p *Plan, stage, canonicalStage string, sources []skillSo
 		}
 		p.Items = append(p.Items, Item{
 			ID: "skill-render-prune:" + canonical, Kind: "skill-render-prune", Action: "remove", Owners: owners,
-			DeclaredTargets: []string{target}, CanonicalTarget: canonical, CurrentState: "Regesto-owned rendered skill has no shipped source",
-			IntendedState: "absent", BackupAction: "none (Regesto-owned generated stage)", DryRun: "remove stale Regesto-owned rendered skill directory",
+			DeclaredTargets: []string{target}, CanonicalTarget: canonical, CurrentState: "this skill no longer ships with Regesto",
+			IntendedState: "removed", BackupAction: "none", DryRun: "remove the old skill",
 			before: digest, ownership: markerWant, ownershipTarget: markerPath, renderRoot: canonicalStage,
 		})
 	}
@@ -667,8 +667,8 @@ func planStaleSkillFiles(p *Plan, integration, skill, declaredDir, canonicalStag
 		p.Items = append(p.Items, Item{
 			ID: "skill-render-file-prune:" + integration + ":" + skill + ":" + filepath.ToSlash(rel), Kind: "skill-render-file", Action: "remove",
 			Owners: owners, DeclaredTargets: []string{filepath.Join(declaredDir, rel)}, CanonicalTarget: canonical,
-			CurrentState: "generated skill file has no shipped source", IntendedState: "absent", BackupAction: "none (Regesto-owned generated stage)",
-			DryRun: "remove stale generated skill file", before: body, ownership: marker, ownershipTarget: markerTarget, renderRoot: canonicalStage,
+			CurrentState: "this file no longer ships with Regesto", IntendedState: "removed", BackupAction: "none",
+			DryRun: "remove the old file", before: body, ownership: marker, ownershipTarget: markerTarget, renderRoot: canonicalStage,
 		})
 		return nil
 	})
@@ -720,8 +720,8 @@ func planSkillTargets(p *Plan, renders []integrationRender) error {
 		if os.IsNotExist(err) {
 			p.Items = append(p.Items, Item{
 				ID: "skills-dir:" + key, Kind: "skills-directory", Action: "create", Owners: owners, DeclaredTargets: group.declared,
-				CanonicalTarget: key, CurrentState: "missing", IntendedState: "skills directory present", BackupAction: "none (target does not exist)",
-				DryRun: "create the shared skills directory", mode: 0o755,
+				CanonicalTarget: key, CurrentState: "not found", IntendedState: "skills folder exists", BackupAction: "none",
+				DryRun: "create the skills folder", mode: 0o755,
 			})
 		} else if err != nil {
 			return err
@@ -776,8 +776,8 @@ func planOwnedDanglingLinks(p *Plan, owners, declaredDirs []string, canonicalDir
 		}
 		item := Item{
 			ID: "skill-link-prune:" + dest, Kind: "skill-link", Action: "remove", Owners: owners,
-			DeclaredTargets: sortedUnique(declared), CanonicalTarget: dest, CurrentState: "dangling Regesto-owned skill link to " + raw,
-			IntendedState: "absent", BackupAction: "none (Regesto-owned symlink)", DryRun: "remove dangling Regesto-owned skill link", before: []byte(raw),
+			DeclaredTargets: sortedUnique(declared), CanonicalTarget: dest, CurrentState: "broken link to " + raw,
+			IntendedState: "removed", BackupAction: "none", DryRun: "remove the broken link", before: []byte(raw),
 		}
 		p.Items = append(p.Items, item)
 	}
@@ -795,18 +795,18 @@ func planSkillLink(owners, declaredDirs []string, dest, want, root string) (Item
 	}
 	item := Item{
 		ID: "skill-link:" + canonical, Kind: "skill-link", Owners: owners, DeclaredTargets: sortedUnique(declared), CanonicalTarget: canonical,
-		IntendedState: "symbolic link to " + want, BackupAction: "none", linkTarget: want,
+		IntendedState: "link to " + want, BackupAction: "none", linkTarget: want,
 	}
 	info, err := os.Lstat(dest)
 	if os.IsNotExist(err) {
-		item.Action, item.CurrentState, item.DryRun = "create", "missing", "create integration-specific skill link"
+		item.Action, item.CurrentState, item.DryRun = "create", "not linked yet", "link the skill"
 		return item, nil
 	}
 	if err != nil {
 		return Item{}, err
 	}
 	if info.Mode()&os.ModeSymlink == 0 {
-		item.Action, item.CurrentState, item.DryRun = "skip", "foreign non-symlink entry preserved", "leave foreign skill entry unchanged"
+		item.Action, item.CurrentState, item.DryRun = "skip", "another file or folder is already there; left alone", "no change"
 		return item, nil
 	}
 	raw, err := os.Readlink(dest)
@@ -816,7 +816,7 @@ func planSkillLink(owners, declaredDirs []string, dest, want, root string) (Item
 	resolved, resolveErr := filepath.EvalSymlinks(dest)
 	wantResolved, wantErr := filepath.EvalSymlinks(want)
 	if resolveErr == nil && wantErr == nil && resolved == wantResolved {
-		item.Action, item.CurrentState, item.DryRun = "current", "owned skill link current", "leave skill link unchanged"
+		item.Action, item.CurrentState, item.DryRun = "current", "up to date", "no change"
 		return item, nil
 	}
 	if !filepath.IsAbs(raw) {
@@ -824,12 +824,27 @@ func planSkillLink(owners, declaredDirs []string, dest, want, root string) (Item
 	}
 	raw = filepath.Clean(raw)
 	if regestoSkillLinkOwnership(root, raw, filepath.Base(dest)) {
-		item.Action, item.CurrentState, item.DryRun = "replace", "stale Regesto-owned skill link", "replace Regesto-owned skill link"
+		item.Action, item.CurrentState, item.DryRun = "replace", "link points to an old location", "update the link"
 		item.before = []byte(raw)
 		return item, nil
 	}
-	item.Action, item.CurrentState, item.DryRun = "skip", "foreign symlink to "+raw+" preserved", "leave foreign skill link unchanged"
+	if other := OtherKnowledgeBase(raw); other != "" {
+		item.Action, item.CurrentState, item.DryRun = "skip", "used by another knowledge base ("+other+"); left alone", "no change"
+		return item, nil
+	}
+	item.Action, item.CurrentState, item.DryRun = "skip", "already links to "+raw+"; left alone", "no change"
 	return item, nil
+}
+
+// OtherKnowledgeBase returns the root of the Regesto knowledge base a skill
+// link points into, or "" when the target is not a Regesto skill copy. Every
+// knowledge base keeps its agent skill copies under .state/integrations/.
+func OtherKnowledgeBase(linkTarget string) string {
+	marker := string(filepath.Separator) + filepath.Join(".state", "integrations") + string(filepath.Separator)
+	if i := strings.Index(linkTarget, marker); i > 0 {
+		return linkTarget[:i]
+	}
+	return ""
 }
 
 func regestoSkillLinkOwnership(root, raw, skill string) bool {

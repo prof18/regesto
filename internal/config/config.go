@@ -155,8 +155,8 @@ func Find(startDir string) (string, error) {
 			return found, nil
 		}
 	}
-	return "", fmt.Errorf("no %s found, neither walking up from %s nor beside the binary "+
-		"(set REGESTO_CONFIG or pass --config)", FileName, startDir)
+	return "", fmt.Errorf("no knowledge base found: no %s in %s, its parent folders, or next to the regesto binary. "+
+		"Run this inside your knowledge base, pass --config <path>, or create one with `regesto init`", FileName, startDir)
 }
 
 func walkUp(startDir string) (string, error) {

@@ -96,17 +96,35 @@ type Outcome struct {
 // loop running when Claude's is exhausted. Continuity is what the fallback buys;
 // ordering by cost is what the first position buys.
 //
-// Neither is hardcoded — any command that reads a prompt on stdin and prints the
-// answer works, which is what keeps this from tying the engine to a vendor.
+// Neither is hardcoded — any command that reads a prompt on stdin (or takes it
+// as the {prompt} argument) and prints the answer works, which is what keeps
+// this from tying the engine to a vendor.
 //
-// Both are asked for cheap work deliberately. Normalising is extraction, not
-// reasoning: Claude runs at Haiku, and Codex at low reasoning effort. Codex is
-// pinned to read-only because this task is text in, text out — it has no
-// business touching the filesystem.
+// Normalising is extraction with judgement — what is durable, which existing
+// vocabulary to reuse — so Claude runs Sonnet at low effort and Codex runs Luna
+// at high effort. Codex is pinned to read-only because this task is text in,
+// text out; it has no business touching the filesystem.
 var DefaultCommands = []string{
-	"claude -p --model claude-haiku-4-5-20251001",
-	`codex exec --sandbox read-only --skip-git-repo-check -c model_reasoning_effort="low"`,
+	"claude -p --model sonnet --effort low",
+	`codex exec --sandbox read-only --skip-git-repo-check -m gpt-5.6-luna -c model_reasoning_effort="high"`,
 }
+
+// otherDefaultCommands are used only when neither Claude nor Codex is a
+// connected integration. None of these CLIs reads a prompt from stdin, so each
+// takes it as the {prompt} argument, with tools and custom instructions turned
+// off where the CLI allows it: the prompt carries untrusted memory text.
+var otherDefaultCommands = []struct{ integration, command string }{
+	{"copilot", "copilot -s --no-custom-instructions --disable-builtin-mcps --no-ask-user --available-tools= --effort low -p {prompt}"},
+	{"antigravity", "agy --sandbox --disable-slash-commands --model gemini-3.8-flash-low -p {prompt}"},
+	{"hermes", "hermes --ignore-rules --reasoning low -z {prompt}"},
+}
+
+// PromptArgument in a command is replaced by the prompt, passed as a single
+// argument, for CLIs that do not read stdin.
+const PromptArgument = "{prompt}"
+
+// lookPath is exec.LookPath, replaceable in tests.
+var lookPath = exec.LookPath
 
 // CommandSeparator splits a configured chain. Commands contain spaces and
 // commas, so neither works; `;;` does not occur in a shell invocation.
@@ -129,6 +147,57 @@ func looksLikeQuota(s string) bool {
 		}
 	}
 	return false
+}
+
+// CommandsFor resolves the chain like Commands, but picks the default from the
+// connected integrations: Claude and Codex when either is connected; otherwise
+// the connected, then the installed, of Copilot, Antigravity and Hermes. With
+// none of those available it keeps the Claude and Codex default, whose failure
+// then explains what is missing.
+func CommandsFor(override, configured string, integrations []string) []string {
+	if chain := Commands(override, configured); !sameCommands(chain, DefaultCommands) {
+		return chain
+	}
+	connected := map[string]bool{}
+	for _, id := range integrations {
+		connected[id] = true
+	}
+	if connected["claude"] || connected["codex"] {
+		if connected["codex"] && !connected["claude"] {
+			return []string{DefaultCommands[1], DefaultCommands[0]}
+		}
+		return DefaultCommands
+	}
+	var chain []string
+	for _, pass := range []func(string) bool{
+		func(id string) bool { return connected[id] },
+		func(id string) bool { return !connected[id] },
+	} {
+		for _, other := range otherDefaultCommands {
+			if !pass(other.integration) {
+				continue
+			}
+			if _, err := lookPath(strings.Fields(other.command)[0]); err == nil {
+				chain = append(chain, other.command)
+			}
+		}
+	}
+	if len(chain) == 0 {
+		return DefaultCommands
+	}
+	return chain
+}
+
+func sameCommands(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Commands resolves the chain: an explicit override, else the configured chain,
@@ -186,7 +255,7 @@ func Run(cfg *config.Config, all []facts.Fact, opts Options) ([]Outcome, error) 
 
 		if trust.Quarantined(c) {
 			out.Note = fmt.Sprintf(
-				"quarantined — source policy leaves %s raw for a human to promote", c.Source)
+				"quarantined: notes from %s wait for you to review (see [source_policies] in config.toml)", c.Source)
 			outcomes = append(outcomes, out)
 			continue
 		}
@@ -196,20 +265,20 @@ func Run(cfg *config.Config, all []facts.Fact, opts Options) ([]Outcome, error) 
 		// Both guards leave the capture in the inbox, so nothing is lost —
 		// it is picked up by a later pass, or by a run that raises the limit.
 		if maxPrompt > 0 && len(prompt) > maxPrompt {
-			out.Note = fmt.Sprintf("deferred — %d byte prompt (~%dk tokens) exceeds the %d byte limit; "+
-				"run `regesto normalize --max-prompt-bytes 0` to process it deliberately",
+			out.Note = fmt.Sprintf("deferred: too large (%d bytes, ~%dk tokens; exceeds the %d byte limit); "+
+				"run `regesto normalize --max-prompt-bytes 0` to process it anyway",
 				len(prompt), len(prompt)/4000, maxPrompt)
 			outcomes = append(outcomes, out)
 			continue
 		}
 		if maxCaptures > 0 && processed >= maxCaptures {
-			out.Note = fmt.Sprintf("deferred — %d capture(s) already processed this run; the rest wait for the next pass", processed)
+			out.Note = fmt.Sprintf("deferred: %d notes already processed this run; the rest wait for the next run", processed)
 			outcomes = append(outcomes, out)
 			continue
 		}
 
 		if opts.DryRun {
-			out.Note = fmt.Sprintf("would normalise (%d byte prompt, ~%d tokens)", len(prompt), len(prompt)/4)
+			out.Note = fmt.Sprintf("would normalise (prompt of %d bytes, ~%d tokens)", len(prompt), len(prompt)/4)
 			outcomes = append(outcomes, out)
 			continue
 		}
@@ -230,7 +299,7 @@ func Run(cfg *config.Config, all []facts.Fact, opts Options) ([]Outcome, error) 
 
 		candidates := ParseFacts(response)
 		if len(candidates) == 0 {
-			out.Note = "nothing durable in this capture"
+			out.Note = "nothing durable to keep in this note"
 		}
 
 		stamp := time.Now().UTC().Format(time.RFC3339)
@@ -384,10 +453,10 @@ func invokeChain(opts Options, prompt string) (response, used string, tried []st
 		}
 		last = err
 		if i < len(commands)-1 {
-			tried = append(tried, fmt.Sprintf("%s gave way (%s) — falling back to %s",
+			tried = append(tried, fmt.Sprintf("%s didn't work (%s); trying %s",
 				name(command), reason, name(commands[i+1])))
 		} else {
-			tried = append(tried, fmt.Sprintf("%s gave way (%s) — no fallback left", name(command), reason))
+			tried = append(tried, fmt.Sprintf("%s didn't work (%s); no other command to try", name(command), reason))
 		}
 	}
 	return "", "", tried, last
@@ -406,8 +475,15 @@ func invoke(opts Options, command, prompt string) (string, error) {
 	if len(parts) == 0 {
 		return "", fmt.Errorf("empty normalize command")
 	}
+	stdin := prompt
+	for i, part := range parts {
+		if part == PromptArgument {
+			parts[i] = prompt
+			stdin = ""
+		}
+	}
 	cmd := exec.Command(parts[0], parts[1:]...)
-	cmd.Stdin = strings.NewReader(prompt)
+	cmd.Stdin = strings.NewReader(stdin)
 	var out, errBuf bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errBuf

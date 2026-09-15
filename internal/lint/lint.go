@@ -211,7 +211,7 @@ func reconcile(r *Report, all []facts.Fact, byID map[string]facts.Fact, now time
 		retired[old.ID] = true
 		r.Actions = append(r.Actions, Action{
 			Kind: "flip", Path: old.RelPath, ID: old.ID,
-			Message: fmt.Sprintf("superseded by active %s", f.ID),
+			Message: fmt.Sprintf("mark as superseded: replaced by %s", f.ID),
 			Updates: map[string]string{"status": facts.StatusSuperseded, "modified": stamp},
 		})
 	}
@@ -248,7 +248,7 @@ func reconcile(r *Report, all []facts.Fact, byID map[string]facts.Fact, now time
 			// a human decides.
 			if loser.Source == "human" && winner.Source != "human" {
 				r.Reviews = append(r.Reviews, fmt.Sprintf(
-					"%s (%s) contests human claim %s on (%s, %s) — left for review; human stays active",
+					"%s (from %s) disagrees with your fact %s about (%s, %s); yours stays active until you decide",
 					winner.ID, winner.Source, loser.ID, key[0], key[1]))
 				updates := map[string]string{}
 				if winner.Status != facts.StatusProposed {
@@ -260,7 +260,7 @@ func reconcile(r *Report, all []facts.Fact, byID map[string]facts.Fact, now time
 				if len(updates) > 0 {
 					r.Actions = append(r.Actions, Action{
 						Kind: "review", Path: winner.RelPath, ID: winner.ID,
-						Message: fmt.Sprintf("record intent to supersede human claim %s, pending review", loser.ID),
+						Message: fmt.Sprintf("mark as proposed: would replace your fact %s once you approve", loser.ID),
 						Updates: updates,
 					})
 				}
@@ -270,12 +270,12 @@ func reconcile(r *Report, all []facts.Fact, byID map[string]facts.Fact, now time
 			r.Actions = append(r.Actions,
 				Action{
 					Kind: "supersede", Path: loser.RelPath, ID: loser.ID,
-					Message: fmt.Sprintf("loses (%s, %s) to newer %s", key[0], key[1], winner.ID),
+					Message: fmt.Sprintf("mark as superseded: newer %s says something else about (%s, %s)", winner.ID, key[0], key[1]),
 					Updates: map[string]string{"status": facts.StatusSuperseded, "modified": stamp},
 				},
 				Action{
 					Kind: "supersede", Path: winner.RelPath, ID: winner.ID,
-					Message: fmt.Sprintf("wins (%s, %s), supersedes %s", key[0], key[1], loser.ID),
+					Message: fmt.Sprintf("record that it replaces %s", loser.ID),
 					Updates: map[string]string{"supersedes": loser.ID},
 				})
 		}
@@ -307,11 +307,11 @@ func vocabulary(r *Report, all []facts.Fact) {
 			a, b := pairs[i], pairs[j]
 			if a.subject == b.subject && a.relation != b.relation && near(a.relation, b.relation) {
 				r.NearDuplicates = append(r.NearDuplicates, fmt.Sprintf(
-					"(%s, %s) vs (%s, %s) — same subject, near-identical relation", a.subject, a.relation, b.subject, b.relation))
+					"(%s, %s) and (%s, %s) may be the same relation spelled two ways", a.subject, a.relation, b.subject, b.relation))
 			}
 			if a.relation == b.relation && a.subject != b.subject && near(a.subject, b.subject) {
 				r.NearDuplicates = append(r.NearDuplicates, fmt.Sprintf(
-					"(%s, %s) vs (%s, %s) — same relation, near-identical subject", a.subject, a.relation, b.subject, b.relation))
+					"(%s, %s) and (%s, %s) may be the same subject spelled two ways", a.subject, a.relation, b.subject, b.relation))
 			}
 		}
 	}
@@ -330,7 +330,7 @@ func reviewDue(r *Report, all []facts.Fact, now time.Time) {
 			}
 		}
 		if now.After(t) {
-			r.Due = append(r.Due, fmt.Sprintf("%s — review_after %s has passed", f.ID, f.ReviewAfter))
+			r.Due = append(r.Due, fmt.Sprintf("%s is due for review (review_after %s)", f.ID, f.ReviewAfter))
 		}
 	}
 }

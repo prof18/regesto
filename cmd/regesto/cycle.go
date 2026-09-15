@@ -26,10 +26,11 @@ import (
 // machines in the business of deciding what becomes a fact.
 func runCycle(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("cycle", flag.ContinueOnError)
-	dry := fs.Bool("dry-run", false, "report what the pass would do; change nothing")
-	command := fs.String("command", "", "agent command for normalisation")
-	noCommit := fs.Bool("no-commit", false, "skip the git commit")
-	push := fs.Bool("push", false, "push after committing (needs an offsite remote, PLAN 0.7)")
+	setUsage(fs, "regesto cycle [options]", "Do all the upkeep in one go: turn inbox notes into facts, fix up facts,\nrebuild the index, and commit to git. This is what the hourly job runs.")
+	dry := fs.Bool("dry-run", false, "show what would happen without changing anything")
+	command := fs.String("command", "", "agent `command` to use, instead of [normalize] commands in config.toml")
+	noCommit := fs.Bool("no-commit", false, "don't commit to git")
+	push := fs.Bool("push", false, "push to the git remote after committing")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -41,7 +42,7 @@ func runCycle(cfg *config.Config, args []string) error {
 		// Deliberately before the pass and its health report: this machine was
 		// never meant to run the cycle, so its refusal is not a failure of the
 		// knowledge base and must not alert anyone.
-		return fmt.Errorf("this machine is %q but [roles].lint names %q — cycle runs only there", cfg.Machine, host)
+		return fmt.Errorf("cycle only runs on %q, as set by [roles] lint in config.toml; this machine is %q", host, cfg.Machine)
 	}
 
 	err := cyclePass(cfg, cycleOptions{
@@ -71,19 +72,19 @@ type cycleOptions struct {
 func reportCycleHealth(cfg *config.Config, passErr error, now time.Time) {
 	h := notify.Health{Key: "cycle", Failing: passErr != nil}
 	if passErr != nil {
-		h.Title = "regesto: the cycle is failing"
-		h.Message = passErr.Error() + "\nFacts keep accumulating until this is fixed."
+		h.Title = "Regesto: processing is failing"
+		h.Message = passErr.Error() + "\nNew notes wait in the inbox until this is fixed."
 	} else {
-		h.Title = "regesto: the cycle is working again"
-		h.Message = "Lint is clean; the store is reconciled and committed."
+		h.Title = "Regesto: processing works again"
+		h.Message = "All facts pass their checks, and the knowledge base is up to date."
 	}
 	if _, err := notify.Report(cfg, h, now); err != nil {
-		fmt.Fprintln(os.Stderr, "notify failed —", err)
+		fmt.Fprintln(os.Stderr, "Couldn't send the alert:", err)
 	}
 }
 
 func cyclePass(cfg *config.Config, opts cycleOptions) error {
-	chain := normalize.Commands(opts.Command, cfg.Section("normalize")["commands"])
+	chain := normalize.CommandsFor(opts.Command, cfg.Section("normalize")["commands"], cfg.IntegrationIDs())
 
 	all, err := facts.LoadAll(cfg.KBRoot)
 	if err != nil {
@@ -105,24 +106,24 @@ func cyclePass(cfg *config.Config, opts cycleOptions) error {
 	written := 0
 	for _, o := range outcomes {
 		for _, a := range o.Attempts {
-			fmt.Printf("normalize %s\n", a)
+			fmt.Printf("inbox    %s\n", a)
 		}
 		if o.Note != "" {
-			fmt.Printf("normalize %s — %s\n", o.Capture.Path, o.Note)
+			fmt.Printf("inbox    %s: %s\n", o.Capture.Path, o.Note)
 		}
 		for _, w := range o.Written {
-			fmt.Printf("normalize wrote %s\n", w)
+			fmt.Printf("inbox    wrote %s\n", w)
 			written++
 		}
 		for _, r := range o.Rejected {
-			fmt.Printf("normalize rejected %s\n", r)
+			fmt.Printf("inbox    rejected %s\n", r)
 		}
 		if o.Archived != "" {
-			fmt.Printf("normalize archived %s\n", o.Archived)
+			fmt.Printf("inbox    done with %s\n", o.Archived)
 		}
 	}
 	if len(outcomes) == 0 {
-		fmt.Println("normalize nothing in the inbox")
+		fmt.Println("inbox    empty")
 	}
 
 	// 2. Resolve sync conflicts before validating, so collisions the sync
@@ -138,13 +139,13 @@ func cyclePass(cfg *config.Config, opts cycleOptions) error {
 	for _, r := range resolutions {
 		state := "resolved"
 		if r.NeedsHuman {
-			state = "NEEDS HUMAN"
+			state = "NEEDS YOU"
 		} else if opts.DryRun {
 			state = "would resolve"
 		}
-		fmt.Printf("conflict %s %s — %s\n", state, r.ConflictPath, r.Message)
+		fmt.Printf("sync     %s %s: %s\n", state, r.ConflictPath, r.Message)
 		if r.Archived != "" {
-			fmt.Printf("conflict archived %s\n", r.Archived)
+			fmt.Printf("sync     archived %s\n", r.Archived)
 		}
 	}
 
@@ -160,10 +161,10 @@ func cyclePass(cfg *config.Config, opts cycleOptions) error {
 	}
 	for _, s := range scopeFixes {
 		if s.Blocked != "" {
-			fmt.Printf("scope BLOCKED %s — %s; %s\n", s.ID, s.Message, s.Blocked)
+			fmt.Printf("project  BLOCKED %s: %s; %s\n", s.ID, s.Message, s.Blocked)
 			continue
 		}
-		fmt.Printf("scope %s %s — %s\n", map[bool]string{true: "would move", false: "moved"}[opts.DryRun], s.ID, s.Message)
+		fmt.Printf("project  %s %s: %s\n", map[bool]string{true: "would move", false: "moved"}[opts.DryRun], s.ID, s.Message)
 	}
 	if len(scopeFixes) > 0 && !opts.DryRun {
 		if all, err = facts.LoadAll(cfg.KBRoot); err != nil {
@@ -173,28 +174,28 @@ func cyclePass(cfg *config.Config, opts cycleOptions) error {
 
 	report := lint.Run(all, time.Now().UTC())
 	for _, f := range report.Findings {
-		fmt.Printf("lint %-5s %s: %s\n", f.Severity, f.Path, f.Message)
+		fmt.Printf("check    %s %s: %s\n", strings.ToLower(severityLabel(f.Severity)), f.Path, f.Message)
 	}
 	for _, a := range report.Actions {
-		fmt.Printf("lint %s %s — %s\n", map[bool]string{true: "would", false: "did"}[opts.DryRun], a.ID, a.Message)
+		fmt.Printf("check    %s%s: %s\n", map[bool]string{true: "would ", false: ""}[opts.DryRun], a.ID, a.Message)
 	}
 	for _, r := range report.Reviews {
-		fmt.Printf("lint review %s\n", r)
+		fmt.Printf("review   %s\n", r)
 	}
 	for _, d := range report.NearDuplicates {
-		fmt.Printf("lint vocab %s\n", d)
+		fmt.Printf("names    %s\n", d)
 	}
 	for _, d := range report.Due {
-		fmt.Printf("lint due %s\n", d)
+		fmt.Printf("due      %s\n", d)
 	}
 
 	if opts.DryRun {
-		fmt.Printf("dry run — %d error(s), %d action(s) pending\n", report.Errors(), len(report.Actions))
+		fmt.Printf("\nDry run: %s, %s to make. Nothing has been changed.\n", plural(report.Errors(), "error"), plural(len(report.Actions), "change"))
 		return nil
 	}
 	if report.Errors() > 0 {
-		return fmt.Errorf("%d validation error(s); nothing applied, nothing committed%s",
-			report.Errors(), firstError(report))
+		return fmt.Errorf("%s in facts, so nothing was changed or committed%s",
+			plural(report.Errors(), "error"), firstError(report))
 	}
 	for _, a := range report.Actions {
 		if err := facts.SetFields(cfg.KBRoot+"/"+a.Path, a.Updates); err != nil {
@@ -210,7 +211,7 @@ func cyclePass(cfg *config.Config, opts cycleOptions) error {
 	if err := index.Write(cfg.KBRoot, index.Build(all)); err != nil {
 		return err
 	}
-	fmt.Printf("rebuilt INDEX.md and knowledge/topics/ from %d fact(s)\n", len(all))
+	fmt.Printf("index    rebuilt from %s\n", plural(len(all), "fact"))
 
 	if opts.NoCommit {
 		return nil
@@ -224,7 +225,7 @@ func cyclePass(cfg *config.Config, opts cycleOptions) error {
 func firstError(report *lint.Report) string {
 	for _, f := range report.Findings {
 		if f.Severity == lint.Error {
-			return fmt.Sprintf(" — %s: %s", f.Path, f.Message)
+			return fmt.Sprintf(" (first: %s: %s)", f.Path, f.Message)
 		}
 	}
 	return ""
@@ -235,33 +236,33 @@ func firstError(report *lint.Report) string {
 // not fail the cycle or the next one will not run either.
 func commit(cfg *config.Config, written, actions int, push bool) error {
 	if _, err := os.Stat(cfg.KBRoot + "/.git"); err != nil {
-		fmt.Println("commit skipped — not a git repository")
+		fmt.Println("git      not a git repository, not committing")
 		return nil
 	}
 	if out, err := gitRun(cfg.KBRoot, "git", "status", "--porcelain"); err != nil {
-		fmt.Println("commit skipped —", err)
+		fmt.Println("git      not committing:", err)
 		return nil
 	} else if strings.TrimSpace(out) == "" {
-		fmt.Println("commit nothing to commit")
+		fmt.Println("git      nothing to commit")
 		return nil
 	}
 	if _, err := gitRun(cfg.KBRoot, "git", "add", "-A"); err != nil {
-		fmt.Println("commit skipped —", err)
+		fmt.Println("git      not committing:", err)
 		return nil
 	}
-	msg := fmt.Sprintf("regesto cycle: %d fact(s) normalised, %d reconciliation action(s)", written, actions)
+	msg := fmt.Sprintf("regesto cycle: %s from the inbox, %s", plural(written, "new fact"), plural(actions, "fact update"))
 	if _, err := gitRun(cfg.KBRoot, "git", "commit", "-m", msg); err != nil {
-		fmt.Println("commit failed —", err)
+		fmt.Println("git      commit failed:", err)
 		return nil
 	}
-	fmt.Println("commit " + msg)
+	fmt.Println("git      committed: " + msg)
 
 	if push {
 		if _, err := gitRun(cfg.KBRoot, "git", "push"); err != nil {
-			fmt.Println("push failed —", err)
+			fmt.Println("git      push failed:", err)
 			return nil
 		}
-		fmt.Println("push ok")
+		fmt.Println("git      pushed")
 	}
 	return nil
 }

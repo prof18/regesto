@@ -24,11 +24,12 @@ import (
 // command learning anything about Hermes.
 func runPromote(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("promote", flag.ContinueOnError)
-	source := fs.String("source", "human", "value for the facts' `source:` field")
-	name := fs.String("name", "", "label for the archived transcript (default: the filename, or `pasted`)")
-	dry := fs.Bool("dry-run", false, "report the prompt size and stop; write nothing")
-	command := fs.String("command", "", "single agent command, overriding the fallback chain")
-	maxPrompt := fs.Int("max-prompt-bytes", -1, "prompt ceiling; 0 for no limit (default 65536)")
+	setUsage(fs, "regesto promote [options] <file | ->", "Pull facts out of a chat transcript, from a file or piped in with -.")
+	source := fs.String("source", "human", "who the facts come from")
+	name := fs.String("name", "", "name for the saved transcript (default: the file name, or \"pasted\")")
+	dry := fs.Bool("dry-run", false, "show the prompt size without running an agent")
+	command := fs.String("command", "", "agent `command` to use, instead of [normalize] commands in config.toml")
+	maxPrompt := fs.Int("max-prompt-bytes", -1, "largest prompt allowed; 0 for no limit (default 65536)")
 	timeout := fs.Duration("timeout", 10*time.Minute, "time limit for the agent")
 	// Go's flag package stops at the first positional argument, so
 	// `promote file.md --name x` would silently ignore --name. Reading a file
@@ -46,7 +47,7 @@ func runPromote(cfg *config.Config, args []string) error {
 	case fs.NArg() == 0 || fs.Arg(0) == "-":
 		stat, _ := os.Stdin.Stat()
 		if stat != nil && stat.Mode()&os.ModeCharDevice != 0 {
-			return fmt.Errorf("no input — pass a file, or pipe the transcript in:\n" +
+			return fmt.Errorf("no transcript given; pass a file, or pipe it in:\n" +
 				"  regesto promote conversation.md\n" +
 				"  pbpaste | regesto promote -")
 		}
@@ -72,7 +73,7 @@ func runPromote(cfg *config.Config, args []string) error {
 
 	res, err := normalize.Promote(cfg, all, string(transcript), normalize.PromoteOptions{
 		Options: normalize.Options{
-			Commands:       normalize.Commands(*command, cfg.Section("normalize")["commands"]),
+			Commands:       normalize.CommandsFor(*command, cfg.Section("normalize")["commands"], cfg.IntegrationIDs()),
 			DryRun:         *dry,
 			Timeout:        *timeout,
 			MaxPromptBytes: limitFlag(*maxPrompt),
@@ -89,7 +90,7 @@ func runPromote(cfg *config.Config, args []string) error {
 		fmt.Printf("  %s\n", a)
 	}
 	if res.UsedCommand != "" {
-		fmt.Printf("  via      %s\n", res.UsedCommand)
+		fmt.Printf("  used     %s\n", res.UsedCommand)
 	}
 	if res.Note != "" {
 		fmt.Printf("  %s\n", res.Note)
@@ -101,10 +102,10 @@ func runPromote(cfg *config.Config, args []string) error {
 		fmt.Printf("  rejected %s\n", r)
 	}
 	if res.Archived != "" {
-		fmt.Printf("  archived %s\n", res.Archived)
+		fmt.Printf("  saved    %s\n", res.Archived)
 	}
 	if len(res.Written) > 0 {
-		fmt.Println("\nreview what was extracted, then `regesto lint --fix --rebuild`")
+		fmt.Println("\nNext: read the new facts, then run `regesto lint --fix --rebuild` to check them and update the index.")
 	}
 	return nil
 }

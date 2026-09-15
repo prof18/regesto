@@ -46,13 +46,12 @@ func TestTrustIntegrationInitTemplateUsesCanonicalVocabularyAndDocumentsGenericP
 	body := instanceConfig([]string{"claude", "codex"})
 	for _, want := range []string{
 		"integrations = [\"claude\", \"codex\"]",
-		"# integrations = [\"claude\", \"my-agent\"]",
-		"MCP-only client does not need an integrations entry",
-		"[integrations.my-agent]",
+		"# [integrations.my-agent]",
+		"# profile = \"generic\"",
+		"only use Regesto through MCP need no entry",
 		"memory_kind = \"markdown-glob-v1\"",
-		"A private\n# channel alone does not grant trust",
 		"# [source_policies]",
-		"# \"hermes-private@studio-*\" = \"supervised\"",
+		"# \"hermes@work-laptop-*\" = \"quarantine\"",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("init template missing %q", want)
@@ -60,6 +59,18 @@ func TestTrustIntegrationInitTemplateUsesCanonicalVocabularyAndDocumentsGenericP
 	}
 	if strings.Contains(body, "\nagents = [") {
 		t.Error("new init template must not emit the legacy agents vocabulary")
+	}
+	// Each note stays short enough to read at a glance.
+	run := 0
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "# ") && !strings.HasPrefix(line, "# [") && !strings.Contains(line, " = ") {
+			run++
+			if run > 3 {
+				t.Errorf("config.toml note longer than 3 lines, ending at %q", line)
+			}
+		} else {
+			run = 0
+		}
 	}
 }
 

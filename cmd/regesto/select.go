@@ -22,7 +22,7 @@ import (
 var errNotATerminal = errors.New("not an interactive terminal")
 
 // errAborted is the user pressing q, Esc or Ctrl-C: stop, write nothing.
-var errAborted = errors.New("selection aborted")
+var errAborted = errors.New("cancelled")
 
 type pickerAction int
 
@@ -51,7 +51,7 @@ func newPicker(items []string) *picker {
 		checked[i] = true
 	}
 	return &picker{
-		title:   "Integrations detected — uncheck any Regesto should not manage:",
+		title:   "Agents found on this machine. Uncheck any Regesto should leave alone:",
 		items:   items,
 		checked: checked,
 	}
@@ -153,7 +153,7 @@ func (p *picker) render() []string {
 		}
 		lines = append(lines, fmt.Sprintf("  %s %s %s", cursor, box, id))
 	}
-	lines = append(lines, "", "up/down or j/k move, space toggles, enter confirms, q aborts")
+	lines = append(lines, "", "up/down: move   space: check/uncheck   enter: confirm   q: cancel")
 	return lines
 }
 

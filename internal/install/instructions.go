@@ -92,7 +92,7 @@ func planInstructions(p *Plan, agents []adapters.Agent, opts Options) error {
 			Owners:          g.owners,
 			DeclaredTargets: g.declared,
 			CanonicalTarget: key,
-			IntendedState:   "one current marker-delimited Regesto section; foreign content preserved",
+			IntendedState:   "Regesto section up to date; the rest of the file kept",
 		}
 		current, err := os.ReadFile(key)
 		switch {
@@ -112,22 +112,22 @@ func planInstructions(p *Plan, agents []adapters.Agent, opts Options) error {
 			if bytes.Equal(current, desired) {
 				item.Action = "current"
 				item.BackupAction = "none"
-				item.DryRun = "leave the shared instruction target unchanged"
+				item.DryRun = "no change"
 			} else {
 				item.Action = "update"
 				item.BackupAction = backupDescription(key, true)
-				item.DryRun = "back up and update the shared instruction target once"
+				item.DryRun = "back up the file and update its Regesto section"
 			}
 		case os.IsNotExist(err) && !g.create:
 			item.Action = "skip"
-			item.CurrentState = "missing; profile does not authorize creation"
+			item.CurrentState = "file not found; Regesto doesn't create this file for this agent"
 			item.BackupAction = "none"
-			item.DryRun = "leave missing instructions unchanged; create the file or enable profile creation"
+			item.DryRun = "create this file yourself, then run `regesto install` again"
 		case os.IsNotExist(err):
 			item.Action = "create"
-			item.CurrentState = "missing"
+			item.CurrentState = "file not found"
 			item.BackupAction = backupDescription(key, false)
-			item.DryRun = "create the shared instruction target with one Regesto section"
+			item.DryRun = "create the file with a Regesto section"
 			item.desired = normalizeSection(section)
 			item.mode = 0o644
 		default:
@@ -152,7 +152,7 @@ func mergeInstruction(current, section []byte) ([]byte, string, error) {
 	want := strings.TrimSpace(string(section))
 	if startCount == 0 {
 		if body == "" {
-			return []byte(want + "\n"), "present without Regesto section", nil
+			return []byte(want + "\n"), "file exists, without a Regesto section", nil
 		}
 		separator := "\n\n"
 		if strings.HasSuffix(body, "\n\n") {
@@ -160,7 +160,7 @@ func mergeInstruction(current, section []byte) ([]byte, string, error) {
 		} else if strings.HasSuffix(body, "\n") {
 			separator = "\n"
 		}
-		return []byte(body + separator + want + "\n"), "present without Regesto section", nil
+		return []byte(body + separator + want + "\n"), "file exists, without a Regesto section", nil
 	}
 	start := strings.Index(body, sectionStart)
 	endRel := strings.Index(body[start:], sectionEnd)
@@ -170,7 +170,7 @@ func mergeInstruction(current, section []byte) ([]byte, string, error) {
 	end := start + endRel + len(sectionEnd)
 	installed := strings.TrimSpace(body[start:end])
 	if installed == want {
-		return append([]byte(nil), current...), "current Regesto section present", nil
+		return append([]byte(nil), current...), "Regesto section is up to date", nil
 	}
-	return []byte(body[:start] + want + body[end:]), "stale Regesto section present", nil
+	return []byte(body[:start] + want + body[end:]), "Regesto section is out of date", nil
 }

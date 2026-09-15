@@ -80,7 +80,7 @@ func Promote(cfg *config.Config, all []facts.Fact, transcript string, opts Promo
 	}
 
 	if opts.DryRun {
-		res.Note = fmt.Sprintf("would promote: %d byte prompt (~%d tokens), source %s",
+		res.Note = fmt.Sprintf("would process the transcript: prompt of %d bytes (~%d tokens), source %s",
 			len(prompt), len(prompt)/4, source)
 		return res, nil
 	}

@@ -24,7 +24,7 @@ func planManualHook(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoo
 			return Item{}, err
 		}
 	}
-	recipe := fmt.Sprintf("register event %s with command %s for protocol %s", event, command, hook.Protocol)
+	recipe := fmt.Sprintf("in this agent's settings, run %s on the %s event", command, event)
 	idTarget := canonical
 	if idTarget == "" {
 		idTarget = agent.Name
@@ -36,10 +36,10 @@ func planManualHook(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoo
 		Owners:          []string{agent.Name},
 		DeclaredTargets: nonempty(hook.Settings),
 		CanonicalTarget: canonical,
-		CurrentState:    "custom host registration is not automatically editable",
+		CurrentState:    "this agent's hook settings can't be edited automatically",
 		IntendedState:   recipe,
 		BackupAction:    "none",
-		DryRun:          recipe + "; no file will be rewritten",
+		DryRun:          "set this up by hand: " + recipe,
 	}, nil
 }
 
@@ -63,7 +63,7 @@ func planHermesHook(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoo
 		Owners:          []string{agent.Name},
 		DeclaredTargets: []string{hook.Settings},
 		CanonicalTarget: configTarget,
-		IntendedState:   "Hermes pre_llm_call registration:\n" + string(yaml),
+		IntendedState:   "Add this to your Hermes config:\n" + string(yaml),
 		desired:         yaml,
 		mode:            0o600,
 	}
@@ -71,21 +71,21 @@ func planHermesHook(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoo
 	switch {
 	case os.IsNotExist(readErr):
 		configItem.Action = "create"
-		configItem.CurrentState = "Hermes config missing"
-		configItem.BackupAction = "none (target does not exist)"
-		configItem.DryRun = "create the displayed minimal Hermes hook config"
+		configItem.CurrentState = "Hermes config file not found"
+		configItem.BackupAction = "none"
+		configItem.DryRun = "create a Hermes config containing the hook shown"
 	case readErr != nil:
 		return nil, readErr
 	case bytes.Equal(current, yaml):
 		configItem.Action = "current"
-		configItem.CurrentState = "exact Regesto-only Hermes hook config present"
+		configItem.CurrentState = "Hermes hook is already set up"
 		configItem.BackupAction = "none"
-		configItem.DryRun = "leave Hermes hook config byte-for-byte unchanged"
+		configItem.DryRun = "no change"
 	default:
 		configItem.Action = "manual"
-		configItem.CurrentState = "existing Hermes YAML preserved because a lossless merge is not proven"
-		configItem.BackupAction = "none (no automatic YAML mutation)"
-		configItem.DryRun = "manually merge the displayed pre_llm_call YAML into this file; no YAML will be rewritten"
+		configItem.CurrentState = "Hermes config already exists; Regesto doesn't edit it automatically"
+		configItem.BackupAction = "none"
+		configItem.DryRun = "copy the hook shown into this file by hand"
 	}
 
 	allowlistTarget := filepath.Join(filepath.Dir(hook.Settings), "shell-hooks-allowlist.json")
@@ -110,7 +110,7 @@ func planHermesHook(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoo
 		Owners:          []string{agent.Name},
 		DeclaredTargets: []string{allowlistTarget},
 		CanonicalTarget: allowlistCanonical,
-		IntendedState:   "approve the exact pre_llm_call command while preserving foreign approvals",
+		IntendedState:   "Regesto's hook approved; other approvals kept",
 		before:          allowlistCurrent,
 		desired:         allowlistDesired,
 		mode:            0o600,
@@ -125,20 +125,20 @@ func planHermesHook(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoo
 	switch {
 	case allowlistExists && already:
 		allowlistItem.Action = "current"
-		allowlistItem.CurrentState = "exact Hermes event/command approval present"
+		allowlistItem.CurrentState = "Regesto's hook is already approved"
 		allowlistItem.BackupAction = "none"
-		allowlistItem.DryRun = "leave Hermes hook allowlist byte-for-byte unchanged"
+		allowlistItem.DryRun = "no change"
 	case allowlistExists:
 		allowlistItem.Action = "update"
-		allowlistItem.CurrentState = "Hermes allowlist present; exact approval missing"
+		allowlistItem.CurrentState = "Hermes allowlist exists, but doesn't approve Regesto's hook"
 		allowlistItem.BackupAction = backupDescription(allowlistCanonical, true)
-		allowlistItem.DryRun = "back up the allowlist and append the exact event/command approval"
+		allowlistItem.DryRun = "back up the allowlist and approve Regesto's hook"
 	default:
 		allowlistItem.Action = "create"
-		allowlistItem.CurrentState = "Hermes allowlist missing"
+		allowlistItem.CurrentState = "Hermes allowlist not found"
 		allowlistItem.before = nil
 		allowlistItem.BackupAction = backupDescription(allowlistCanonical, false)
-		allowlistItem.DryRun = "create the Hermes allowlist with the exact event/command approval"
+		allowlistItem.DryRun = "create the Hermes allowlist approving Regesto's hook"
 	}
 	return []Item{configItem, allowlistItem}, nil
 }

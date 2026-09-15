@@ -104,7 +104,7 @@ func TestLintCommandFailsForTitleAboveHardLimit(t *testing.T) {
 	if err == nil {
 		t.Fatalf("lint accepted a title above the hard limit:\n%s", out)
 	}
-	if !strings.Contains(string(out), "error "+filepath.ToSlash(strings.TrimPrefix(path, cfg.KBRoot+string(filepath.Separator)))+": title is 101 chars") {
+	if !strings.Contains(string(out), "Error   "+filepath.ToSlash(strings.TrimPrefix(path, cfg.KBRoot+string(filepath.Separator)))+": title is 101 chars") {
 		t.Fatalf("lint did not report the overlong title clearly: %v\n%s", err, out)
 	}
 }

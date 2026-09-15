@@ -28,8 +28,9 @@ import (
 // updates none of the files it wrote.
 func runUpgrade(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("upgrade", flag.ContinueOnError)
-	dry := fs.Bool("dry-run", false, "report what would change and write nothing")
-	force := fs.Bool("force", false, "also overwrite locally modified files, backing each one up first")
+	setUsage(fs, "regesto upgrade [options]", "Update Regesto's files in this knowledge base and your agents after installing a new version.")
+	dry := fs.Bool("dry-run", false, "show what would change without writing anything")
+	force := fs.Bool("force", false, "also replace files you edited (each is backed up first)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -44,9 +45,17 @@ func runUpgrade(cfg *config.Config, args []string) error {
 	}
 	from := m.Engine
 	if from == "" {
-		from = "unrecorded"
+		from = "unknown"
 	}
-	fmt.Printf("instance %s\nengine   %s → %s\n\n", cfg.KBRoot, from, version.Current())
+	if *dry {
+		fmt.Print("Upgrade preview (nothing has been written)\n\n")
+	}
+	fmt.Printf("Knowledge base: %s\n", tildePath(cfg.KBRoot))
+	if from == version.Current() {
+		fmt.Printf("Version:        %s\n\n", from)
+	} else {
+		fmt.Printf("Version:        %s → %s\n\n", from, version.Current())
+	}
 
 	noteNewAgents(cfg)
 
@@ -70,7 +79,7 @@ func runUpgrade(cfg *config.Config, args []string) error {
 
 		case c.Status.Writable() || *force:
 			if *dry {
-				fmt.Printf("  would update  %-44s (%s)\n", c.Path, c.Status)
+				fmt.Printf("  Update   %-44s %s\n", c.Path, upgradeReason(c.Status))
 				written++
 				continue
 			}
@@ -79,12 +88,12 @@ func runUpgrade(cfg *config.Config, args []string) error {
 				if err != nil {
 					return err
 				}
-				fmt.Printf("  backup        %s\n", backup)
+				fmt.Printf("  Backup   %s\n", backup)
 			}
 			if err := writeInstanceFile(cfg.KBRoot, c.Path, c.Body); err != nil {
 				return err
 			}
-			fmt.Printf("  update        %-44s (%s)\n", c.Path, c.Status)
+			fmt.Printf("  Update   %-44s %s\n", c.Path, upgradeReason(c.Status))
 			next.Files[c.Path] = manifest.Sum(c.Body)
 			written++
 
@@ -92,7 +101,7 @@ func runUpgrade(cfg *config.Config, args []string) error {
 			// Modified or Unknown, without --force. Left alone and reported:
 			// the user is the only one who knows whether their edit still
 			// matters, and a silent overwrite is unrecoverable.
-			fmt.Printf("  keep          %-44s (%s — edit yours or pass --force)\n", c.Path, c.Status)
+			fmt.Printf("  Keep     %-44s you edited it; pass --force to replace it\n", c.Path)
 			kept++
 		}
 	}
@@ -108,7 +117,7 @@ func runUpgrade(cfg *config.Config, args []string) error {
 
 		case c.Status.Removable() || *force:
 			if *dry {
-				fmt.Printf("  would remove  %-44s (%s)\n", c.Path, c.Status)
+				fmt.Printf("  Remove   %-44s %s\n", c.Path, upgradeReason(c.Status))
 				removed++
 				continue
 			}
@@ -117,26 +126,26 @@ func runUpgrade(cfg *config.Config, args []string) error {
 				if err != nil {
 					return err
 				}
-				fmt.Printf("  backup        %s\n", backup)
+				fmt.Printf("  Backup   %s\n", backup)
 			}
 			if err := removeInstanceFile(cfg.KBRoot, c.Path); err != nil {
 				return err
 			}
-			fmt.Printf("  remove        %-44s (%s)\n", c.Path, c.Status)
+			fmt.Printf("  Remove   %-44s %s\n", c.Path, upgradeReason(c.Status))
 			delete(next.Files, c.Path)
 			removed++
 
 		default:
 			// Withdrawn but edited. The engine has no claim on someone's
 			// changes, so it keeps both the file and its record.
-			fmt.Printf("  keep          %-44s (%s — yours now; delete it yourself)\n", c.Path, c.Status)
+			fmt.Printf("  Keep     %-44s no longer used, but you edited it; delete it when done\n", c.Path)
 			kept++
 		}
 	}
 
 	if *dry {
-		fmt.Printf("\ndry run — %d file(s) would change, %d would be removed, %d left alone.\n", written, removed, kept)
-		fmt.Println("\n── adapters ──")
+		printUpgradeCounts(written, removed, kept)
+		fmt.Print("\nAgent files\n\n")
 		sourceRoot, err := upgradePlanSourceRoot(cfg.KBRoot, changes, removals, *force)
 		if err != nil {
 			return err
@@ -146,12 +155,12 @@ func runUpgrade(cfg *config.Config, args []string) error {
 		if err != nil {
 			return err
 		}
-		printInstallPlan(plan, true)
-		fmt.Printf("%d adapter change(s) planned. Scheduled jobs would be repointed if needed.\n", plan.Changes())
-		fmt.Println("Nothing was written.")
+		printInstallPlan(plan)
+		fmt.Printf("\n%s to agent files. Scheduled jobs would also be updated if needed.\n", plural(plan.Changes(), "change"))
+		fmt.Println("Nothing has been written. Run `regesto upgrade` to apply.")
 		return nil
 	}
-	fmt.Printf("\n%d file(s) updated, %d removed, %d left alone.\n", written, removed, kept)
+	printUpgradeCounts(written, removed, kept)
 
 	// Refreshing the files is only half of it. The skills agents load are
 	// rendered copies under .state/, the hook is registered in the agent's
@@ -237,6 +246,32 @@ func upgradePlanSourceRoot(root string, changes, removals []manifest.Change, for
 	return shadow, nil
 }
 
+// upgradeReason says in plain words why a file is being written or removed.
+func upgradeReason(status manifest.Status) string {
+	switch status {
+	case manifest.Missing:
+		return "new file"
+	case manifest.Stale:
+		return "newer version"
+	case manifest.Modified, manifest.Unknown:
+		return "replacing your edited copy"
+	case manifest.Withdrawn:
+		return "no longer used"
+	case manifest.WithdrawnEdited:
+		return "no longer used (you had edited it)"
+	default:
+		return status.String()
+	}
+}
+
+func printUpgradeCounts(written, removed, kept int) {
+	if written+removed+kept == 0 {
+		fmt.Println("Regesto's files are already up to date.")
+		return
+	}
+	fmt.Printf("\nFiles: %d updated, %d removed, %d kept as you left them.\n", written, removed, kept)
+}
+
 // noteNewAgents flags a known agent that is present on this machine but
 // missing from this instance's `integrations` in config.toml — the case where a
 // release adds an adapter for something the user already had installed
@@ -254,7 +289,7 @@ func noteNewAgents(cfg *config.Config) {
 	}
 	detected, err := adapters.DetectProfiles(cfg.KBRoot)
 	if err != nil {
-		fmt.Printf("note     could not detect configured integration profiles: %v\n\n", err)
+		fmt.Printf("Note: couldn't check which agents are installed: %v\n\n", err)
 		return
 	}
 	var missing []string
@@ -266,27 +301,27 @@ func noteNewAgents(cfg *config.Config) {
 	if len(missing) == 0 {
 		return
 	}
-	fmt.Printf("note     %s detected but not in integrations = [...] in config.toml — add them with: regesto integrations add %s\n\n",
-		strings.Join(missing, ", "), strings.Join(missing, " "))
+	fmt.Printf("Note: %s installed but not connected (not in integrations = [...] in config.toml).\n      To connect: regesto integrations add %s\n\n",
+		integrationNames(missing)+map[bool]string{true: " is", false: " are"}[len(missing) == 1], strings.Join(missing, " "))
 }
 
 // reinstallAdapters calls the same Go planner/applicator as `regesto install`.
 // Upgrade has already refreshed the instance templates, so the plan observes
 // the just-installed artifact sources without shell config parsing.
 func reinstallAdapters(cfg *config.Config, options regestoinstall.Options) error {
-	fmt.Println("\n── adapters ──")
+	fmt.Print("\nAgent files\n\n")
 	plan, err := regestoinstall.Build(cfg, options)
 	if err != nil {
 		return err
 	}
-	printInstallPlan(plan, false)
+	printInstallPlan(plan)
 	result, err := regestoinstall.Apply(plan)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%d adapter change(s) applied.\n", result.Applied)
+	fmt.Printf("\n%s to agent files applied.\n", plural(result.Applied, "change"))
 	for _, path := range result.Backups {
-		fmt.Printf("  backup %s\n", path)
+		fmt.Printf("  Backup saved: %s\n", tildePath(path))
 	}
 	return nil
 }
@@ -332,7 +367,7 @@ func repointSchedule(cfg *config.Config) error {
 			continue
 		}
 		if !bytes.Contains(body, ours) {
-			fmt.Printf("\nleaving %s alone — it is scheduled against another instance\n", j.label)
+			fmt.Printf("\nLeaving scheduled job %s alone: it belongs to another knowledge base.\n", j.label)
 			continue
 		}
 		installed++
@@ -344,8 +379,8 @@ func repointSchedule(cfg *config.Config) error {
 	if installed == 0 || !stale {
 		return nil
 	}
-	fmt.Println("\n── scheduled jobs ──")
-	fmt.Printf("they name a different engine; repointing at %s\n", want)
+	fmt.Println("\nScheduled jobs")
+	fmt.Printf("  Updating them to use %s\n", tildePath(want))
 	lintHost := strings.TrimSpace(cfg.Section("roles")["lint"])
 	return scheduleInstall(cfg, lintHost == "" || lintHost == cfg.Machine)
 }

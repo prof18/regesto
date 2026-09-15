@@ -147,7 +147,7 @@ func safeNamespaceComponent(value string) bool {
 
 func runAgent(kbFS *os.Root, cfg *config.Config, a adapters.Agent, dryRun bool) ([]Result, error) {
 	if len(a.MemorySources) == 0 {
-		return []Result{{Agent: a.Name, Note: "no memory sources declared"}}, nil
+		return []Result{{Agent: a.Name, Note: "no memory location set up, skipped"}}, nil
 	}
 	state, err := loadSnapshot(kbFS, cfg, a.Name)
 	if err != nil {
@@ -161,7 +161,7 @@ func runAgent(kbFS *os.Root, cfg *config.Config, a adapters.Agent, dryRun bool) 
 		res := Result{Agent: a.Name, SourceID: memorySourceID(source), Kind: source.Kind, Location: source.Location}
 		switch source.Kind {
 		case "none":
-			res.Note = "memory kind none — harvesting disabled"
+			res.Note = "has no memory files to collect"
 			results = append(results, res)
 			continue
 		case "markdown-glob-v1":
@@ -172,7 +172,7 @@ func runAgent(kbFS *os.Root, cfg *config.Config, a adapters.Agent, dryRun bool) 
 			touched = touched || sourceTouched
 			results = append(results, res)
 		default:
-			res.Note = fmt.Sprintf("unsupported memory kind %q — skipped", source.Kind)
+			res.Note = fmt.Sprintf("memory type %q isn't supported, skipped", source.Kind)
 			results = append(results, res)
 		}
 	}
@@ -205,7 +205,7 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 	}
 	sort.Strings(dirs)
 	if len(dirs) == 0 {
-		res.Note = fmt.Sprintf("markdown-glob-v1 source not present: %s", source.Location)
+		res.Note = fmt.Sprintf("no memory files yet (source not present: %s)", source.Location)
 		return res, false, nil
 	}
 
@@ -236,7 +236,7 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 				return nil // an unreadable corner of a vendor dir must not abort the run
 			}
 			if d.Type()&os.ModeSymlink != 0 {
-				res.Skipped = append(res.Skipped, fmt.Sprintf("%s (symlinked vendor entry)", path))
+				res.Skipped = append(res.Skipped, fmt.Sprintf("%s (it's a symlink)", path))
 				return nil
 			}
 			if d.IsDir() {
@@ -255,7 +255,7 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 				return nil
 			}
 			if !info.Mode().IsRegular() {
-				res.Skipped = append(res.Skipped, fmt.Sprintf("%s (non-regular vendor entry)", path))
+				res.Skipped = append(res.Skipped, fmt.Sprintf("%s (not a regular file)", path))
 				return nil
 			}
 			rel, err := filepath.Rel(walkRoot, path)
@@ -291,20 +291,20 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 			for _, pat := range a.ExcludeGlobs {
 				if ok, _ := filepath.Match(pat, d.Name()); ok {
 					res.Skipped = append(res.Skipped,
-						fmt.Sprintf("%s (excluded by [harvest_exclude].%s pattern %q)", key, a.Name, pat))
+						fmt.Sprintf("%s (excluded by [harvest_exclude] %s = %q)", key, a.Name, pat))
 					return nil
 				}
 			}
 
 			if a.MaxCaptureBytes > 0 && info.Size() > a.MaxCaptureBytes {
 				res.Skipped = append(res.Skipped,
-					fmt.Sprintf("%s (%d KB exceeds the %d KB guard — raise [harvest].max_capture_bytes if this is real content)",
+					fmt.Sprintf("%s (%d KB is over the %d KB limit; raise max_capture_bytes under [harvest] in config.toml if it's real content)",
 						key, info.Size()/1024, a.MaxCaptureBytes/1024))
 				return nil
 			}
 			data, err := readStableRegularFile(path, info)
 			if err != nil {
-				res.Skipped = append(res.Skipped, fmt.Sprintf("%s (changed or became unsafe before capture)", path))
+				res.Skipped = append(res.Skipped, fmt.Sprintf("%s (changed while being read; will retry next time)", path))
 				return nil
 			}
 			sum := sha256.Sum256(data)
@@ -339,18 +339,18 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 	// it — first-run history is outside incremental capture.
 	first := !previous.Initialized
 	if first && len(changed) > 0 {
-		res.Note = fmt.Sprintf("first run — recorded a baseline of %d file(s), captured none", len(changed))
+		res.Note = fmt.Sprintf("first run: %d existing file(s) recorded as a starting point; only changes from now on are collected", len(changed))
 		changed = nil
 	}
 	var publish []string
 	for _, key := range changed {
 		origin := keyOrigins[key]
 		if previous, ok := state.Observed[memoryOriginID(origin)]; ok && previous.Sha == current[key].Sha {
-			res.Skipped = append(res.Skipped, fmt.Sprintf("%s (content already represented by an overlapping memory source)", key))
+			res.Skipped = append(res.Skipped, fmt.Sprintf("%s (already collected from another memory location)", key))
 			continue
 		}
 		if publishedFiles[origin] {
-			res.Skipped = append(res.Skipped, fmt.Sprintf("%s (change already captured from an overlapping memory source)", key))
+			res.Skipped = append(res.Skipped, fmt.Sprintf("%s (already collected from another memory location)", key))
 			continue
 		}
 		publishedFiles[origin] = true

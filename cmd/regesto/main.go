@@ -21,44 +21,39 @@ const usage = `Regesto — a shared knowledge base for your agents
 
 Usage: regesto [--config <path>] <command> [args]
 
-Find and record knowledge
-  search       Find facts by subject, relation, scope, or search terms.
-  write        Validate and save a fact supplied as JSON on stdin.
-  promote      Extract facts from a chat transcript (file or stdin).
-  project      Show the project name for a directory.
+Get started
+  init          Create a knowledge base: regesto init --dir ~/regesto-kb
+  integrations  Choose which agents Regesto connects to.
+  install       Add Regesto's skills, instructions and hooks to those agents.
+  doctor        Check the setup and say what to fix.
+  schedule      Run collection and processing in the background.
 
-Maintain your knowledge base
-  harvest      Collect new agent memories into the inbox.
-  normalize    Turn inbox captures into facts.
-  lint         Check facts and reconcile contradictions.
-  index        Rebuild INDEX.md and topic pages from facts.
-  cycle        Normalize, reconcile, rebuild, and commit changes.
+Find and add knowledge
+  search        Find facts by words, subject, relation or project.
+  write         Save a fact given as JSON (mostly used by agents).
+  promote       Pull facts out of a chat transcript.
+  project       Show the project name Regesto uses for a folder.
 
-Set up and troubleshoot
-  init         Create a knowledge base. Start with: regesto init --dir <path>
-  install      Set up agent skills, instructions, and hooks.
-  integrations Add or remove integrations in config.toml.
-  doctor       Check integrations and show what needs attention.
-  upgrade      Refresh the files managed by Regesto in this instance.
-  schedule     Manage scheduled runs: status, print, install, uninstall.
-  config       Show the resolved configuration.
-  version      Show the engine version.
+Keep it tidy (the background jobs run these for you)
+  harvest       Collect new agent memories into the inbox.
+  normalize     Turn inbox notes into facts.
+  lint          Check facts and resolve contradictions.
+  index         Rebuild INDEX.md and the topic pages.
+  cycle         All of the above, then commit to git.
 
-Agent interfaces
-  context      Produce knowledge-base context for an agent session.
-  hook         Respond to a host hook request on stdin.
-  mcp          Serve local resources and tools over MCP on stdin/stdout.
+Maintenance
+  upgrade       Update Regesto's files after installing a new version.
+  config        Show the settings in effect.
+  version       Show the Regesto version.
 
-Help
-  regesto <command> --help     Show command options.
-  regesto help                Show this overview.
+Used by agents
+  context       Print the summary an agent sees at session start.
+  hook          Handle an agent hook (not run by hand).
+  mcp           Run the MCP server.
 
-Examples
-  regesto search --scope aurora caching
-  regesto doctor
-  regesto install --dry-run
-
-Use --config <path> before the command to select a knowledge base.
+Run regesto <command> --help for a command's options.
+Commands find config.toml by looking in the current folder and its parents;
+use --config <path> before the command to pick another knowledge base.
 `
 
 func main() {
@@ -78,7 +73,7 @@ func run(args []string) error {
 	rest := global.Args()
 	if len(rest) == 0 {
 		fmt.Fprint(os.Stderr, usage)
-		return fmt.Errorf("no command given")
+		return fmt.Errorf("no command given; see the list above")
 	}
 
 	// Setup, version, and help must also work before an instance exists.
@@ -93,7 +88,7 @@ func run(args []string) error {
 		return nil
 	case "hook":
 		if len(rest) == 2 && (rest[1] == "--help" || rest[1] == "-h" || rest[1] == "-help") {
-			fmt.Println("Usage: regesto hook <protocol>\n\nRead a host hook request from stdin.\nProtocols: antigravity-pre-invocation-v1, claude-session-start-v1, copilot-session-start-v1, hermes-pre-llm-v1")
+			fmt.Println("Usage: regesto hook <protocol>\n\nCalled by an agent's hook to load the knowledge base into a session.\n`regesto install` sets this up; you don't run it by hand.\n\nProtocols: antigravity-pre-invocation-v1, claude-session-start-v1, copilot-session-start-v1, hermes-pre-llm-v1")
 			return nil
 		}
 		cfg, err := loadConfig(*configPath)
@@ -111,7 +106,11 @@ func run(args []string) error {
 	if len(rest) == 2 && (rest[1] == "--help" || rest[1] == "-h" || rest[1] == "-help") {
 		switch rest[0] {
 		case "index", "mcp":
-			fmt.Printf("Usage: regesto %s\n\nThis command takes no options.\n", rest[0])
+			descriptions := map[string]string{
+				"index": "Rebuild INDEX.md and the topic pages from the facts.",
+				"mcp":   "Run the MCP server on stdin/stdout, for agents that use MCP.",
+			}
+			fmt.Printf("Usage: regesto %s\n\n%s\nThis command has no options.\n", rest[0], descriptions[rest[0]])
 			return nil
 		}
 		cfg = &config.Config{}
@@ -165,7 +164,7 @@ func run(args []string) error {
 		return runUpgrade(cfg, rest[1:])
 	default:
 		fmt.Fprint(os.Stderr, usage)
-		return fmt.Errorf("unknown command %q", rest[0])
+		return fmt.Errorf("unknown command %q; see the list above", rest[0])
 	}
 }
 
@@ -192,11 +191,12 @@ func loadConfig(path string) (*config.Config, error) {
 
 func runSearch(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("search", flag.ContinueOnError)
-	subject := fs.String("subject", "", "exact subject match")
-	relation := fs.String("relation", "", "exact relation match")
-	scope := fs.String("scope", "", "global, project:<name>, or bare project name")
-	history := fs.Bool("history", false, "include status: superseded claims")
-	jsonOutput := fs.Bool("json", false, "print matching facts as JSON")
+	setUsage(fs, "regesto search [options] [words...]", "Find facts. Every option and word given must match.")
+	subject := fs.String("subject", "", "only facts with exactly this subject")
+	relation := fs.String("relation", "", "only facts with exactly this relation")
+	scope := fs.String("scope", "", "only global facts, or one project's (project:<name> or just <name>)")
+	history := fs.Bool("history", false, "include facts that have been replaced")
+	jsonOutput := fs.Bool("json", false, "print the results as JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

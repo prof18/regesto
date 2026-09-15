@@ -13,12 +13,13 @@ import (
 
 func runNormalize(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("normalize", flag.ContinueOnError)
-	dry := fs.Bool("dry-run", false, "list captures and prompt sizes; invoke nothing, write nothing")
-	command := fs.String("command", "", "single agent command, overriding the fallback chain")
-	timeout := fs.Duration("timeout", 5*time.Minute, "per-capture time limit")
-	showPrompt := fs.Bool("show-prompt", false, "print the prompt for the first capture and stop")
-	maxPrompt := fs.Int("max-prompt-bytes", -1, "defer captures whose prompt exceeds this; 0 for no limit (default 65536)")
-	maxCaptures := fs.Int("max-captures", -1, "process at most this many captures per run; 0 for no limit (default 20)")
+	setUsage(fs, "regesto normalize [options]", "Turn the notes in the inbox into facts, using an agent command.")
+	dry := fs.Bool("dry-run", false, "list the notes that would be processed without running an agent")
+	command := fs.String("command", "", "agent `command` to use, instead of [normalize] commands in config.toml")
+	timeout := fs.Duration("timeout", 5*time.Minute, "time limit for each note")
+	showPrompt := fs.Bool("show-prompt", false, "print the prompt for the first note and stop")
+	maxPrompt := fs.Int("max-prompt-bytes", -1, "skip notes whose prompt is larger than this; 0 for no limit (default 65536)")
+	maxCaptures := fs.Int("max-captures", -1, "process at most this many notes per run; 0 for no limit (default 20)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -49,11 +50,11 @@ func runNormalize(cfg *config.Config, args []string) error {
 			fmt.Print(normalize.Prompt(capture, vocab, ids, lint.KnownProjects(cfg, all)...))
 			return nil
 		}
-		fmt.Println("no eligible captures in inbox/")
+		fmt.Println("No notes in the inbox are ready to process.")
 		return nil
 	}
 
-	chain := normalize.Commands(*command, cfg.Section("normalize")["commands"])
+	chain := normalize.CommandsFor(*command, cfg.Section("normalize")["commands"], cfg.IntegrationIDs())
 
 	outcomes, err := normalize.Run(cfg, all, normalize.Options{
 		Commands:       chain,
@@ -67,7 +68,7 @@ func runNormalize(cfg *config.Config, args []string) error {
 		return err
 	}
 	if len(outcomes) == 0 {
-		fmt.Println("no captures in inbox/")
+		fmt.Println("The inbox is empty.")
 		return nil
 	}
 
@@ -78,7 +79,7 @@ func runNormalize(cfg *config.Config, args []string) error {
 			fmt.Printf("    %s\n", a)
 		}
 		if o.UsedCommand != "" {
-			fmt.Printf("    via      %s\n", o.UsedCommand)
+			fmt.Printf("    used     %s\n", o.UsedCommand)
 		}
 		if o.Note != "" {
 			fmt.Printf("    %s\n", o.Note)
@@ -95,13 +96,12 @@ func runNormalize(cfg *config.Config, args []string) error {
 		}
 	}
 	if *dry {
-		fmt.Printf("\nDry run — %d fact(s) would be written, %d candidate(s) rejected.\n", written, rejected)
-		fmt.Println("No facts were written.")
+		fmt.Printf("\nDry run: %s would be processed. Nothing has been written.\n", plural(len(outcomes), "note"))
 		return nil
 	}
-	fmt.Printf("%d fact(s) written, %d candidate(s) rejected\n", written, rejected)
+	fmt.Printf("\n%s written, %s rejected.\n", plural(written, "fact"), plural(rejected, "suggested fact"))
 	if written > 0 {
-		fmt.Println("run `regesto lint --fix --rebuild` to reconcile and regenerate")
+		fmt.Println("Next: run `regesto lint --fix --rebuild` to check the new facts and update the index.")
 	}
 	return nil
 }

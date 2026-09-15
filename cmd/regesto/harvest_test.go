@@ -24,7 +24,7 @@ func harvestCommandConfig(t *testing.T, body string) *config.Config {
 	return cfg
 }
 
-func TestHarvestOutputLabelsTypedSources(t *testing.T) {
+func TestHarvestOutputLabelsSourcesPlainly(t *testing.T) {
 	memory := filepath.Join(t.TempDir(), "memory")
 	if err := os.MkdirAll(memory, 0o755); err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func TestHarvestOutputLabelsTypedSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "maker[markdown-glob-v1-") || !strings.Contains(out, "scanned 0, nothing new") || !strings.Contains(out, "dry run") {
+	if !strings.Contains(out, "maker: nothing new (scanned 0 files)") || !strings.Contains(out, "Dry run") || strings.Contains(out, "markdown-glob-v1-") {
 		t.Fatalf("typed harvest output = %q", out)
 	}
 }
@@ -45,8 +45,8 @@ func TestHarvestOutputReportsNoneAndUnsupportedKinds(t *testing.T) {
 		body string
 		want string
 	}{
-		{name: "none", body: "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\n", want: "memory kind none"},
-		{name: "unsupported", body: "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\nmemory_kind = \"sqlite-v1\"\n", want: "unsupported memory kind"},
+		{name: "none", body: "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\n", want: "has no memory files to collect"},
+		{name: "unsupported", body: "integrations = [\"maker\"]\n[integrations.maker]\nprofile = \"generic\"\nmemory_kind = \"sqlite-v1\"\n", want: "memory type \"sqlite-v1\" isn't supported"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := harvestCommandConfig(t, test.body)
@@ -54,7 +54,7 @@ func TestHarvestOutputReportsNoneAndUnsupportedKinds(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(out, "maker[") || !strings.Contains(out, test.want) {
+			if !strings.Contains(out, "maker: ") || !strings.Contains(out, test.want) {
 				t.Fatalf("status output = %q", out)
 			}
 		})

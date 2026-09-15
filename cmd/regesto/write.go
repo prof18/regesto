@@ -16,10 +16,11 @@ import (
 
 func runWrite(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("write", flag.ContinueOnError)
-	source := fs.String("source", "", "authoritative provenance for the new fact")
-	dir := fs.String("dir", "", "resolve input scope `project` from this directory")
-	jsonInput := fs.Bool("json-input", false, "read one strict JSON write object from stdin")
-	jsonOutput := fs.Bool("json", false, "print the write result as JSON")
+	setUsage(fs, "regesto write --source <who> --json-input [options] < fact.json", "Save one fact, given as a JSON object on stdin. Mostly used by agents.")
+	source := fs.String("source", "", "who the fact comes from, e.g. human or claude@laptop (required)")
+	dir := fs.String("dir", "", "project `folder` the fact belongs to, when its scope is \"project\"")
+	jsonInput := fs.Bool("json-input", false, "read the fact as JSON from stdin (required)")
+	jsonOutput := fs.Bool("json", false, "print the result as JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -40,12 +41,12 @@ func runWrite(cfg *config.Config, args []string) error {
 
 	if *dir != "" {
 		if input.Scope != "project" {
-			return fmt.Errorf("write: --dir requires input scope %q", "project")
+			return fmt.Errorf("write: --dir only applies to facts whose scope is %q", "project")
 		}
 		resolved := project.Resolve(cfg, *dir)
 		input.Scope = "project:" + resolved.Name
 	} else if input.Scope == "project" {
-		return fmt.Errorf("write: input scope %q requires --dir", "project")
+		return fmt.Errorf("write: a fact with scope %q needs --dir to name the project folder", "project")
 	}
 
 	result, err := writeop.Create(cfg, input, writeop.Authority{Source: *source})
@@ -57,7 +58,7 @@ func runWrite(cfg *config.Config, args []string) error {
 	}
 	fmt.Println(result.Path)
 	if result.PendingReconciliation {
-		fmt.Println("pending reconciliation:")
+		fmt.Println("The next `regesto lint --fix` will also:")
 		for _, action := range result.Actions {
 			fmt.Printf("  %s %s: %s\n", action.Kind, action.ID, action.Message)
 		}

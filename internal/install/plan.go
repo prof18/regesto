@@ -157,13 +157,13 @@ func planEngineLink(p *Plan, opts Options) error {
 		Owners:          []string{"engine"},
 		DeclaredTargets: []string{opts.EngineLink},
 		CanonicalTarget: canonical,
-		IntendedState:   "symbolic link to " + opts.EngineTarget,
+		IntendedState:   "link to " + opts.EngineTarget,
 		BackupAction:    "none",
 		linkTarget:      opts.EngineTarget,
 	}
 	info, err := os.Lstat(canonical)
 	if os.IsNotExist(err) {
-		item.Action, item.CurrentState, item.DryRun = "create", "missing", "create engine link in an existing PATH directory"
+		item.Action, item.CurrentState, item.DryRun = "create", "not found", "create the regesto command link"
 		p.Items = append(p.Items, item)
 		return nil
 	}
@@ -171,7 +171,7 @@ func planEngineLink(p *Plan, opts Options) error {
 		return err
 	}
 	if info.Mode()&os.ModeSymlink == 0 {
-		item.Action, item.CurrentState, item.DryRun = "skip", "foreign non-symlink entry preserved", "leave foreign PATH entry unchanged"
+		item.Action, item.CurrentState, item.DryRun = "skip", "another file is already there; left alone", "no change; remove that file to let Regesto create the link"
 		p.Items = append(p.Items, item)
 		return nil
 	}
@@ -184,9 +184,9 @@ func planEngineLink(p *Plan, opts Options) error {
 	}
 	raw = filepath.Clean(raw)
 	if raw == filepath.Clean(opts.EngineTarget) {
-		item.Action, item.CurrentState, item.DryRun = "current", "engine link current", "leave engine link unchanged"
+		item.Action, item.CurrentState, item.DryRun = "current", "link is up to date", "no change"
 	} else {
-		item.Action, item.CurrentState, item.DryRun = "skip", "foreign symlink to "+raw+" preserved", "leave foreign PATH link unchanged"
+		item.Action, item.CurrentState, item.DryRun = "skip", "already links to "+raw+"; left alone", "no change"
 	}
 	p.Items = append(p.Items, item)
 	return nil
@@ -272,9 +272,9 @@ func sortedUnique(values []string) []string {
 
 func backupDescription(target string, exists bool) string {
 	if !exists {
-		return "none (target does not exist)"
+		return "none"
 	}
-	return target + ".regesto-backup.<UTC timestamp>"
+	return target + ".regesto-backup.<timestamp>"
 }
 
 func within(root, path string) bool {

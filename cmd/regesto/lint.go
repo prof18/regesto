@@ -14,8 +14,9 @@ import (
 
 func runLint(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("lint", flag.ContinueOnError)
-	apply := fs.Bool("fix", false, "apply the mechanical changes; without this, report only")
-	rebuild := fs.Bool("rebuild", false, "also regenerate INDEX.md and knowledge/topics/")
+	setUsage(fs, "regesto lint [options]", "Check every fact for problems, and find facts that contradict or replace each other.")
+	apply := fs.Bool("fix", false, "apply the changes it suggests (without this, it only reports)")
+	rebuild := fs.Bool("rebuild", false, "also rebuild INDEX.md and the topic pages")
 	quiet := fs.Bool("quiet", false, "print only problems and changes")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -32,17 +33,20 @@ func runLint(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
+	if len(resolutions) > 0 {
+		fmt.Println("Sync conflicts")
+	}
 	for _, r := range resolutions {
-		verb := "would resolve"
+		verb := "Would resolve"
 		if *apply {
-			verb = "resolved    "
+			verb = "Resolved"
 		}
 		if r.NeedsHuman {
-			verb = "NEEDS HUMAN "
+			verb = "NEEDS YOU"
 		}
-		fmt.Printf("conflict %s %s — %s\n", verb, r.ConflictPath, r.Message)
+		fmt.Printf("  %-13s %s: %s\n", verb, r.ConflictPath, r.Message)
 		if r.Archived != "" {
-			fmt.Printf("conflict              archived %s\n", r.Archived)
+			fmt.Printf("  %-13s %s\n", "Archived", r.Archived)
 		}
 	}
 
@@ -57,16 +61,19 @@ func runLint(cfg *config.Config, args []string) error {
 	if err != nil {
 		return err
 	}
+	if len(scopeFixes) > 0 {
+		fmt.Println("Project names")
+	}
 	for _, s := range scopeFixes {
 		if s.Blocked != "" {
-			fmt.Printf("scope    BLOCKED  %s — %s; %s\n", s.ID, s.Message, s.Blocked)
+			fmt.Printf("  %-13s %s: %s; %s\n", "BLOCKED", s.ID, s.Message, s.Blocked)
 			continue
 		}
-		verb := "would move"
+		verb := "Would move"
 		if *apply {
-			verb = "moved    "
+			verb = "Moved"
 		}
-		fmt.Printf("scope    %s %s — %s\n", verb, s.ID, s.Message)
+		fmt.Printf("  %-13s %s: %s\n", verb, s.ID, s.Message)
 	}
 	if len(scopeFixes) > 0 && *apply {
 		if all, err = facts.LoadAll(cfg.KBRoot); err != nil {
@@ -76,53 +83,49 @@ func runLint(cfg *config.Config, args []string) error {
 
 	report := lint.Run(all, time.Now().UTC())
 
-	if !*quiet {
-		fmt.Printf("checked %d fact(s)\n", report.Checked)
-	}
-
 	if len(report.Findings) > 0 {
-		fmt.Println("\nfindings:")
+		fmt.Println("\nProblems")
 	}
 	for _, f := range report.Findings {
-		fmt.Printf("%-5s %s: %s\n", f.Severity, f.Path, f.Message)
+		fmt.Printf("  %-7s %s: %s\n", severityLabel(f.Severity), f.Path, f.Message)
 	}
 
 	// Report before applying: the run summary is the whole point, and a
 	// wrongly-merged pair is only catchable if you see it happen.
 	if len(report.Actions) > 0 {
-		fmt.Println("\nactions:")
+		if *apply {
+			fmt.Println("\nChanges made")
+		} else {
+			fmt.Println("\nChanges to make (run with --fix to apply)")
+		}
 	}
 	for _, a := range report.Actions {
-		verb := "would"
-		if *apply {
-			verb = "did  "
-		}
-		fmt.Printf("%s %-10s %s — %s\n", verb, a.Kind, a.ID, a.Message)
+		fmt.Printf("  %s: %s\n", a.ID, a.Message)
 	}
 	if len(report.Reviews) > 0 {
-		fmt.Println("\nreview:")
+		fmt.Println("\nWaiting for your review")
 	}
 	for _, r := range report.Reviews {
-		fmt.Printf("review    %s\n", r)
+		fmt.Printf("  %s\n", r)
 	}
 	if len(report.NearDuplicates) > 0 {
-		fmt.Println("\nvocabulary:")
+		fmt.Println("\nPossible duplicate names")
 	}
 	for _, d := range report.NearDuplicates {
-		fmt.Printf("vocab     %s\n", d)
+		fmt.Printf("  %s\n", d)
 	}
 	if len(report.Due) > 0 {
-		fmt.Println("\ndue:")
+		fmt.Println("\nDue for review")
 	}
 	for _, d := range report.Due {
-		fmt.Printf("due       %s\n", d)
+		fmt.Printf("  %s\n", d)
 	}
 
 	if *apply {
 		// Refuse to mutate a store that does not parse cleanly: reconciliation
 		// decided what to do from data that validation just called wrong.
 		if n := report.Errors(); n > 0 {
-			return fmt.Errorf("%d error(s) — fix those before --fix, so changes are not computed from bad data", n)
+			return fmt.Errorf("%s found; fix them first, then run --fix again (nothing was changed)", plural(n, "error"))
 		}
 		for _, a := range report.Actions {
 			path := cfg.KBRoot + "/" + a.Path
@@ -140,17 +143,38 @@ func runLint(cfg *config.Config, args []string) error {
 		if err := index.Write(cfg.KBRoot, index.Build(all)); err != nil {
 			return err
 		}
-		if !*quiet {
-			fmt.Printf("rebuilt INDEX.md and knowledge/topics/\n")
-		}
 	}
 
 	if !*quiet {
-		fmt.Printf("\n%d error(s), %d warning(s), %d action(s), %d pending review(s)\n",
-			report.Errors(), len(report.Findings)-report.Errors(), len(report.Actions), len(report.Reviews))
+		errors, warnings := report.Errors(), len(report.Findings)-report.Errors()
+		if len(report.Findings)+len(report.Actions)+len(report.Reviews)+len(report.NearDuplicates)+len(report.Due)+len(resolutions)+len(scopeFixes) > 0 {
+			fmt.Println()
+		}
+		summary := fmt.Sprintf("Checked %s: %s, %s", plural(report.Checked, "fact"), plural(errors, "error"), plural(warnings, "warning"))
+		if n := len(report.Actions); n > 0 {
+			if *apply {
+				summary += ", " + plural(n, "change") + " made"
+			} else {
+				summary += ", " + plural(n, "change") + " to make"
+			}
+		}
+		if n := len(report.Reviews); n > 0 {
+			summary += ", " + plural(n, "fact") + " waiting for review"
+		}
+		fmt.Println(summary + ".")
+		if *rebuild {
+			fmt.Println("Rebuilt INDEX.md and the topic pages.")
+		}
 	}
 	if report.Errors() > 0 {
 		os.Exit(1)
 	}
 	return nil
+}
+
+func severityLabel(s lint.Severity) string {
+	if s == lint.Error {
+		return "Error"
+	}
+	return "Warning"
 }

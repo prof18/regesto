@@ -180,7 +180,7 @@ func TestConfigDiscoveryPrecedence(t *testing.T) {
 	// A directory with no instance above it, and no instance beside the test
 	// binary, must fail with an error naming both places it looked.
 	if _, err := config.Find(string(filepath.Separator)); err != nil {
-		for _, want := range []string{"walking up", "beside the binary"} {
+		for _, want := range []string{"parent folders", "regesto binary"} {
 			if !contains(err.Error(), want) {
 				t.Errorf("error should mention %q, got: %v", want, err)
 			}

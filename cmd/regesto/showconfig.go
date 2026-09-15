@@ -16,7 +16,8 @@ import (
 // so path policy lives in tested Go rather than being duplicated in bash.
 func runShowConfig(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
-	jsonOutput := fs.Bool("json", false, "print resolved capabilities as JSON")
+	setUsage(fs, "regesto config [options]", "Print the settings in effect, with defaults filled in, as key=value lines.")
+	jsonOutput := fs.Bool("json", false, "print them as JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

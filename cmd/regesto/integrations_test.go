@@ -27,7 +27,7 @@ func TestIntegrationsAddAppendsAndPreservesComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(before), "# Regesto instance configuration.") {
+	if !strings.Contains(string(before), "# Regesto settings for this knowledge base.") {
 		t.Fatal("template comment missing before the edit")
 	}
 
@@ -41,7 +41,7 @@ func TestIntegrationsAddAppendsAndPreservesComments(t *testing.T) {
 	if !strings.Contains(string(after), `integrations = ["claude", "codex", "hermes"]`) {
 		t.Fatalf("list not appended:\n%s", after)
 	}
-	if !strings.Contains(string(after), "# Regesto instance configuration.") {
+	if !strings.Contains(string(after), "# Regesto settings for this knowledge base.") {
 		t.Fatalf("template comments lost:\n%s", after)
 	}
 	// The whole file beyond the one line must be byte-identical.
@@ -91,7 +91,7 @@ func TestIntegrationsAddRejectsUnknownAndWritesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = runIntegrations(loadTestConfig(t, root), []string{"add", "nosuch"})
-	if err == nil || !strings.Contains(err.Error(), "known:") {
+	if err == nil || !strings.Contains(err.Error(), "built-in: antigravity, claude") {
 		t.Fatalf("unknown id should be rejected with the known list: %v", err)
 	}
 	after, _ := os.ReadFile(filepath.Join(root, config.FileName))
@@ -197,7 +197,7 @@ func TestIntegrationsUnknownIdIsRejected(t *testing.T) {
 	// A typo'd subcommand becomes a first-class unknown-id error listing the
 	// known integrations.
 	err := runIntegrations(loadTestConfig(t, root), []string{"frobnicate"})
-	if err == nil || !strings.Contains(err.Error(), "known:") {
+	if err == nil || !strings.Contains(err.Error(), "built-in: antigravity, claude") {
 		t.Fatalf("unknown id should be rejected with the known list: %v", err)
 	}
 }

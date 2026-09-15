@@ -135,6 +135,19 @@ func embeddedProfiles() (map[string]Profile, error) {
 	return loadProfileFS(regesto.Adapters, "adapters/profiles", "embedded adapters/profiles")
 }
 
+// DisplayName returns the human name of a built-in integration, or the id
+// itself when the id is not a built-in profile.
+func DisplayName(id string) string {
+	profiles, err := embeddedProfiles()
+	if err != nil {
+		return id
+	}
+	if p, ok := profiles[id]; ok && strings.TrimSpace(p.DisplayName) != "" {
+		return p.DisplayName
+	}
+	return id
+}
+
 func parseProfile(body []byte, source, fileID string) (Profile, error) {
 	var p Profile
 	trimmed := bytes.TrimSpace(body)

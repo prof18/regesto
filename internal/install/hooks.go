@@ -116,7 +116,7 @@ func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 			Owners:          g.owners,
 			DeclaredTargets: g.declared,
 			CanonicalTarget: key,
-			IntendedState:   "all declared " + g.event + " commands registered once; foreign JSON preserved",
+			IntendedState:   "Regesto's " + g.event + " hook added; other settings kept",
 			before:          current,
 			desired:         desired,
 			mode:            0o644,
@@ -130,20 +130,20 @@ func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 		}
 		if exists && already {
 			item.Action = "current"
-			item.CurrentState = "all " + g.event + " commands already registered"
+			item.CurrentState = "Regesto's " + g.event + " hook is already set up"
 			item.BackupAction = "none"
-			item.DryRun = "leave hook settings byte-for-byte unchanged"
+			item.DryRun = "no change"
 		} else if exists {
 			item.Action = "update"
-			item.CurrentState = "settings present; one or more commands missing"
+			item.CurrentState = "settings file exists, but Regesto's hook is missing"
 			item.BackupAction = backupDescription(key, true)
-			item.DryRun = "back up settings and append missing " + g.event + " commands"
+			item.DryRun = "back up the settings file and add Regesto's " + g.event + " hook"
 		} else {
 			item.Action = "create"
-			item.CurrentState = "settings missing"
+			item.CurrentState = "settings file not found"
 			item.before = nil
 			item.BackupAction = backupDescription(key, false)
-			item.DryRun = "create settings with the declared " + g.event + " commands"
+			item.DryRun = "create the settings file with Regesto's " + g.event + " hook"
 		}
 		p.Items = append(p.Items, item)
 	}

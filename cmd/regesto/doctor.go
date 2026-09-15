@@ -41,6 +41,10 @@ type doctorIntegration struct {
 	Capabilities doctorCapabilities `json:"capabilities"`
 	Artifacts    []doctorArtifact   `json:"artifacts"`
 	Remediations []string           `json:"remediations"`
+
+	// otherKnowledgeBase is set when this agent's skills belong to another
+	// knowledge base; the text report merges that advice across agents.
+	otherKnowledgeBase string
 }
 
 type doctorCapabilities struct {
@@ -106,14 +110,15 @@ type doctorCheck struct {
 
 func runDoctor(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
-	integrationID := fs.String("integration", "", "report only one configured or detected integration")
-	jsonOutput := fs.Bool("json", false, "print the versioned diagnostic report as JSON")
-	verbose := fs.Bool("verbose", false, "include healthy artifacts and full trust rules")
+	setUsage(fs, "regesto doctor [options]", "Check that Regesto and your agents are set up correctly, and say what to fix.")
+	integrationID := fs.String("integration", "", "check only this agent `id`")
+	jsonOutput := fs.Bool("json", false, "print the report as JSON")
+	verbose := fs.Bool("verbose", false, "also list files that are fine, and the trust rules")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return fmt.Errorf("doctor takes no positional arguments")
+		return fmt.Errorf("doctor takes no arguments besides options; see `regesto doctor --help`")
 	}
 	report, err := buildDoctorReport(cfg, *integrationID)
 	if err != nil {
@@ -146,19 +151,19 @@ func buildDoctorReport(cfg *config.Config, filter string) (doctorReport, error) 
 		Remediations:  []string{},
 	}
 	if info, statErr := os.Stat(cfg.KBRoot); statErr != nil || !info.IsDir() {
-		message := "knowledge-base root is not an accessible directory"
+		message := "the knowledge base folder can't be opened"
 		if statErr != nil {
 			message += ": " + statErr.Error()
 		}
-		addDoctorCheck(&report, doctorCheck{ID: "kb-root", Status: "error", Message: message, Remediation: "Correct kb_root in config.toml and rerun regesto doctor."})
+		addDoctorCheck(&report, doctorCheck{ID: "kb-root", Status: "error", Message: message, Remediation: "Check that the knowledge base folder exists and is readable, then run `regesto doctor` again."})
 	} else {
-		addDoctorCheck(&report, doctorCheck{ID: "kb-root", Status: "ok", Message: "knowledge-base root is accessible"})
+		addDoctorCheck(&report, doctorCheck{ID: "kb-root", Status: "ok", Message: "the knowledge base folder is readable"})
 	}
 
 	detectedIDs, detectErr := adapters.DetectProfiles(cfg.KBRoot)
 	detected := map[string]bool{}
 	if detectErr != nil {
-		addDoctorCheck(&report, doctorCheck{ID: "profile-detection", Status: "error", Message: detectErr.Error(), Remediation: "Repair adapters/profiles and rerun regesto doctor."})
+		addDoctorCheck(&report, doctorCheck{ID: "profile-detection", Status: "error", Message: detectErr.Error(), Remediation: "Run `regesto upgrade` to restore Regesto's agent definitions, then run `regesto doctor` again."})
 	} else {
 		for _, id := range detectedIDs {
 			detected[id] = true
@@ -187,7 +192,7 @@ func buildDoctorReport(cfg *config.Config, filter string) (doctorReport, error) 
 		}
 		resolved, resolveErr := adapters.Resolve(doctorScopedConfig(cfg, id))
 		if resolveErr != nil {
-			addDoctorCheck(&report, doctorCheck{ID: "detected-profile-" + id, Status: "error", Message: resolveErr.Error(), Remediation: "Repair the detected profile metadata and rerun regesto doctor."})
+			addDoctorCheck(&report, doctorCheck{ID: "detected-profile-" + id, Status: "error", Message: resolveErr.Error(), Remediation: "Run `regesto upgrade` to restore Regesto's agent definitions, then run `regesto doctor` again."})
 			continue
 		}
 		if len(resolved) == 1 {
@@ -195,7 +200,7 @@ func buildDoctorReport(cfg *config.Config, filter string) (doctorReport, error) 
 		}
 	}
 	if filter != "" && len(inputs) == 0 {
-		return doctorReport{}, fmt.Errorf("integration %q is neither configured nor detected", filter)
+		return doctorReport{}, fmt.Errorf("agent %q is not connected and was not found on this machine", filter)
 	}
 	sort.Slice(inputs, func(i, j int) bool { return inputs[i].agent.Name < inputs[j].agent.Name })
 
@@ -208,7 +213,7 @@ func buildDoctorReport(cfg *config.Config, filter string) (doctorReport, error) 
 		}
 	}
 	if len(configuredInputs) == 0 {
-		addDoctorCheck(&report, doctorCheck{ID: "install-plan", Status: "ok", Message: "no configured integration artifacts selected for planning"})
+		addDoctorCheck(&report, doctorCheck{ID: "install-plan", Status: "ok", Message: "no connected agents to check"})
 	} else {
 		planCfg := cfg
 		if filter != "" {
@@ -219,9 +224,9 @@ func buildDoctorReport(cfg *config.Config, filter string) (doctorReport, error) 
 			for _, input := range configuredInputs {
 				plans[input.agent.Name] = globalPlan
 			}
-			addDoctorCheck(&report, doctorCheck{ID: "install-plan", Status: "ok", Message: "integration artifacts can be planned without writing"})
+			addDoctorCheck(&report, doctorCheck{ID: "install-plan", Status: "ok", Message: "agent files can be checked"})
 		} else {
-			addDoctorCheck(&report, doctorCheck{ID: "install-plan", Status: "error", Message: globalErr.Error(), Remediation: "Resolve the reported host artifact or target conflict, then run regesto install --dry-run."})
+			addDoctorCheck(&report, doctorCheck{ID: "install-plan", Status: "error", Message: globalErr.Error(), Remediation: "Fix the file problem reported above, then run `regesto install --dry-run`."})
 			for _, input := range configuredInputs {
 				individual, individualErr := regestoinstall.Build(doctorScopedConfig(cfg, input.agent.Name), regestoinstall.Options{})
 				plans[input.agent.Name], planErrors[input.agent.Name] = individual, individualErr
@@ -235,19 +240,82 @@ func buildDoctorReport(cfg *config.Config, filter string) (doctorReport, error) 
 			canonicalKBRoot = absolute
 		}
 	}
+	// Steps for connected agents come first, in agent order. Agents that are
+	// installed but not connected share one step, since the fix is one command.
+	var unconnected []doctorIntegration
+	var needInstall []string
+	var otherKBs []string
+	otherKBNames := map[string][]string{}
 	for _, input := range inputs {
 		integration := diagnoseIntegration(input.agent, detected[input.agent.ProfileID], input.configured, canonicalKBRoot, plans[input.agent.Name], planErrors[input.agent.Name])
 		report.Integrations = append(report.Integrations, integration)
 		if statusRank(integration.Status) > statusRank(report.Status) {
 			report.Status = integration.Status
 		}
+		if !integration.Configured {
+			unconnected = append(unconnected, integration)
+			continue
+		}
 		for _, remediation := range integration.Remediations {
+			if kb := integration.otherKnowledgeBase; kb != "" && remediation == otherKBRemediation(integration.DisplayName, kb) {
+				if len(otherKBNames[kb]) == 0 {
+					otherKBs = append(otherKBs, kb)
+				}
+				otherKBNames[kb] = append(otherKBNames[kb], integration.DisplayName)
+				continue
+			}
+			if remediation == installRemediation(integration.DisplayName) {
+				needInstall = append(needInstall, integration.DisplayName)
+				continue
+			}
 			report.Remediations = appendUnique(report.Remediations, remediation)
 		}
 	}
+	var first []string
+	for _, kb := range otherKBs {
+		first = append(first, otherKBRemediation(joinWords(otherKBNames[kb]), kb))
+	}
+	if len(needInstall) > 0 {
+		first = append(first, installRemediation(joinWords(needInstall)))
+	}
+	report.Remediations = append(first, report.Remediations...)
+	switch len(unconnected) {
+	case 0:
+	case 1:
+		for _, remediation := range unconnected[0].Remediations {
+			report.Remediations = appendUnique(report.Remediations, remediation)
+		}
+	default:
+		names, ids := make([]string, len(unconnected)), make([]string, len(unconnected))
+		for i, integration := range unconnected {
+			names[i], ids[i] = integration.DisplayName, integration.ID
+		}
+		report.Remediations = appendUnique(report.Remediations, joinWords(names)+" are installed but not connected. To connect them: `regesto integrations add "+strings.Join(ids, " ")+"`")
+	}
 	report.Trust = describeTrust(cfg)
-	sort.Strings(report.Remediations)
 	return report, nil
+}
+
+// otherKBRemediation explains that agents are already set up with a different
+// knowledge base, which is usually intended rather than a problem.
+func otherKBRemediation(names, kb string) string {
+	return names + " already use the knowledge base in " + tildePath(kb) + ". If that's the one you want, there's nothing to do. " +
+		"To switch to this one, remove their regesto-* skill links, then run `regesto install` here."
+}
+
+// otherLinkedKB reads which knowledge base a skipped skill link belongs to.
+func otherLinkedKB(item regestoinstall.Item) string {
+	target, err := os.Readlink(item.CanonicalTarget)
+	if err != nil {
+		return ""
+	}
+	return regestoinstall.OtherKnowledgeBase(target)
+}
+
+// installRemediation is the one step every agent with pending files shares,
+// so the report can merge it into a single line.
+func installRemediation(names string) string {
+	return "Run `regesto install` to finish setting up " + names + " (preview first with `regesto install --dry-run`)."
 }
 
 func doctorScopedConfig(cfg *config.Config, id string) *config.Config {
@@ -273,68 +341,77 @@ func diagnoseIntegration(agent adapters.Agent, detected, configured bool, kbRoot
 		Configured: configured, Detected: detected, Status: "ok", Artifacts: []doctorArtifact{}, Remediations: []string{},
 	}
 	if len(agent.Detect.Paths) == 0 && len(agent.Detect.Commands) == 0 {
-		d.Capabilities.Detection = doctorCapability{Status: "unsupported", Detail: "profile declares no automatic detection signals"}
+		d.Capabilities.Detection = doctorCapability{Status: "unsupported", Detail: "can't be detected automatically"}
 	} else if detected {
-		d.Capabilities.Detection = doctorCapability{Status: "ok", Detail: "profile path or command signal detected"}
+		d.Capabilities.Detection = doctorCapability{Status: "ok", Detail: "found on this machine"}
 	} else {
-		d.Capabilities.Detection = doctorCapability{Status: "warning", Detail: "configured, but no declared path or command signal was detected"}
-		d.Remediations = append(d.Remediations, "Verify that "+agent.DisplayName+" is installed, or correct its profile detection metadata.")
+		d.Capabilities.Detection = doctorCapability{Status: "warning", Detail: "connected, but not found on this machine"}
+		d.Remediations = append(d.Remediations, agent.DisplayName+" is connected but doesn't seem to be installed here. Install it, or disconnect it: `regesto integrations remove "+agent.Name+"`")
 	}
 
 	if len(agent.SkillsDirs) == 0 {
-		d.Capabilities.Skills = doctorCapability{Status: "unsupported", Detail: "profile declares no skills target"}
+		d.Capabilities.Skills = doctorCapability{Status: "unsupported", Detail: "not supported by this agent"}
 	} else {
-		d.Capabilities.Skills = doctorCapability{Status: "ok", Detail: fmt.Sprintf("%s variant for %d target(s)", agent.SkillsVariant, len(agent.SkillsDirs))}
+		d.Capabilities.Skills = doctorCapability{Status: "ok", Detail: "installed"}
 	}
 	if len(agent.InstructionsFiles) == 0 {
-		d.Capabilities.Instructions = doctorCapability{Status: "unsupported", Detail: "profile declares no instructions target"}
+		d.Capabilities.Instructions = doctorCapability{Status: "unsupported", Detail: "not supported by this agent"}
 	} else {
-		d.Capabilities.Instructions = doctorCapability{Status: "ok", Detail: fmt.Sprintf("%d declared target(s); create=%t", len(agent.InstructionsFiles), agent.InstructionsCreate)}
+		d.Capabilities.Instructions = doctorCapability{Status: "ok", Detail: "installed"}
 	}
 	for _, hook := range agent.Hooks {
-		status, detail := "ok", "registration is current"
+		status, detail := "ok", "installed"
 		if hook.Protocol == "none" || hook.Registrar == "none" {
-			status, detail = "unsupported", "profile declares no hook capability"
+			status, detail = "unsupported", "not supported by this agent"
 		}
 		d.Capabilities.Hooks = append(d.Capabilities.Hooks, doctorHookCapability{Protocol: hook.Protocol, Registrar: hook.Registrar, Settings: hook.Settings, Status: status, Detail: detail})
 	}
 	if len(d.Capabilities.Hooks) == 0 {
-		d.Capabilities.Hooks = []doctorHookCapability{{Protocol: "none", Registrar: "none", Status: "unsupported", Detail: "profile declares no hook capability"}}
+		d.Capabilities.Hooks = []doctorHookCapability{{Protocol: "none", Registrar: "none", Status: "unsupported", Detail: "not supported by this agent"}}
 	}
+	// Memory advice is added last: it matters less than finishing the install.
+	var memoryAdvice []string
 	for _, source := range agent.MemorySources {
 		memory := inspectMemorySource(source, agent.Name, kbRoot)
 		d.Capabilities.Memory = append(d.Capabilities.Memory, memory)
-		if memory.Status == "warning" || memory.Status == "error" {
-			d.Remediations = appendUnique(d.Remediations, "Verify the "+agent.Name+" memory location or set memory_kind and memory_location under [integrations."+agent.Name+"].")
+		switch {
+		case !configured:
+		case memory.Status == "warning":
+			memoryAdvice = append(memoryAdvice, "No memory files found for "+agent.DisplayName+" at "+tildePath(memory.Location)+". That's normal until it saves some; if they live elsewhere, set memory_location under [integrations."+agent.Name+"] in config.toml.")
+		case memory.Status == "error":
+			memoryAdvice = append(memoryAdvice, "Regesto can't collect memory for "+agent.DisplayName+": "+memory.Detail+". Check memory_location under [integrations."+agent.Name+"] in config.toml.")
 		}
 	}
 	if len(d.Capabilities.Memory) == 0 {
-		d.Capabilities.Memory = []doctorMemorySource{{Kind: "none", Status: "unsupported", Detail: "profile declares no memory source"}}
+		d.Capabilities.Memory = []doctorMemorySource{{Kind: "none", Status: "unsupported", Detail: "this agent has no memory files to collect"}}
 	}
 	defaultTrust := agent.DefaultTrust
 	if defaultTrust == "" {
 		defaultTrust = "quarantine"
 	}
-	d.Capabilities.Trust = doctorCapability{Status: "ok", Detail: "new captures default to " + defaultTrust + "; exact trusted sources and source policies take precedence"}
+	trustDetail := "wait in the inbox for your review (quarantine)"
+	if defaultTrust == "supervised" {
+		trustDetail = "become facts automatically (supervised)"
+	}
+	d.Capabilities.Trust = doctorCapability{Status: "ok", Detail: trustDetail}
 
 	if !configured {
 		d.Status = "warning"
-		d.Remediations = appendUnique(d.Remediations, "Add "+agent.Name+" to integrations = [...] before installing its declared capabilities.")
-		markPlannedCapabilities(&d, "warning", "detected profile is not configured; artifacts were not planned")
-		sort.Strings(d.Remediations)
+		d.Remediations = appendUnique(d.Remediations, agent.DisplayName+" is installed but not connected. To connect it: `regesto integrations add "+agent.Name+"`")
+		markPlannedCapabilities(&d, "warning", "not connected")
 		return d
 	}
 
 	if planErr != nil {
 		d.Status = "error"
-		d.Remediations = appendUnique(d.Remediations, "Resolve the install-plan error and rerun regesto doctor --integration "+agent.Name+".")
-		markPlannedCapabilities(&d, "error", "install plan could not be evaluated")
+		d.Remediations = appendUnique(d.Remediations, "Fix the problem reported above, then run `regesto doctor --integration "+agent.Name+"` again.")
+		markPlannedCapabilities(&d, "error", "couldn't be checked")
 		return d
 	}
 	if plan == nil {
 		d.Status = "error"
-		d.Remediations = appendUnique(d.Remediations, "Rerun regesto doctor after repairing the global install-plan error.")
-		markPlannedCapabilities(&d, "error", "install plan could not be evaluated")
+		d.Remediations = appendUnique(d.Remediations, "Fix the problem reported above, then run `regesto doctor` again.")
+		markPlannedCapabilities(&d, "error", "couldn't be checked")
 		return d
 	}
 	for _, item := range plan.Items {
@@ -348,7 +425,19 @@ func diagnoseIntegration(agent adapters.Agent, detected, configured bool, kbRoot
 		}
 		if item.Action != "current" {
 			artifact.Remediation = item.DryRun
-			d.Remediations = appendUnique(d.Remediations, "Review regesto install --dry-run, then run regesto install for "+agent.Name+".")
+			target := tildePath(item.CanonicalTarget)
+			switch {
+			case item.Action == "manual":
+				d.Remediations = appendUnique(d.Remediations, "Set up the "+agent.DisplayName+" hook by hand; `regesto install --dry-run` shows what to add.")
+			case item.Action == "skip" && item.Kind == "skill-link" && len(item.DeclaredTargets) > 0 && otherLinkedKB(item) != "":
+				d.otherKnowledgeBase = otherLinkedKB(item)
+			case item.Action == "skip" && item.Kind == "instructions":
+				d.Remediations = appendUnique(d.Remediations, "Create "+target+" so Regesto can add its instructions for "+agent.DisplayName+", then run `regesto install` again.")
+			case item.Action == "skip":
+				d.Remediations = appendUnique(d.Remediations, agent.DisplayName+": "+item.CurrentState+" at "+target+". Move it aside if Regesto should manage it, then run `regesto install` again.")
+			default:
+				d.Remediations = appendUnique(d.Remediations, installRemediation(agent.DisplayName))
+			}
 		}
 		d.Artifacts = append(d.Artifacts, artifact)
 		capStatus := artifactStatus(item.Action)
@@ -368,11 +457,25 @@ func diagnoseIntegration(agent adapters.Agent, detected, configured bool, kbRoot
 			}
 		}
 	}
-	d.Status = integrationStatus(d)
-	if !hasOperationalCapability(d) {
-		d.Remediations = appendUnique(d.Remediations, "Configure at least one supported skills, instructions, hook, or memory capability for "+agent.Name+".")
+	if d.otherKnowledgeBase != "" {
+		// Installing here would move half of this agent (instructions, hook)
+		// to this knowledge base while its skills stay with the other one, so
+		// the only advice is the switch itself.
+		kept := d.Remediations[:0]
+		for _, remediation := range d.Remediations {
+			if remediation != installRemediation(agent.DisplayName) {
+				kept = append(kept, remediation)
+			}
+		}
+		d.Remediations = append(kept, otherKBRemediation(agent.DisplayName, d.otherKnowledgeBase))
 	}
-	sort.Strings(d.Remediations)
+	d.Status = integrationStatus(d)
+	for _, advice := range memoryAdvice {
+		d.Remediations = appendUnique(d.Remediations, advice)
+	}
+	if !hasOperationalCapability(d) {
+		d.Remediations = appendUnique(d.Remediations, agent.DisplayName+" has nothing Regesto can set up. Check [integrations."+agent.Name+"] in config.toml.")
+	}
 	return d
 }
 
@@ -380,12 +483,12 @@ func inspectMemorySource(source adapters.MemorySource, integration, kbRoot strin
 	out := doctorMemorySource{Kind: source.Kind, Location: source.Location}
 	switch source.Kind {
 	case "none", "":
-		out.Status, out.Detail = "unsupported", "profile declares no native memory source"
+		out.Status, out.Detail = "unsupported", "this agent has no memory files to collect"
 		return out
 	case "markdown-glob-v1":
 		matches, err := filepath.Glob(source.Location)
 		if err != nil {
-			out.Status, out.Detail = "error", "invalid memory location pattern: "+err.Error()
+			out.Status, out.Detail = "error", "memory location is not a valid path pattern: "+err.Error()
 			return out
 		}
 		for _, match := range matches {
@@ -400,23 +503,23 @@ func inspectMemorySource(source adapters.MemorySource, integration, kbRoot strin
 				return out
 			}
 			if kbRoot != "" && doctorPathsOverlap(kbRoot, resolved) {
-				out.Status, out.Detail = "error", fmt.Sprintf("integration %s memory source overlaps knowledge-base root; harvesting would be refused", integration)
+				out.Status, out.Detail = "error", fmt.Sprintf("the memory location for %s is inside the knowledge base (overlaps knowledge-base root), so Regesto won't collect from it", integration)
 				return out
 			}
 			if _, statErr := os.Stat(resolved); statErr != nil {
-				out.Status, out.Detail = "error", "memory location is not accessible: "+statErr.Error()
+				out.Status, out.Detail = "error", "memory location can't be read: "+statErr.Error()
 				return out
 			}
 			out.Matches++
 		}
 		if out.Matches == 0 {
-			out.Status, out.Detail = "warning", "declared memory location is not currently available"
+			out.Status, out.Detail = "warning", "no memory files found yet"
 		} else {
-			out.Status, out.Detail = "ok", fmt.Sprintf("%d memory location(s) available", out.Matches)
+			out.Status, out.Detail = "ok", plural(out.Matches, "memory folder")+" found"
 		}
 		return out
 	default:
-		out.Status, out.Detail = "unsupported", "memory kind is not supported by this engine"
+		out.Status, out.Detail = "unsupported", "this memory type isn't supported by this version of Regesto"
 		return out
 	}
 }
@@ -582,69 +685,79 @@ func appendUnique(values []string, value string) []string {
 }
 
 func printDoctorReport(report doctorReport, verbose bool) {
-	fmt.Printf("Regesto doctor — %s\n\n", strings.ToUpper(report.Status))
-	fmt.Printf("  Instance: %s\n  Machine:  %s (%s)\n", report.KBRoot, report.Machine.Name, report.Machine.Source)
+	fmt.Printf("Regesto doctor: %s\n\n", doctorStatusLabel(report.Status))
+	fmt.Printf("  Knowledge base  %s\n", tildePath(report.KBRoot))
+	fmt.Printf("  Machine         %s\n", report.Machine.Name)
+	for _, check := range report.Checks {
+		if check.Status != "ok" || verbose {
+			printWrapped("\n  "+doctorStatusTitle(check.Status)+": ", "    ", sentence(check.Message))
+		}
+	}
 	if len(report.Remediations) > 0 {
-		fmt.Println("\nNext steps")
+		fmt.Println("\nWhat to do")
 		for i, remediation := range report.Remediations {
 			printWrapped(fmt.Sprintf("  %d. ", i+1), "     ", remediation)
 		}
 	}
-	for _, check := range report.Checks {
-		if check.Status != "ok" || verbose {
-			printWrapped("\n  ["+strings.ToUpper(check.Status)+"] "+check.ID+": ", "    ", check.Message)
-		}
-	}
-	fmt.Println("\nIntegrations")
+	fmt.Println("\nAgents")
 	if len(report.Integrations) == 0 {
-		fmt.Println("  No configured or detected integrations.")
+		fmt.Println("  No agents connected or found on this machine.")
 	}
 	for _, integration := range report.Integrations {
-		fmt.Printf("\n  %s (%s) — %s\n", integration.DisplayName, integration.ID, strings.ToUpper(integration.Status))
-		configured, detected := "no", "no"
-		if integration.Configured {
-			configured = "yes"
+		status := doctorStatusLabel(integration.Status)
+		if !integration.Configured {
+			status = "not connected"
+		} else if integration.otherKnowledgeBase != "" {
+			status = "uses another knowledge base"
 		}
-		if integration.Detected {
-			detected = "yes"
+		fmt.Printf("\n  %s (%s): %s\n", integration.DisplayName, integration.ID, status)
+		if !integration.Configured {
+			fmt.Println("    Installed on this machine, but not listed in config.toml.")
+			continue
 		}
-		fmt.Printf("    Configured: %s   Detected: %s\n", configured, detected)
-		printDoctorCapability("Detection", integration.Capabilities.Detection, verbose)
+		if kb := integration.otherKnowledgeBase; kb != "" && !verbose {
+			fmt.Printf("    Set up with the knowledge base in %s.\n", tildePath(kb))
+			continue
+		}
+		if integration.Capabilities.Detection.Status != "ok" || verbose {
+			printDoctorCapability("Installed", integration.Capabilities.Detection, verbose)
+		}
 		printDoctorCapability("Skills", integration.Capabilities.Skills, verbose)
 		printDoctorCapability("Instructions", integration.Capabilities.Instructions, verbose)
 		for _, hook := range integration.Capabilities.Hooks {
-			printDoctorCapability("Hook ("+hook.Protocol+")", doctorCapability{Status: hook.Status, Detail: hook.Detail}, verbose)
-			if verbose {
-				printWrapped("      Registrar: ", "        ", hook.Registrar)
-				if hook.Settings != "" {
-					fmt.Printf("      Settings: %s\n", hook.Settings)
-				}
+			printDoctorCapability("Hook", doctorCapability{Status: hook.Status, Detail: hook.Detail}, verbose)
+			if verbose && hook.Settings != "" {
+				fmt.Printf("                  %s\n", tildePath(hook.Settings))
 			}
 		}
 		for _, memory := range integration.Capabilities.Memory {
-			printDoctorCapability("Memory ("+memory.Kind+")", doctorCapability{Status: memory.Status, Detail: memory.Detail}, verbose)
-			if verbose || memory.Status != "ok" {
-				fmt.Printf("      %s\n", memory.Location)
+			printDoctorCapability("Memory", doctorCapability{Status: memory.Status, Detail: memory.Detail}, verbose)
+			if memory.Location != "" && (verbose || memory.Status != "ok") {
+				fmt.Printf("                  %s\n", tildePath(memory.Location))
 			}
 		}
-		printWrapped("    Trust: ", "      ", integration.Capabilities.Trust.Detail)
-		current := 0
+		printWrapped("    New notes     ", "                  ", integration.Capabilities.Trust.Detail)
+		pending, current := 0, 0
 		for _, artifact := range integration.Artifacts {
-			if artifact.Action == "current" && !verbose {
+			if artifact.Action == "current" {
 				current++
-				continue
+			} else {
+				pending++
 			}
-			fmt.Printf("\n    %s — %s\n", artifact.Kind, artifact.Action)
-			fmt.Printf("      %s\n", artifact.CanonicalTarget)
+			if verbose {
+				fmt.Printf("      %-8s %-14s %s\n", actionLabel(artifact.Action), kindLabel(artifact.Kind), tildePath(artifact.CanonicalTarget))
+			}
 		}
-		if current > 0 {
-			fmt.Printf("    Files and links: %d current\n", current)
+		if pending > 0 {
+			fmt.Printf("    Files         %s to make, %s up to date\n", plural(pending, "change"), plural(current, "file"))
+		} else if current > 0 {
+			fmt.Printf("    Files         %s up to date\n", plural(current, "file"))
 		}
 	}
 	if verbose {
-		fmt.Println("\nTrust rules (first match wins)")
+		fmt.Println("\nHow Regesto decides whether a note becomes a fact (first match wins)")
 		for i, precedence := range report.Trust.Precedence {
-			fmt.Printf("  %d. %s\n", i+1, precedence)
+			fmt.Printf("  %d. %s\n", i+1, trustRuleLabel(precedence))
 		}
 		for _, rule := range report.Trust.SourcePolicies {
 			suffix := ""
@@ -657,13 +770,64 @@ func printDoctorReport(report doctorReport, verbose bool) {
 			printWrapped("\n  Trusted source: ", "    ", rule.Source+": "+rule.Reason)
 		}
 	} else {
-		fmt.Println("\nUse regesto doctor --verbose for all files, links, and trust rules.")
+		fmt.Println("\nFor every file and the trust rules: regesto doctor --verbose")
 	}
 }
 
+// printDoctorCapability prints one aligned row: the label, then either "OK" or
+// what is wrong. Healthy rows show their detail only in verbose mode.
 func printDoctorCapability(label string, capability doctorCapability, verbose bool) {
-	printWrapped("    ", "      ", label+": "+capability.Status)
-	if verbose || capability.Status != "ok" {
-		printWrapped("      ", "      ", capability.Detail)
+	text := "OK"
+	if capability.Status != "ok" || verbose {
+		text = tildeText(capability.Detail)
+	}
+	printWrapped(fmt.Sprintf("    %-14s", label), "                  ", text)
+}
+
+// trustRuleLabel explains a trust precedence step; the JSON keeps the short ids.
+func trustRuleLabel(rule string) string {
+	switch rule {
+	case "exact source policy":
+		return "an exact agent@machine entry in [source_policies]"
+	case "exact trusted source":
+		return "an entry in [trusted_sources]"
+	case "longest matching source-policy pattern":
+		return "the longest matching * pattern in [source_policies]"
+	case "human inbox authority":
+		return "notes you added yourself (source: human) are processed"
+	case "configured integration default":
+		return "the agent's own trust setting"
+	case "quarantine fallback":
+		return "otherwise the note waits in the inbox"
+	default:
+		return rule
+	}
+}
+
+func doctorStatusLabel(status string) string {
+	switch status {
+	case "ok":
+		return "OK"
+	case "warning":
+		return "needs attention"
+	case "manual":
+		return "needs a manual step"
+	case "error":
+		return "error"
+	case "unsupported":
+		return "not supported"
+	default:
+		return status
+	}
+}
+
+func doctorStatusTitle(status string) string {
+	switch status {
+	case "ok":
+		return "OK"
+	case "error":
+		return "Error"
+	default:
+		return "Warning"
 	}
 }

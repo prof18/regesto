@@ -27,11 +27,12 @@ import (
 // binary is running it.
 func runInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	dir := fs.String("dir", "", "where to create the instance (default: cwd)")
-	machine := fs.String("machine", "", "short name for this machine (default: derived from the hostname)")
-	force := fs.Bool("force", false, "write into a directory that already has a config.toml")
-	examples := fs.Bool("examples", false, "populate knowledge/facts/ with the example facts")
-	integrations := fs.String("integrations", "", "comma-separated integration ids to configure, skipping the interactive picker; \",\" alone configures none")
+	setUsage(fs, "regesto init [options]", "Create a new knowledge base.")
+	dir := fs.String("dir", "", "folder to create it in (default: current folder)")
+	machine := fs.String("machine", "", "short name for this machine (default: from the hostname)")
+	force := fs.Bool("force", false, "add missing files to an existing knowledge base, keeping existing ones")
+	examples := fs.Bool("examples", false, "add a few example facts")
+	integrations := fs.String("integrations", "", "comma-separated agent ids to connect, instead of choosing interactively; \",\" for none")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -54,13 +55,15 @@ func runInit(args []string) error {
 	if _, err := os.Stat(configPath); err == nil {
 		configExists = true
 		if !*force {
-			return fmt.Errorf("%s already exists — this looks like an instance already; pass --force to write anyway", configPath)
+			return fmt.Errorf("%s already exists, so this is already a knowledge base; pass --force to add any missing files", tildePath(configPath))
 		}
 		if *integrations != "" {
 			// An explicit flag that cannot take effect must not be swallowed.
-			return fmt.Errorf("--force keeps the existing config.toml, so --integrations has no effect — edit config.toml instead, or drop --force")
+			return fmt.Errorf("--integrations has no effect with --force, because the existing config.toml is kept; use `regesto integrations add <id>` instead")
 		}
 	}
+
+	printInitWelcome(root, configExists)
 
 	// Choose the integrations before anything is written: a user forbidden
 	// from a tool must be able to opt out here, and aborting the picker must
@@ -74,7 +77,7 @@ func runInit(args []string) error {
 	// nothing to choose — prompting would discard the user's answer.
 	detected := adapters.Detect()
 	chosen := detected
-	note := "(detected)"
+	note := "(found on this machine)"
 	if !configExists {
 		if *integrations != "" {
 			var err error
@@ -82,13 +85,13 @@ func runInit(args []string) error {
 			if err != nil {
 				return err
 			}
-			note = "(via --integrations)"
+			note = ""
 		} else if len(detected) > 0 {
 			picked, err := selectIntegrations(os.Stdin, os.Stdout, detected)
 			switch {
 			case err == nil:
 				chosen = picked
-				note = "(selected)"
+				note = ""
 			case errors.Is(err, errAborted):
 				return fmt.Errorf("%w — nothing written", errAborted)
 			case errors.Is(err, errNotATerminal):
@@ -122,7 +125,6 @@ func runInit(args []string) error {
 				return err
 			}
 		}
-		fmt.Printf("  dir     %s\n", d)
 	}
 	// .state is per-machine and deliberately excluded from both git and
 	// Syncthing, so it gets no .gitkeep.
@@ -131,12 +133,11 @@ func runInit(args []string) error {
 	}
 
 	name := strings.TrimSpace(*machine)
-	derived := ""
 	if name == "" {
 		// Reuse the same resolution the rest of the tool uses, so init cannot
 		// disagree with it.
 		tmp := &config.Config{KBRoot: root}
-		name, derived = config.ResolveMachineFor(tmp)
+		name, _ = config.ResolveMachineFor(tmp)
 	}
 	statePath := filepath.Join(root, ".state", config.MachineFile)
 	if _, err := os.Stat(statePath); err != nil {
@@ -144,32 +145,19 @@ func runInit(args []string) error {
 			return err
 		}
 	}
-	origin := "given"
-	if derived != "" {
-		origin = "derived from " + derived
-	}
-	fmt.Printf("  machine %s (%s) → .state/machine\n", name, origin)
-
-	// The integrations line reports a write to config.toml; when the config
-	// is being kept, printing one would describe a write that never happens.
-	if !configExists {
-		switch {
-		case len(chosen) > 0:
-			fmt.Printf("  integrations  %s %s → config.toml\n", strings.Join(chosen, ", "), note)
-		case len(detected) > 0:
-			fmt.Println("  integrations  none selected — set `integrations` in config.toml later")
-		default:
-			fmt.Println("  integrations  none detected — set `integrations` in config.toml once you have one")
+	kept := 0
+	for _, f := range []struct{ name, body string }{
+		{config.FileName, instanceConfig(chosen)},
+		{".gitignore", gitignoreTemplate},
+		{".stignore", stignoreTemplate},
+	} {
+		wrote, err := writeIfAbsent(root, f.name, f.body)
+		if err != nil {
+			return err
 		}
-	}
-	if err := writeIfAbsent(root, config.FileName, instanceConfig(chosen)); err != nil {
-		return err
-	}
-	if err := writeIfAbsent(root, ".gitignore", gitignoreTemplate); err != nil {
-		return err
-	}
-	if err := writeIfAbsent(root, ".stignore", stignoreTemplate); err != nil {
-		return err
+		if !wrote {
+			kept++
+		}
 	}
 
 	// The instance-side half of the engine: the schema, the bin/ shims and the
@@ -185,8 +173,12 @@ func runInit(args []string) error {
 	}
 	m := &manifest.Manifest{Engine: version.Current(), Written: time.Now(), Files: map[string]string{}}
 	for _, p := range sortedKeys(engine) {
-		if err := writeFileIfAbsent(root, p, engine[p]); err != nil {
+		wrote, err := writeFileIfAbsent(root, p, engine[p])
+		if err != nil {
 			return err
+		}
+		if !wrote {
+			kept++
 		}
 		// Hash what is on disk, not what was offered. Re-running init over an
 		// instance whose skill someone edited keeps that edit — recording the
@@ -201,27 +193,69 @@ func runInit(args []string) error {
 	if err := manifest.Save(root, m); err != nil {
 		return err
 	}
-	fmt.Printf("  engine  %s → %s\n", version.Current(), manifest.FileName)
 
 	if *examples {
 		src, err := exampleFacts()
 		if err != nil {
 			return err
 		}
-		if err := unpack(filepath.Join(root, "knowledge", "facts"), src); err != nil {
+		n, err := unpack(filepath.Join(root, "knowledge", "facts"), src)
+		if err != nil {
 			return err
 		}
+		kept += n
 	}
 
-	fmt.Println()
-	fmt.Println("instance ready at", root)
-	fmt.Println()
-	fmt.Println("next:")
-	fmt.Println("  1. git init                       # optional; the markdown is the knowledge, git is convenience")
-	fmt.Println("  2. bin/regesto-install --dry-run  # then without --dry-run: skills, hook, instructions")
-	fmt.Println("  3. bin/regesto schedule install   # harvest every 15 min, cycle hourly")
-	fmt.Println("  4. open a session in a project — its facts should appear without being asked for")
+	printInitSummary(root, name, chosen, detected, note, configExists, kept)
 	return nil
+}
+
+// printInitWelcome says what init is about to do before anything is asked, so
+// the agent picker does not appear without context.
+func printInitWelcome(root string, configExists bool) {
+	if configExists {
+		fmt.Printf("Adding missing files to the knowledge base in %s\n\n", tildePath(root))
+		return
+	}
+	fmt.Printf("Welcome to Regesto! Creating a new knowledge base in %s\n\n", tildePath(root))
+	fmt.Println("Your agents' decisions, preferences and facts are kept here as plain Markdown")
+	fmt.Println("files, and each agent can search them and add to them.")
+	fmt.Println()
+}
+
+// printInitSummary is what a person reads right after init: where the
+// knowledge base is, what it is set up for, and the few commands that make it
+// useful. The individual files are an implementation detail and are not listed.
+func printInitSummary(root, machine string, chosen, detected []string, note string, configExists bool, kept int) {
+	fmt.Printf("Done. Knowledge base ready in %s\n\n", tildePath(root))
+	fmt.Printf("  Machine name  %s\n", machine)
+	// When config.toml is kept, the agent list was not written by this run.
+	if !configExists {
+		switch {
+		case len(chosen) > 0:
+			fmt.Println(strings.TrimRight("  Agents        "+integrationNames(chosen)+" "+note, " "))
+		case len(detected) > 0:
+			fmt.Println("  Agents        none selected — add them later with `regesto integrations add <id>`")
+		default:
+			fmt.Println("  Agents        none found on this machine — add them later with `regesto integrations add <id>`")
+		}
+	}
+	fmt.Printf("  Settings      %s\n", tildePath(filepath.Join(root, config.FileName)))
+	if kept > 0 {
+		fmt.Printf("  Unchanged     %s that already existed\n", plural(kept, "file"))
+	}
+
+	fmt.Println("\nNext steps")
+	step := 1
+	if cwd, err := os.Getwd(); err != nil || filepath.Clean(cwd) != root {
+		fmt.Printf("  %d. cd %s\n", step, tildePath(root))
+		step++
+	}
+	fmt.Printf("  %d. regesto install --dry-run   Preview what will be added to your agents\n", step)
+	fmt.Printf("  %d. regesto install             Add Regesto's skills, instructions and hooks\n", step+1)
+	fmt.Printf("  %d. regesto schedule install    Collect and process knowledge automatically\n", step+2)
+	fmt.Printf("  %d. Start a new agent session in a project; its facts load automatically.\n", step+3)
+	fmt.Println("\nOptional: run `git init` here to keep a history of changes.")
 }
 
 // exampleFacts is the embedded examples/facts tree with its prefix stripped, so
@@ -238,8 +272,9 @@ func exampleFacts() (fs.FS, error) {
 // upgrade: re-running it on a live instance must not silently revert a local
 // edit to a skill. Refreshing an instance after an engine upgrade is a separate
 // job, and does not exist yet.
-func unpack(root string, src fs.FS) error {
-	return fs.WalkDir(src, ".", func(p string, d fs.DirEntry, err error) error {
+func unpack(root string, src fs.FS) (int, error) {
+	kept := 0
+	err := fs.WalkDir(src, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || p == "." {
 			return err
 		}
@@ -248,7 +283,7 @@ func unpack(root string, src fs.FS) error {
 			return os.MkdirAll(dest, 0o755)
 		}
 		if _, err := os.Stat(dest); err == nil {
-			fmt.Printf("  kept    %s (already present)\n", p)
+			kept++
 			return nil
 		}
 		body, err := fs.ReadFile(src, p)
@@ -262,12 +297,9 @@ func unpack(root string, src fs.FS) error {
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(dest, body, mode); err != nil {
-			return err
-		}
-		fmt.Printf("  wrote   %s\n", p)
-		return nil
+		return os.WriteFile(dest, body, mode)
 	})
+	return kept, err
 }
 
 func sortedKeys(m map[string][]byte) []string {
@@ -281,141 +313,107 @@ func sortedKeys(m map[string][]byte) []string {
 
 // writeFileIfAbsent materialises one engine-owned file, leaving any existing one
 // alone. Same rule as unpack, for the flat path-keyed form InstanceFiles returns.
-func writeFileIfAbsent(root, rel string, body []byte) error {
+// It reports whether it wrote the file.
+func writeFileIfAbsent(root, rel string, body []byte) (bool, error) {
 	dest := filepath.Join(root, filepath.FromSlash(rel))
 	if _, err := os.Stat(dest); err == nil {
-		fmt.Printf("  kept    %s (already present)\n", rel)
-		return nil
+		return false, nil
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
+		return false, err
 	}
 	mode := os.FileMode(0o644)
 	if regesto.Executable(rel) {
 		mode = 0o755
 	}
 	if err := os.WriteFile(dest, body, mode); err != nil {
-		return err
+		return false, err
 	}
-	fmt.Printf("  wrote   %s\n", rel)
-	return nil
+	return true, nil
 }
 
-func writeIfAbsent(root, name, body string) error {
+// writeIfAbsent writes a template file unless one exists, reporting whether it
+// wrote.
+func writeIfAbsent(root, name, body string) (bool, error) {
 	path := filepath.Join(root, name)
 	if _, err := os.Stat(path); err == nil {
-		fmt.Printf("  kept    %s (already present)\n", name)
-		return nil
+		return false, nil
 	}
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		return err
+		return false, err
 	}
-	fmt.Printf("  wrote   %s\n", name)
-	return nil
+	return true, nil
 }
 
-// instanceConfig renders the commented config.toml template. chosen is what
-// the picker, --integrations or plain detection settled on — the ids that go
-// into the active config line.
+// instanceConfig renders the config.toml template. chosen is what the picker,
+// --integrations or plain detection settled on — the ids that go into the
+// active integrations line. Comments here are read by people opening the file
+// for the first time: say what a setting does, not why it is designed that way.
 func instanceConfig(chosen []string) string {
-	return `# Regesto instance configuration.
-#
-# Everything machine- or person-specific lives here, never in the engine. Run
-# ` + "`regesto config`" + ` to see what these resolve to.
+	return `# Regesto settings for this knowledge base.
+# See the values in effect with ` + "`regesto config`" + `; check setup with ` + "`regesto doctor`" + `.
 
-# Integrations to install and harvest. init listed what it detected on this
-# machine and you chose which to manage — edit freely. A configured
-# integration may be absent on a particular machine; ` + "`regesto doctor`" + ` reports
-# configured and detected state separately.
-# An integration present but not listed remains unmanaged, which is why
-# ` + "`regesto upgrade`" + ` mentions newly detected profiles.
+# Agents Regesto connects to. Change with ` + "`regesto integrations add <id>`" + ` or ` + "`remove <id>`" + `.
 ` + integrationsLine(chosen) + `
 
-# Machine identity is NOT set here. This file sits at the KB root, which a sync
-# client replicates, so a value here would be identical on every machine — while
-# inbox/<agent>@<machine>/, .state/<machine>/ and a fact's source: all have to
-# differ. It resolves per machine instead: $REGESTO_MACHINE, then .state/machine
-# (written by ` + "`regesto init`" + `), then a hostname slug.
+# Everything below is optional, and the defaults work for most people.
+# Remove the leading # to turn a setting on.
 
-# Canonical project names. The name is derived from the git remote's basename,
-# which every clone of a project shares; this table is only needed for
-# remote-less repos and for two different projects whose basenames collide.
+# Only if a project gets the wrong name. Projects are named after their git
+# remote; map a folder name here, e.g. for a repo with no remote.
 # [projects]
 # "my-app-fork" = "my-app"
 
-# Which machine runs the downstream pass. Capture happens everywhere; deciding
-# what becomes a fact happens in one place, or two machines mint competing
-# vocabulary for the same claim. Unset means "this machine".
+# Only if this folder is synced across several machines: the one machine that
+# processes the inbox. Without it, every machine does.
 # [roles]
-# lint = "studio"
+# lint = "my-macbook"
 
-# The agent invocation that turns raw captures into candidate facts. It reads a
-# prompt on stdin and prints the answer, so any command of that shape works.
+# Only to choose the agent commands that turn notes into facts. By default:
+# Claude Code, then Codex; if neither is connected, your other agents. Separate
+# commands with ;; and put {prompt} where a command takes the prompt as text.
 # [normalize]
-# commands = "claude -p ;; codex exec --sandbox read-only"
+# commands = "my-agent --print ;; claude -p"
 
-# LaunchAgents do not read shell startup files. The scheduler includes the
-# directories of normaliser/notifier commands it can resolve at install time,
-# plus stable user, Homebrew and system locations. Add uncommon locations here;
-# re-run ` + "`regesto schedule install`" + ` after changing this value or moving a CLI.
+# Rarely needed. Only if a background job can't find a command that works in
+# your terminal (jobs don't load your shell profile): add its folder here, then
+# run ` + "`regesto schedule install`" + ` again.
 # [schedule]
 # extra_path = "~/.local/share/mise/shims"
 
-# On the cycle machine, agent context and ` + "`regesto schedule status`" + ` report
-# current cycle health. For an external alert, name a notifier executable here;
-# Regesto has no built-in desktop notifier. The command runs on the transition
-# into failure and back out of it, plus at the configured reminder interval
-# (default 24h) while failure persists. It receives the title and message as its
-# last two arguments and through $REGESTO_NOTIFY_TITLE and
-# $REGESTO_NOTIFY_MESSAGE. It is executed directly, not through a shell.
+# Only if you want an alert when background processing fails and recovers
+# (agents see failures anyway). The command gets a title and a message.
 # [notify]
-# command = "/absolute/path/to/my-notifier" # optional; receives: <title> <message>
-# on = "off"                    # temporarily disable the configured command
-# renag_hours = "24"            # 0 to report each transition once and never nag
+# command = "/absolute/path/to/notifier"
+# on = "off"           # pause alerts
+# renag_hours = "24"   # repeat while still failing; 0 = never repeat
 
-# Exact sources trusted enough to normalise automatically. A private
-# channel alone does not grant trust: the human records an exact source approval.
-# Unknown or shared surfaces stay raw in the inbox until a human promotes them.
-# [trusted_sources]
-# "hermes@studio" = "private single-user Telegram channel"
-
-# Source trust rules: exact entries beat trusted-source approvals; trailing-* patterns
-# apply after them and before integration defaults.
-# Keys are exact <integration>@<machine> IDs or one trailing-* prefix pattern;
-# values are exactly supervised or quarantine. Exact rules beat every other rule.
+# Only to override an agent's default: "supervised" notes become facts
+# automatically, "quarantine" ones wait in the inbox for you. Keys are
+# agent@machine; a trailing * matches several machines.
 # [source_policies]
-# "hermes@studio-public" = "quarantine"
-# "hermes-private@studio-*" = "supervised"
+# "hermes@my-macbook" = "supervised"
+# "hermes@work-laptop-*" = "quarantine"
 
-# Add a custom local host with the portable generic profile. Keep the IDs already
-# present in integrations = [...] and append the custom ID. Only declare paths the
-# host actually supports; create its instructions file before running install.
-# integrations = ["claude", "my-agent"]
+# Only for an agent without built-in support. Add its id to integrations above
+# too, then check it with ` + "`regesto doctor --integration my-agent`" + `.
+# Agents that only use Regesto through MCP need no entry.
 # [integrations.my-agent]
 # profile = "generic"
 # skills_dir = "~/.my-agent/skills"
-# instructions_file = "~/.my-agent/AGENTS.md"
+# instructions_file = "~/.my-agent/AGENTS.md"   # must already exist
 # memory_kind = "markdown-glob-v1"
 # memory_location = "~/.my-agent/memory"
 # trust = "quarantine"
-# Diagnose resolved targets without writing: regesto doctor --integration my-agent
 
-# An MCP-only client does not need an integrations entry. Configure that client to
-# launch the installed regesto executable with: --config /absolute/path/config.toml mcp
-# Add an entry above only to install host files or harvest native memory.
-
-# Files never captured from native memory, comma-separated globs. This is the
-# control for "not content"; size is only a proxy for it, and a poor one.
+# Only if some memory files shouldn't be collected: comma-separated patterns
+# per agent.
 # [harvest_exclude]
 # codex = "raw_memories.md"
 
-# How your sync client names a conflict copy, as a regular expression. Cycle
-# finds those copies, keeps the newer claim and archives the other. The default
-# matches Syncthing; set this if you replicate the folder another way, and the
-# pattern is cut out of the name to get back to the original file.
-#
-# Values here are taken literally — backslashes are not escape characters — so
-# write the expression exactly as a regex, with single backslashes.
+# Only if you sync with something other than Syncthing: how your tool names
+# conflict copies, as a regular expression (write each backslash once). This
+# example matches Dropbox.
 # [sync]
 # conflict_pattern = " \(.*conflicted copy.*\)"
 `
@@ -425,7 +423,7 @@ func instanceConfig(chosen []string) string {
 // Keep the empty list active so the generated config is explicit.
 func integrationsLine(chosen []string) string {
 	if len(chosen) == 0 {
-		return "integrations = []   # none chosen — add yours here"
+		return "integrations = []"
 	}
 	quoted := make([]string, len(chosen))
 	for i, a := range chosen {

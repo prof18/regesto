@@ -449,7 +449,7 @@ func TestDoctorTextPrintsTrustAndGlobalRemediation(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("doctor text: %v\nstderr: %s", err, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Source policy: generic@*: quarantine") || !strings.Contains(stdout.String(), "Next steps") {
+	if !strings.Contains(stdout.String(), "Source policy: generic@*: quarantine") || !strings.Contains(stdout.String(), "What to do") {
 		t.Fatalf("text diagnostics omit trust/remediation:\n%s", stdout.String())
 	}
 }

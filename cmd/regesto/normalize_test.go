@@ -95,7 +95,7 @@ func TestTrustShowPromptWithOnlyQuarantinedCapturesIsSafe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "no eligible captures in inbox/\n" {
+	if out != "No notes in the inbox are ready to process.\n" {
 		t.Errorf("show-prompt output = %q", out)
 	}
 	if strings.Contains(out, "QUARANTINED SECRET") || strings.Contains(out, "aaa@testbox") {

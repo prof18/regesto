@@ -16,12 +16,13 @@ import (
 
 func runContext(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("context", flag.ContinueOnError)
-	dir := fs.String("dir", "", "working directory to resolve the project from (default: cwd)")
-	projectName := fs.String("project", "", "override the canonical project name")
-	maxBytes := fs.Int("max-bytes", 4096, "cap the payload; 0 for no cap")
-	vocabulary := fs.Bool("vocabulary", false, "include the full controlled-vocabulary table")
-	debug := fs.Bool("debug", false, "report how the project name was resolved, on stderr")
-	jsonOutput := fs.Bool("json", false, "print context and project resolution as JSON")
+	setUsage(fs, "regesto context [options]", "Print the knowledge base summary an agent receives at the start of a session.")
+	dir := fs.String("dir", "", "project folder to build it for (default: current folder)")
+	projectName := fs.String("project", "", "use this project name instead of detecting it")
+	maxBytes := fs.Int("max-bytes", 4096, "maximum size in bytes; 0 for no limit")
+	vocabulary := fs.Bool("vocabulary", false, "include the full list of subjects and relations in use")
+	debug := fs.Bool("debug", false, "print where the project name came from (to stderr)")
+	jsonOutput := fs.Bool("json", false, "print the result as JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -39,7 +40,7 @@ func runContext(cfg *config.Config, args []string) error {
 	if *projectName == "" {
 		r = project.Resolve(cfg, from)
 		if *debug {
-			fmt.Fprintf(os.Stderr, "project %q resolved via %s (mapped=%v)\n", r.Name, r.How, r.Mapped)
+			fmt.Fprintf(os.Stderr, "project %q (%s)\n", r.Name, projectOrigin(r))
 		}
 	}
 
