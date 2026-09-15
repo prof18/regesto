@@ -49,6 +49,7 @@ func materializeInstallHook(t *testing.T, root string) {
 			t.Fatal(err)
 		}
 	}
+	writeAt(t, root, "adapters/opencode/plugins/regesto.ts", string(files["adapters/opencode/plugins/regesto.ts"]))
 }
 
 func installHome(t *testing.T) string {

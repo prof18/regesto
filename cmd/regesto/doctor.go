@@ -312,6 +312,16 @@ func otherLinkedKB(item regestoinstall.Item) string {
 	return regestoinstall.OtherKnowledgeBase(target)
 }
 
+// otherAdapterLinkedKB reads which knowledge base a skipped adapter launcher
+// link belongs to, for hosts whose hook registers through a linked file.
+func otherAdapterLinkedKB(item regestoinstall.Item) string {
+	target, err := os.Readlink(item.CanonicalTarget)
+	if err != nil {
+		return ""
+	}
+	return regestoinstall.OtherAdapterKnowledgeBase(target)
+}
+
 // installRemediation is the one step every agent with pending files shares,
 // so the report can merge it into a single line.
 func installRemediation(names string) string {
@@ -431,6 +441,8 @@ func diagnoseIntegration(agent adapters.Agent, detected, configured bool, kbRoot
 				d.Remediations = appendUnique(d.Remediations, "Set up the "+agent.DisplayName+" hook by hand; `regesto install --dry-run` shows what to add.")
 			case item.Action == "skip" && item.Kind == "skill-link" && len(item.DeclaredTargets) > 0 && otherLinkedKB(item) != "":
 				d.otherKnowledgeBase = otherLinkedKB(item)
+			case item.Action == "skip" && item.Kind == "hook-link" && otherAdapterLinkedKB(item) != "":
+				d.otherKnowledgeBase = otherAdapterLinkedKB(item)
 			case item.Action == "skip" && item.Kind == "instructions":
 				d.Remediations = appendUnique(d.Remediations, "Create "+target+" so Regesto can add its instructions for "+agent.DisplayName+", then run `regesto install` again.")
 			case item.Action == "skip":
@@ -442,7 +454,7 @@ func diagnoseIntegration(agent adapters.Agent, detected, configured bool, kbRoot
 		d.Artifacts = append(d.Artifacts, artifact)
 		capStatus := artifactStatus(item.Action)
 		switch item.Kind {
-		case "hook":
+		case "hook", "hook-link":
 			for i := range d.Capabilities.Hooks {
 				if d.Capabilities.Hooks[i].Status != "unsupported" && hookArtifactMatches(d.Capabilities.Hooks[i], item) && statusRank(capStatus) >= statusRank(d.Capabilities.Hooks[i].Status) {
 					d.Capabilities.Hooks[i].Status = capStatus

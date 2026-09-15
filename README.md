@@ -111,8 +111,9 @@ optional.
 | Hermes | A first-turn hook injects relevant context when its hook registration is current | [Hermes setup](docs/setup-hermes.md) |
 | Copilot | A session-start hook injects relevant context as JSON before the first turn; the same install covers Copilot in VS Code | [Copilot setup](docs/setup-copilot.md) |
 | Codex | Persistent instructions tell it when to search; skills provide the search and write procedures | [Codex setup](docs/setup-codex.md) |
+| OpenCode | An auto-discovered plugin injects relevant context on the first message of each session | [OpenCode setup](docs/setup-opencode.md) |
 
-Antigravity, Claude, Copilot, and Hermes can enforce consultation at their supported hook boundaries. Codex has
+Antigravity, Claude, Copilot, Hermes, and OpenCode can enforce consultation at their supported hook boundaries. Codex has
 no equivalent built-in startup hook, so its consultation is instruction-driven. The
 [integration matrix](docs/agent-integration.md) contains the exact capability reference.
 

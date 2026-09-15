@@ -28,7 +28,7 @@ func Apply(plan *Plan) (Result, error) {
 		for _, declared := range item.DeclaredTargets {
 			var got string
 			var err error
-			if item.Kind == "skill-link" || item.Kind == "engine-link" {
+			if item.Kind == "skill-link" || item.Kind == "engine-link" || item.Kind == "hook-link" {
 				got, err = canonicalLinkPath(declared)
 			} else {
 				got, err = CanonicalTarget(declared)
@@ -45,7 +45,7 @@ func Apply(plan *Plan) (Result, error) {
 			if err := secureMkdirAll(item.CanonicalTarget); err != nil {
 				return result, err
 			}
-		case "skill-link", "engine-link":
+		case "skill-link", "engine-link", "hook-link":
 			if err := applyLink(*item); err != nil {
 				return result, err
 			}

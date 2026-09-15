@@ -102,6 +102,23 @@ func Run(cfg *config.Config, protocol string, input io.Reader, output, diagnosti
 		}
 		return nil
 
+	case "opencode-chat-message-v1":
+		// The OpenCode plugin reads stdout as plain text and pushes it into
+		// the first user message of a session as a context part.
+		if readErr != nil {
+			diagnose(diagnostic, protocol, readErr)
+			return nil
+		}
+		context, err := runOpencode(cfg, payload)
+		if err != nil {
+			diagnose(diagnostic, protocol, err)
+			return nil
+		}
+		if _, err := io.WriteString(output, context); err != nil {
+			diagnose(diagnostic, protocol, err)
+		}
+		return nil
+
 	default:
 		return fmt.Errorf("unknown hook protocol %q", protocol)
 	}

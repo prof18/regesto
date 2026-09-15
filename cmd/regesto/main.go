@@ -88,7 +88,7 @@ func run(args []string) error {
 		return nil
 	case "hook":
 		if len(rest) == 2 && (rest[1] == "--help" || rest[1] == "-h" || rest[1] == "-help") {
-			fmt.Println("Usage: regesto hook <protocol>\n\nCalled by an agent's hook to load the knowledge base into a session.\n`regesto install` sets this up; you don't run it by hand.\n\nProtocols: antigravity-pre-invocation-v1, claude-session-start-v1, copilot-session-start-v1, hermes-pre-llm-v1")
+			fmt.Println("Usage: regesto hook <protocol>\n\nCalled by an agent's hook to load the knowledge base into a session.\n`regesto install` sets this up; you don't run it by hand.\n\nProtocols: antigravity-pre-invocation-v1, claude-session-start-v1, copilot-session-start-v1, hermes-pre-llm-v1, opencode-chat-message-v1")
 			return nil
 		}
 		cfg, err := loadConfig(*configPath)

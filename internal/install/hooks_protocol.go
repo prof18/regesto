@@ -25,6 +25,9 @@ func planManualHook(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoo
 		}
 	}
 	recipe := fmt.Sprintf("in this agent's settings, run %s on the %s event", command, event)
+	if hook.Protocol == "opencode-chat-message-v1" {
+		recipe = fmt.Sprintf("link %s into the host's auto-discovered plugin directory", command)
+	}
 	idTarget := canonical
 	if idTarget == "" {
 		idTarget = agent.Name
@@ -158,6 +161,15 @@ func protocolHookCommand(root, sourceRoot, protocol string) (command, event stri
 		relative, event = filepath.Join("adapters", "copilot", "hooks", "session-start.sh"), "SessionStart"
 	case "hermes-pre-llm-v1":
 		relative, event = filepath.Join("adapters", "hermes", "hooks", "pre-llm.sh"), "pre_llm_call"
+	case "opencode-chat-message-v1":
+		// The plugin is loaded, not executed, so a regular file is enough
+		// and no executable bit is required.
+		relative, event = filepath.FromSlash(opencodePluginRelative), "chat.message"
+		command = filepath.Join(root, relative)
+		if err := requirePluginLauncher(sourceRoot); err != nil {
+			return "", "", err
+		}
+		return command, event, nil
 	default:
 		return "", "", fmt.Errorf("unsupported hook protocol %q", protocol)
 	}

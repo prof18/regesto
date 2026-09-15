@@ -186,7 +186,7 @@ func actionLabel(action string) string {
 
 func kindLabel(kind string) string {
 	switch kind {
-	case "hook":
+	case "hook", "hook-link":
 		return "Hook"
 	case "instructions":
 		return "Instructions"

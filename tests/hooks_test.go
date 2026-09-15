@@ -118,6 +118,40 @@ func TestCopilotHookJSONContextAndFailOpenFraming(t *testing.T) {
 	}
 }
 
+func TestOpencodeHookTextContextAndFailOpenFraming(t *testing.T) {
+	cfg, cwd := hookConfig(t)
+	stdout, stderr, err := runHookDirect(t, cfg, "opencode-chat-message-v1", hookFixture(t, "opencode-message.json", cwd))
+	if err != nil || stderr != "" {
+		t.Fatalf("OpenCode chat.message: err=%v stderr=%q", err, stderr)
+	}
+	if !strings.Contains(stdout, "Hook fixture fact") {
+		t.Fatalf("OpenCode context missing the scoped index:\n%s", stdout)
+	}
+	for name, payload := range map[string][]byte{
+		"malformed":           hookFixture(t, "malformed.json", cwd),
+		"duplicate key":       []byte(`{"sessionID":"s","directory":"` + cwd + `","directory":"` + cwd + `"}`),
+		"missing directories": []byte(`{}`),
+		"unusable worktree":   []byte(`{"sessionID":"s","worktree":"/path/that/does/not/exist"}`),
+	} {
+		stdout, stderr, err = runHookDirect(t, cfg, "opencode-chat-message-v1", payload)
+		if err != nil || stdout != "" || stderr == "" {
+			t.Fatalf("%s OpenCode hook: stdout=%q stderr=%q err=%v", name, stdout, stderr, err)
+		}
+	}
+}
+
+func TestOpencodeHookFallsBackFromWorktreeToDirectory(t *testing.T) {
+	cfg, cwd := hookConfig(t)
+	payload := []byte(`{"sessionID":"s","worktree":"/path/that/does/not/exist","directory":"` + cwd + `"}`)
+	stdout, stderr, err := runHookDirect(t, cfg, "opencode-chat-message-v1", payload)
+	if err != nil || stderr != "" {
+		t.Fatalf("OpenCode fallback: err=%v stderr=%q", err, stderr)
+	}
+	if !strings.Contains(stdout, "Hook fixture fact") {
+		t.Fatalf("OpenCode fallback missing the scoped index:\n%s", stdout)
+	}
+}
+
 func TestAntigravityHookJSONContextAndFailOpenFraming(t *testing.T) {
 	cfg, cwd := hookConfig(t)
 	stdout, stderr, err := runHookDirect(t, cfg, "antigravity-pre-invocation-v1", hookFixture(t, "antigravity-invocation.json", cwd))
@@ -324,6 +358,10 @@ func TestKnownHookFailuresRemainHostValidAndUnknownProtocolErrors(t *testing.T) 
 	copilot, _, err := runHookDirect(t, cfg, "copilot-session-start-v1", []byte(`{"cwd":"`+validDir+`"}`))
 	if err != nil || copilot != "{}" {
 		t.Fatalf("Copilot operational failure: stdout=%q err=%v", copilot, err)
+	}
+	opencode, _, err := runHookDirect(t, cfg, "opencode-chat-message-v1", []byte(`{"sessionID":"s","directory":"`+validDir+`"}`))
+	if err != nil || opencode != "" {
+		t.Fatalf("OpenCode operational failure: stdout=%q err=%v", opencode, err)
 	}
 	antigravity, _, err := runHookDirect(t, cfg, "antigravity-pre-invocation-v1", []byte(`{"invocationNum":0,"workspacePaths":["`+validDir+`"]}`))
 	if err != nil || antigravity != "{}" {

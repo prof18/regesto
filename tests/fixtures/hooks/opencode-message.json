@@ -1,0 +1,5 @@
+{
+  "sessionID": "fixture-session",
+  "directory": "{{cwd}}",
+  "worktree": "{{cwd}}"
+}

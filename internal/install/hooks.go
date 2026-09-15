@@ -47,6 +47,14 @@ func planHooks(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 						return err
 					}
 				}
+			case "opencode-plugin-file-v1":
+				item, err := planOpencodePluginLink(p, agent, hook, sourceRoot)
+				if err != nil {
+					return err
+				}
+				if err := appendSharedHookItem(p, item); err != nil {
+					return err
+				}
 			case "antigravity-hooks-json-v1", "claude-settings-json-v1", "copilot-hooks-json-v1":
 				if hook.Settings == "" {
 					return fmt.Errorf("integration %q: hook registrar %s has no target", agent.Name, hook.Registrar)

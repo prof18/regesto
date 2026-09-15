@@ -25,6 +25,7 @@ doctor` show their resolved local values.
 | `copilot` | GitHub Copilot CLI | paths=`~/.copilot`; commands=`copilot` | variant=`portable`; targets=`~/.copilot/skills` | targets=`~/.copilot/instructions/regesto.instructions.md`; create=`true` | `copilot-session-start-v1` / `copilot-hooks-json-v1` / `~/.copilot/hooks/regesto.json` | `none` | none | `supervised` |
 | `generic` | Generic integration | paths=none; commands=none | variant=`portable`; targets=none | targets=none; create=`false` | `none` / `none` | `none` | none | `quarantine` |
 | `hermes` | Hermes | paths=`~/.hermes`; commands=`hermes` | variant=`portable`; targets=`~/.hermes/skills` | targets=`~/.hermes/SOUL.md`; create=`false` | `hermes-pre-llm-v1` / `hermes-config-yaml-v1` / `~/.hermes/config.yaml` | `markdown-glob-v1` / `~/.hermes/memories` | none | `quarantine` |
+| `opencode` | OpenCode | paths=`~/.config/opencode`; commands=`opencode` | variant=`portable`; targets=`~/.config/opencode/skills` | targets=`~/.config/opencode/AGENTS.md`; create=`true` | `opencode-chat-message-v1` / `opencode-plugin-file-v1` / `~/.config/opencode/plugins/regesto.ts` | `none` | none | `supervised` |
 <!-- regesto:profile-matrix:end -->
 
 `codex` has no hook entry in its profile. `generic` explicitly declares `none` hook and
@@ -48,6 +49,17 @@ the `regesto` name in `~/.gemini/config/hooks.json`, a host-owned customization 
 whose foreign hook names the merge preserves. The instructions target `~/.gemini/GEMINI.md`
 is created by Regesto (`create: true`) because Antigravity does not ship one.
 
+OpenCode declares `memory: none` because its sessions are structured JSON under
+`~/.local/share/opencode`, not markdown. Its skills live in `~/.config/opencode/skills`;
+OpenCode also auto-loads `~/.claude/skills` and `~/.agents/skills` for Claude Code
+compatibility, and skill names must be unique across all locations — on machines that also
+run the Claude integration, disable that scan with `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`
+or override `skills_dir` deliberately. Its hook registers by presence rather than by
+settings: OpenCode auto-discovers every file in `~/.config/opencode/plugins/`, so Regesto
+links its launcher there and the linked file self-locates the instance. The instructions
+target `~/.config/opencode/AGENTS.md` is created by Regesto (`create: true`) because
+OpenCode does not ship one.
+
 ## Behavior and evidence
 
 | Integration | Consultation path | Guarantee | Evidence in this repository |
@@ -56,6 +68,7 @@ is created by Regesto (`create: true`) because Antigravity does not ship one.
 | Claude Code | `SessionStart` injects context | deterministic at the declared hook event | protocol, merge, fail-open, and installer contract tests; live-host verification is release evidence |
 | Copilot CLI | `SessionStart` injects JSON `additionalContext` | deterministic at the declared hook event | protocol, merge, fail-open, and installer contract tests; live-host verification is release evidence |
 | Hermes | first `pre_llm_call` per session injects JSON context | deterministic on the first turn when registration is current | protocol, session-bound, YAML recipe, allowlist, and installer contract tests; live-host verification is release evidence |
+| OpenCode | first user message per session injects context through the Regesto plugin | deterministic on the first turn of each session when the plugin link is current | protocol, link, fail-open, and installer contract tests; live-host verification is release evidence |
 | Codex | always-loaded instructions plus portable skills | advisory, not enforced | renderer and installer contract tests |
 | Generic/custom | whichever declared targets and supported protocol the instance profile supplies | determined by declared capabilities | profile validation, renderer, and installer contract tests |
 

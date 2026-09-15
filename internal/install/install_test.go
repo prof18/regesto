@@ -33,6 +33,11 @@ func loadTestConfig(t *testing.T, root, body string) *config.Config {
 			t.Fatal(err)
 		}
 	}
+	plugin, err := regesto.Adapters.ReadFile("adapters/opencode/plugins/regesto.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(root, "adapters", "opencode", "plugins", "regesto.ts"), string(plugin))
 	path := filepath.Join(root, "config.toml")
 	writeTestFile(t, path, body)
 	cfg, err := config.Load(path)

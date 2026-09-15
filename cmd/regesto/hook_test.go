@@ -16,6 +16,7 @@ func TestHookConfigFailuresUseHostValidFraming(t *testing.T) {
 		{protocol: "claude-session-start-v1", want: ""},
 		{protocol: "copilot-session-start-v1", want: "{}"},
 		{protocol: "hermes-pre-llm-v1", want: "{}"},
+		{protocol: "opencode-chat-message-v1", want: ""},
 	} {
 		t.Run(test.protocol, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer

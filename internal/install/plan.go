@@ -120,7 +120,7 @@ func itemOrder(item Item) int {
 	switch item.Kind {
 	case "engine-link":
 		return 5
-	case "hook":
+	case "hook", "hook-link":
 		return 10
 	case "instructions":
 		return 20

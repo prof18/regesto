@@ -33,6 +33,8 @@ func failOpenHook(args []string, output, diagnostic io.Writer, cause error) erro
 	case "hermes-pre-llm-v1":
 		_, _ = io.WriteString(output, "{}")
 		return nil
+	case "opencode-chat-message-v1":
+		return nil
 	default:
 		return fmt.Errorf("unknown hook protocol %q", args[0])
 	}

@@ -490,3 +490,84 @@ func sameSnapshot(left, right map[string]string) bool {
 	}
 	return true
 }
+
+func TestDoctorOpencodeHookCapabilityDegrades(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".config", "opencode"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	materializeInstallHook(t, root)
+	cfgPath := filepath.Join(root, "config.toml")
+	if err := os.WriteFile(cfgPath, []byte("machine = \"ocbox\"\nintegrations = [\"opencode\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	uninstalled, _ := runDoctorJSON(t, cfgPath)
+	if uninstalled.Status != "warning" || len(uninstalled.Integrations) != 1 || uninstalled.Integrations[0].ID != "opencode" {
+		t.Fatalf("uninstalled opencode diagnostic = %q %+v", uninstalled.Status, uninstalled.Integrations)
+	}
+	installCmd := exec.Command("go", "run", "./cmd/regesto", "--config", cfgPath, "install")
+	installCmd.Dir = repoRoot(t)
+	installCmd.Env = append(os.Environ(), "GOTELEMETRY=off", "GOCACHE="+t.TempDir(), "GOPATH="+t.TempDir())
+	if out, err := installCmd.CombinedOutput(); err != nil {
+		t.Fatalf("opencode install: %v\n%s", err, out)
+	}
+	installed, raw := runDoctorJSON(t, cfgPath)
+	if installed.Status != "ok" {
+		t.Fatalf("installed opencode status = %q; json=%s", installed.Status, raw)
+	}
+	integration := installed.Integrations[0]
+	if len(integration.Capabilities.Hooks) != 1 ||
+		integration.Capabilities.Hooks[0].Protocol != "opencode-chat-message-v1" ||
+		integration.Capabilities.Hooks[0].Status != "ok" {
+		t.Fatalf("opencode hook capability = %+v", integration.Capabilities.Hooks)
+	}
+	plugin := filepath.Join(home, ".config", "opencode", "plugins", "regesto.ts")
+	if _, err := os.Stat(plugin); err != nil {
+		t.Fatalf("opencode plugin link missing: %v", err)
+	}
+	// A foreign file squatting on the plugin target must degrade the hook
+	// capability, not just add a remediation line below an OK headline.
+	if err := os.Remove(plugin); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plugin, []byte("// foreign\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	blocked, raw := runDoctorJSON(t, cfgPath)
+	if blocked.Status != "warning" {
+		t.Fatalf("blocked opencode status = %q; json=%s", blocked.Status, raw)
+	}
+	hooks := blocked.Integrations[0].Capabilities.Hooks
+	if len(hooks) != 1 || hooks[0].Status == "ok" {
+		t.Fatalf("blocked opencode hook capability stayed ok: %+v", hooks)
+	}
+
+	// A plugin link owned by a live foreign instance gets the same switch
+	// guidance skill links produce, not the generic move-aside advice.
+	other := t.TempDir()
+	if err := os.WriteFile(filepath.Join(other, "config.toml"), []byte("machine = \"otherbox\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(other, "adapters", "opencode", "plugins"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(other, "adapters", "opencode", "plugins", "regesto.ts"), []byte("// other\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(plugin); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(other, "adapters", "opencode", "plugins", "regesto.ts"), plugin); err != nil {
+		t.Fatal(err)
+	}
+	foreign, raw := runDoctorJSON(t, cfgPath)
+	if foreign.Status != "warning" {
+		t.Fatalf("foreign-instance opencode status = %q; json=%s", foreign.Status, raw)
+	}
+	remediations := strings.Join(foreign.Integrations[0].Remediations, "\n")
+	if !strings.Contains(remediations, "already use the knowledge base in") {
+		t.Fatalf("foreign-instance remediation lacks switch guidance:\n%s", remediations)
+	}
+}
