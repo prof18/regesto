@@ -4,6 +4,34 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — the local release scripts read it from here and refuse to prepare
 or publish a version that has no section, so this file cannot fall behind.
 
+## 0.5.0
+
+**Two new built-in integrations: GitHub Copilot CLI and Antigravity CLI.** Both inject
+relevant context through a hook at the start of a conversation, like Claude Code, and get
+the search and write skills. The Copilot install also covers Copilot in VS Code, which
+reads the same skills, instructions, and hooks. See
+[Copilot setup](docs/setup-copilot.md) and [Antigravity setup](docs/setup-antigravity.md).
+
+**Choosing agents no longer means editing `config.toml` by hand.** `regesto init` now
+shows a checklist of the agents it detected, so you can pick which ones to connect. Pass
+`--integrations claude,codex` to skip the checklist (for example in scripts). On an
+existing knowledge base, `regesto integrations add <id>` and
+`regesto integrations remove <id>` change the list and leave your comments in
+`config.toml` alone. Run `regesto integrations` without ids to get the checklist. The
+command only edits the config: run `regesto install` afterwards.
+
+**Output uses plain words.** Help, errors, and reports say "knowledge base", "agents",
+and "notes" instead of internal terms. `init` ends with a short summary and numbered next
+steps. `doctor` starts with one merged "What to do" list. `install` and `upgrade` group
+their changes by agent. Newly generated `config.toml` files have shorter comments that
+say when a setting is worth changing. JSON and key=value output have not changed.
+
+**Inbox processing picks its default agent from what you connected.** It uses Claude
+Code (Sonnet, low effort) and Codex (Luna, high effort) when either is connected. If
+neither is, it falls back to Copilot, Antigravity, or Hermes, preferring connected ones
+over ones that are only installed. A normalize command you set yourself still wins, and it
+can now take the prompt as a `{prompt}` argument, for CLIs that don't read it from stdin.
+
 ## 0.4.2
 
 The command-line output is easier to scan. The main help now groups commands by purpose,
