@@ -80,7 +80,8 @@ checks that Claude's settings file is valid JSON.
 Two normal cases are easy to misread as failures:
 
 - The first `regesto harvest` only records a baseline. It captures changes from later
-  runs.
+  runs. To import the memory Claude already has, run `regesto harvest --backfill claude`
+  once.
 - If two clones resolve to different project names, add the desired mapping under
   `[projects]` in `config.toml`, then run `regesto project --scope` inside the repository
   to verify it.

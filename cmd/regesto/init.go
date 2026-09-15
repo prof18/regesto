@@ -78,6 +78,7 @@ func runInit(args []string) error {
 	detected := adapters.Detect()
 	chosen := detected
 	note := "(found on this machine)"
+	interactive := false
 	if !configExists {
 		if *integrations != "" {
 			var err error
@@ -92,6 +93,7 @@ func runInit(args []string) error {
 			case err == nil:
 				chosen = picked
 				note = ""
+				interactive = true
 			case errors.Is(err, errAborted):
 				return fmt.Errorf("%w — nothing written", errAborted)
 			case errors.Is(err, errNotATerminal):
@@ -206,7 +208,13 @@ func runInit(args []string) error {
 		kept += n
 	}
 
-	printInitSummary(root, name, chosen, detected, note, configExists, kept)
+	imported := 0
+	if interactive && len(chosen) > 0 {
+		fmt.Println()
+		imported = offerMemoryImport(os.Stdin, os.Stdout, configPath)
+	}
+
+	printInitSummary(root, name, chosen, detected, note, configExists, kept, imported)
 	return nil
 }
 
@@ -226,7 +234,7 @@ func printInitWelcome(root string, configExists bool) {
 // printInitSummary is what a person reads right after init: where the
 // knowledge base is, what it is set up for, and the few commands that make it
 // useful. The individual files are an implementation detail and are not listed.
-func printInitSummary(root, machine string, chosen, detected []string, note string, configExists bool, kept int) {
+func printInitSummary(root, machine string, chosen, detected []string, note string, configExists bool, kept, imported int) {
 	fmt.Printf("Done. Knowledge base ready in %s\n\n", tildePath(root))
 	fmt.Printf("  Machine name  %s\n", machine)
 	// When config.toml is kept, the agent list was not written by this run.
@@ -239,6 +247,9 @@ func printInitSummary(root, machine string, chosen, detected []string, note stri
 		default:
 			fmt.Println("  Agents        none found on this machine — add them later with `regesto integrations add <id>`")
 		}
+	}
+	if imported > 0 {
+		fmt.Printf("  Inbox         %s imported from existing agent memory\n", plural(imported, "note"))
 	}
 	fmt.Printf("  Settings      %s\n", tildePath(filepath.Join(root, config.FileName)))
 	if kept > 0 {

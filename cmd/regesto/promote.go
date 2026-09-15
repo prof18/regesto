@@ -34,7 +34,7 @@ func runPromote(cfg *config.Config, args []string) error {
 	// Go's flag package stops at the first positional argument, so
 	// `promote file.md --name x` would silently ignore --name. Reading a file
 	// name first is the natural way to type this, so accept either order.
-	if err := fs.Parse(flagsFirst(args)); err != nil {
+	if err := fs.Parse(flagsFirst(fs, args)); err != nil {
 		return err
 	}
 
@@ -113,14 +113,20 @@ func runPromote(cfg *config.Config, args []string) error {
 // flagsFirst moves positional arguments after the flags, so both
 // `promote --name x file.md` and `promote file.md --name x` work. A bare `-`
 // means stdin and is positional; anything else starting with `-` is a flag, and
-// a flag that takes a value keeps the value with it.
-func flagsFirst(args []string) []string {
-	valueFlags := map[string]bool{
-		"--source": true, "-source": true,
-		"--name": true, "-name": true,
-		"--command": true, "-command": true,
-		"--max-prompt-bytes": true, "-max-prompt-bytes": true,
-		"--timeout": true, "-timeout": true,
+// a flag that takes a value keeps the value with it. Which flags take a value is
+// read from fs, so a command that adds one cannot forget to list it here.
+func flagsFirst(fs *flag.FlagSet, args []string) []string {
+	takesValue := func(arg string) bool {
+		name := strings.TrimLeft(arg, "-")
+		if strings.Contains(name, "=") {
+			return false
+		}
+		f := fs.Lookup(name)
+		if f == nil {
+			return false
+		}
+		b, ok := f.Value.(interface{ IsBoolFlag() bool })
+		return !ok || !b.IsBoolFlag()
 	}
 	var flags, positional []string
 	for i := 0; i < len(args); i++ {
@@ -128,7 +134,7 @@ func flagsFirst(args []string) []string {
 		switch {
 		case a == "-" || !strings.HasPrefix(a, "-"):
 			positional = append(positional, a)
-		case valueFlags[a] && i+1 < len(args):
+		case takesValue(a) && i+1 < len(args):
 			flags = append(flags, a, args[i+1])
 			i++
 		default:

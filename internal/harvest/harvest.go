@@ -48,8 +48,41 @@ type snapshot struct {
 }
 
 type sourceSnapshot struct {
-	Initialized bool             `json:"initialized"`
-	Entries     map[string]entry `json:"entries"`
+	Initialized bool `json:"initialized"`
+	// Backfilled records that the files present when the source was first
+	// imported have been collected whole, so asking again is a no-op.
+	Backfilled bool             `json:"backfilled,omitempty"`
+	Entries    map[string]entry `json:"entries"`
+	// Whole maps a file to the hash of its last capture as a whole file, so a
+	// later backfill skips what the inbox already has. It is only needed until
+	// the backfill happens, and is dropped after.
+	Whole map[string]string `json:"whole,omitempty"`
+}
+
+// Options controls one harvest pass.
+type Options struct {
+	DryRun bool
+	// Backfill collects every existing memory file whole instead of recording
+	// a silent baseline. It happens once per memory location and only when
+	// asked for: scheduled passes never set it.
+	Backfill bool
+	// BackfillAgents limits Backfill to these integrations; empty means all.
+	BackfillAgents []string
+}
+
+func (o Options) backfills(agent string) bool {
+	if !o.Backfill {
+		return false
+	}
+	if len(o.BackfillAgents) == 0 {
+		return true
+	}
+	for _, id := range o.BackfillAgents {
+		if id == agent {
+			return true
+		}
+	}
+	return false
 }
 
 // Result is what one agent's pass did, for the run summary.
@@ -69,6 +102,11 @@ type Result struct {
 // source; an absent or unsupported source yields an explicit Note rather than
 // disappearing, because a machine simply may not expose every declared store.
 func Run(cfg *config.Config, dryRun bool) ([]Result, error) {
+	return RunWithOptions(cfg, Options{DryRun: dryRun})
+}
+
+// RunWithOptions is Run with the backfill controls.
+func RunWithOptions(cfg *config.Config, opts Options) ([]Result, error) {
 	if cfg.Machine == "" {
 		return nil, fmt.Errorf("no machine name resolved; cannot name the inbox")
 	}
@@ -87,6 +125,15 @@ func Run(cfg *config.Config, dryRun bool) ([]Result, error) {
 	if err := validateHarvestOutputRoots(kbFS); err != nil {
 		return nil, err
 	}
+	for _, id := range opts.BackfillAgents {
+		known := false
+		for _, a := range resolved {
+			known = known || a.Name == id
+		}
+		if !known {
+			return nil, fmt.Errorf("%q is not a connected agent; nothing to import", id)
+		}
+	}
 	for _, a := range resolved {
 		if !safeNamespaceComponent(a.Name) {
 			return nil, fmt.Errorf("integration name %q is not a safe inbox/state path component", a.Name)
@@ -97,7 +144,7 @@ func Run(cfg *config.Config, dryRun bool) ([]Result, error) {
 	}
 	var results []Result
 	for _, a := range resolved {
-		r, err := runAgent(kbFS, cfg, a, dryRun)
+		r, err := runAgent(kbFS, cfg, a, opts)
 		if err != nil {
 			return results, err
 		}
@@ -145,7 +192,8 @@ func safeNamespaceComponent(value string) bool {
 	return value != "" && value != "." && value != ".." && filepath.Base(value) == value
 }
 
-func runAgent(kbFS *os.Root, cfg *config.Config, a adapters.Agent, dryRun bool) ([]Result, error) {
+func runAgent(kbFS *os.Root, cfg *config.Config, a adapters.Agent, opts Options) ([]Result, error) {
+	dryRun := opts.DryRun
 	if len(a.MemorySources) == 0 {
 		return []Result{{Agent: a.Name, Note: "no memory location set up, skipped"}}, nil
 	}
@@ -165,7 +213,7 @@ func runAgent(kbFS *os.Root, cfg *config.Config, a adapters.Agent, dryRun bool) 
 			results = append(results, res)
 			continue
 		case "markdown-glob-v1":
-			res, sourceTouched, err := runMarkdownSource(kbFS, cfg, a, source, res.SourceID, &state, publishedFiles, observedFiles, dryRun)
+			res, sourceTouched, err := runMarkdownSource(kbFS, cfg, a, source, res.SourceID, &state, publishedFiles, observedFiles, dryRun, opts.backfills(a.Name))
 			if err != nil {
 				return results, err
 			}
@@ -197,7 +245,7 @@ func memorySourceID(source adapters.MemorySource) string {
 	return source.Kind + "-" + hex.EncodeToString(sum[:8])
 }
 
-func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, source adapters.MemorySource, sourceID string, state *snapshot, publishedFiles map[string]bool, observedFiles map[string]entry, dryRun bool) (Result, bool, error) {
+func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, source adapters.MemorySource, sourceID string, state *snapshot, publishedFiles map[string]bool, observedFiles map[string]entry, dryRun, backfill bool) (Result, bool, error) {
 	res := Result{Agent: a.Name, SourceID: sourceID, Kind: source.Kind, Location: source.Location}
 	dirs, err := filepath.Glob(source.Location)
 	if err != nil {
@@ -326,9 +374,16 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 		previous.Entries = map[string]entry{}
 	}
 
+	// A backfill imports each location once. Asking again falls back to an
+	// ordinary pass rather than filling the inbox with the same files twice.
+	if backfill && previous.Backfilled {
+		res.Note = "existing memory was already imported earlier; collecting only changes"
+		backfill = false
+	}
+
 	var changed []string
 	for key, e := range current {
-		if old, ok := previous.Entries[key]; !ok || old.Sha != e.Sha {
+		if old, ok := previous.Entries[key]; backfill || !ok || old.Sha != e.Sha {
 			changed = append(changed, key)
 		}
 	}
@@ -336,16 +391,22 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 
 	// A first run would otherwise dump the entire existing store into the
 	// inbox. Record the baseline instead and capture only what changes after
-	// it — first-run history is outside incremental capture.
+	// it, unless a backfill asked for the existing store explicitly.
 	first := !previous.Initialized
-	if first && len(changed) > 0 {
-		res.Note = fmt.Sprintf("first run: %d existing file(s) recorded as a starting point; only changes from now on are collected", len(changed))
+	if first && !backfill && len(changed) > 0 {
+		res.Note = fmt.Sprintf("first run: %d existing file(s) recorded as a starting point; only changes from now on are collected. Run `regesto harvest --backfill` to import them", len(changed))
 		changed = nil
 	}
 	var publish []string
 	for _, key := range changed {
 		origin := keyOrigins[key]
-		if previous, ok := state.Observed[memoryOriginID(origin)]; ok && previous.Sha == current[key].Sha {
+		// Observed also holds everything a baseline saw, so a backfill instead
+		// skips only what an earlier pass already collected whole.
+		if backfill && previous.Whole[key] == current[key].Sha {
+			res.Skipped = append(res.Skipped, fmt.Sprintf("%s (already collected before the import)", key))
+			continue
+		}
+		if prior, ok := state.Observed[memoryOriginID(origin)]; !backfill && ok && prior.Sha == current[key].Sha {
 			res.Skipped = append(res.Skipped, fmt.Sprintf("%s (already collected from another memory location)", key))
 			continue
 		}
@@ -357,7 +418,18 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 		publish = append(publish, key)
 	}
 	changed = publish
+	if backfill {
+		res.Note = fmt.Sprintf("importing %d existing file(s)", len(changed))
+	}
 
+	whole := map[string]string{}
+	if !previous.Backfilled && !backfill {
+		for key, sha := range previous.Whole {
+			if e, ok := current[key]; ok && e.Sha == sha {
+				whole[key] = sha
+			}
+		}
+	}
 	if !dryRun && len(changed) > 0 {
 		stamp := time.Now().UTC().Format("20060102T150405.000000000Z")
 		dest := filepath.Join("inbox", a.Name+"@"+cfg.Machine, stamp)
@@ -367,11 +439,15 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 			// which is per-machine and never synced or committed, so the diff
 			// costs local disk instead of repository and sync weight. A file
 			// seen for the first time has no baseline and is captured whole.
+			// A backfill is whole files by definition.
 			body, suffix := contents[key], ""
-			if prevBlob, err := readSourceBlob(kbFS, cfg, a.Name, sourceID, key); err == nil {
+			if prevBlob, err := readSourceBlob(kbFS, cfg, a.Name, sourceID, key); err == nil && !backfill {
 				if d, ok := unifiedDiff(prevBlob, contents[key], key); ok {
 					body, suffix = d, ".diff"
 				}
+			}
+			if suffix == "" && !backfill && !previous.Backfilled {
+				whole[key] = current[key].Sha
 			}
 			name = sourceID + "__" + name
 			if err := writeRootExclusive(kbFS, filepath.Join(dest, name+suffix), body, 0o644); err != nil {
@@ -404,7 +480,10 @@ func runMarkdownSource(kbFS *os.Root, cfg *config.Config, a adapters.Agent, sour
 		if state.Sources == nil {
 			state.Sources = map[string]sourceSnapshot{}
 		}
-		state.Sources[sourceID] = sourceSnapshot{Initialized: true, Entries: current}
+		if len(whole) == 0 {
+			whole = nil
+		}
+		state.Sources[sourceID] = sourceSnapshot{Initialized: true, Backfilled: previous.Backfilled || backfill, Entries: current, Whole: whole}
 	}
 	return res, true, nil
 }

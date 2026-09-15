@@ -86,6 +86,110 @@ func TestFirstRunRecordsBaselineWithoutCapturing(t *testing.T) {
 	}
 }
 
+// A backfill is the explicit way to import what existed before Regesto: every
+// file whole, once, and still after a scheduled pass already took the baseline.
+func TestBackfillImportsExistingMemoryOnce(t *testing.T) {
+	cfg, mem := harvestInstance(t)
+	write(t, mem, "old.md", "a note from before regesto")
+	write(t, mem, "older.md", "another one")
+	if _, err := harvest.Run(cfg, false); err != nil { // the scheduled baseline
+		t.Fatal(err)
+	}
+
+	preview, err := harvest.RunWithOptions(cfg, harvest.Options{DryRun: true, Backfill: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := captured(preview); len(got) != 2 {
+		t.Fatalf("dry-run backfill would collect %v, want both files", got)
+	}
+	if files := inboxFiles(t, cfg); len(files) != 0 {
+		t.Fatalf("dry-run backfill wrote to the inbox: %v", files)
+	}
+
+	results, err := harvest.RunWithOptions(cfg, harvest.Options{Backfill: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := captured(results); len(got) != 2 {
+		t.Fatalf("backfill collected %v, want both files", got)
+	}
+	for _, f := range inboxFiles(t, cfg) {
+		if strings.HasSuffix(f, ".diff") {
+			t.Errorf("backfill wrote a diff, want whole files: %v", f)
+		}
+	}
+
+	again, err := harvest.RunWithOptions(cfg, harvest.Options{Backfill: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := captured(again); len(got) != 0 {
+		t.Errorf("second backfill collected %v, want none", got)
+	}
+	if len(again) != 1 || !strings.Contains(again[0].Note, "already imported") {
+		t.Errorf("second backfill note = %+v", again)
+	}
+
+	write(t, mem, "new.md", "written after the import")
+	next, err := harvest.Run(cfg, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := captured(next); len(got) != 1 || !strings.HasSuffix(got[0], "new.md") {
+		t.Errorf("pass after backfill collected %v, want just new.md", got)
+	}
+}
+
+// Files an ordinary pass already collected whole are not imported twice; a file
+// only ever collected as a diff is, because its original content never was.
+func TestBackfillSkipsWhatWasAlreadyCollectedWhole(t *testing.T) {
+	cfg, mem := harvestInstance(t)
+	// Large enough that the edit is captured as a diff rather than whole.
+	bulk := strings.Repeat("a line from before regesto\n", 200)
+	write(t, mem, "old.md", bulk)
+	if _, err := harvest.Run(cfg, false); err != nil { // baseline
+		t.Fatal(err)
+	}
+	write(t, mem, "new.md", "written after the baseline")
+	write(t, mem, "old.md", bulk+"plus an edit\n")
+	if got, err := harvest.Run(cfg, false); err != nil || len(captured(got)) != 2 {
+		t.Fatalf("ordinary pass collected %v (err %v), want new.md whole and old.md as a diff", captured(got), err)
+	}
+
+	results, err := harvest.RunWithOptions(cfg, harvest.Options{Backfill: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := captured(results)
+	if len(got) != 1 || !strings.HasSuffix(got[0], "old.md") {
+		t.Fatalf("backfill collected %v, want only old.md", got)
+	}
+	if !strings.Contains(results[0].Note, "importing 1 existing file") {
+		t.Errorf("backfill note = %q", results[0].Note)
+	}
+}
+
+func TestBackfillOnFirstRunSkipsTheBaseline(t *testing.T) {
+	cfg, mem := harvestInstance(t)
+	write(t, mem, "note.md", "an existing note")
+	results, err := harvest.RunWithOptions(cfg, harvest.Options{Backfill: true, BackfillAgents: []string{"claude"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := captured(results); len(got) != 1 {
+		t.Fatalf("first-run backfill collected %v, want note.md", got)
+	}
+}
+
+func TestBackfillRejectsAnUnconnectedAgent(t *testing.T) {
+	cfg, _ := harvestInstance(t)
+	_, err := harvest.RunWithOptions(cfg, harvest.Options{Backfill: true, BackfillAgents: []string{"codex"}})
+	if err == nil || !strings.Contains(err.Error(), "not a connected agent") {
+		t.Fatalf("err = %v, want not a connected agent", err)
+	}
+}
+
 func TestSubsequentWriteIsCaptured(t *testing.T) {
 	cfg, mem := harvestInstance(t)
 	write(t, mem, "note.md", "an existing note")

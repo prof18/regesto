@@ -254,6 +254,7 @@ func printIntegrationNextSteps() {
 	fmt.Println("\nNext steps")
 	fmt.Println("  1. regesto install --dry-run   Preview the changes to your agents")
 	fmt.Println("  2. regesto install             Apply them")
+	fmt.Println("  3. regesto harvest --backfill <id>   Optional: import memory that agent already has")
 }
 
 func printDroppedOverrides(dropped []string) {

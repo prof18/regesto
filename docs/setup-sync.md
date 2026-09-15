@@ -163,6 +163,13 @@ regesto --config ~/regesto-kb/config.toml upgrade --dry-run   # expect: 0 change
 regesto --config ~/regesto-kb/config.toml harvest --dry-run   # first run records a baseline
 ```
 
+To bring this machine's existing agent memory into the shared knowledge base, run
+`harvest --backfill` once. The notes are collected on this machine and processed by the
+lint host's next cycle. Expect some of them to repeat facts other machines already
+recorded; the normalizer skips known facts, and `regesto lint` reports near-duplicates.
+The same applies on a machine that was already harvesting before `--backfill` existed:
+the import can include notes an earlier harvest collected.
+
 **Home directories differ between machines**, and that is handled: everything resolves
 relative to `config.toml`'s location, and the instructions section renders `~/`-relative
 paths rather than absolute ones. Do not hardcode a path anywhere yourself.
@@ -196,7 +203,9 @@ accumulated personal knowledge in plaintext.
 ### The first harvest on a new machine captures nothing
 
 By design. It records a baseline instead, so you do not get that machine's entire existing
-memory store dumped into the inbox at once. Captures start from the *next* change.
+memory store dumped into the inbox at once. Captures start from the *next* change. Run
+`regesto harvest --backfill` once if you do want that existing memory. A second backfill
+imports nothing again; it only collects changes, like an ordinary harvest.
 
 ### Conflict files
 

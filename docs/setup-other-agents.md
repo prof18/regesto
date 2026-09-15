@@ -122,7 +122,9 @@ trust = "quarantine"
 ```
 
 The first `regesto harvest` records a baseline and normally captures nothing. Later runs
-write new changes under `inbox/my-agent@<machine>/` for review and normalization.
+write new changes under `inbox/my-agent@<machine>/` for review and normalization. To
+import what the client had already written, run `regesto harvest --backfill my-agent`
+once.
 
 Do not point `memory_location` at Regesto's `knowledge/` directory. Client memory is an
 input to harvest, not the canonical store.

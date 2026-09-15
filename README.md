@@ -146,6 +146,12 @@ The scheduled workflow runs two operations:
 - `regesto cycle` normalizes captures, resolves contradictions, rebuilds indexes, and
   commits a clean pass.
 
+The first harvest only notes the memory your agents already have; it collects what changes
+after that. To bring in that existing memory as well, answer yes when `regesto init` offers
+it, or run `regesto harvest --backfill` once. It lands in `inbox/` like any other capture,
+and the next `regesto cycle` turns it into facts. Harvest reads Claude Code, Codex, and
+Hermes memory. Antigravity and Copilot keep no memory files, so there is nothing to collect.
+
 On macOS, `schedule install` uses launchd. On other systems, schedule `regesto harvest`
 and `regesto cycle` with your preferred job runner.
 
