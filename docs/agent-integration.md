@@ -26,6 +26,7 @@ doctor` show their resolved local values.
 | `generic` | Generic integration | paths=none; commands=none | variant=`portable`; targets=none | targets=none; create=`false` | `none` / `none` | `none` | none | `quarantine` |
 | `hermes` | Hermes | paths=`~/.hermes`; commands=`hermes` | variant=`portable`; targets=`~/.hermes/skills` | targets=`~/.hermes/SOUL.md`; create=`false` | `hermes-pre-llm-v1` / `hermes-config-yaml-v1` / `~/.hermes/config.yaml` | `markdown-glob-v1` / `~/.hermes/memories` | none | `quarantine` |
 | `opencode` | OpenCode | paths=`~/.config/opencode`; commands=`opencode` | variant=`portable`; targets=`~/.config/opencode/skills` | targets=`~/.config/opencode/AGENTS.md`; create=`true` | `opencode-chat-message-v1` / `opencode-plugin-file-v1` / `~/.config/opencode/plugins/regesto.ts` | `none` | none | `supervised` |
+| `pi` | Pi coding agent | paths=`~/.pi`; commands=`pi` | variant=`portable`; targets=`~/.pi/agent/skills` | targets=`~/.pi/agent/AGENTS.md`; create=`true` | `pi-before-agent-start-v1` / `pi-extension-file-v1` / `~/.pi/agent/extensions/regesto.ts` | `none` | none | `supervised` |
 <!-- regesto:profile-matrix:end -->
 
 `codex` has no hook entry in its profile. `generic` explicitly declares `none` hook and
@@ -60,6 +61,16 @@ links its launcher there and the linked file self-locates the instance. The inst
 target `~/.config/opencode/AGENTS.md` is created by Regesto (`create: true`) because
 OpenCode does not ship one.
 
+Pi declares `memory: none` because its sessions are structured files under
+`~/.pi/agent/sessions/`, not markdown. Its skills live in `~/.pi/agent/skills`; pi also
+auto-discovers the shared `~/.agents/skills` directory, and skill names must be unique
+across all locations — on machines where another integration already fills
+`~/.agents/skills` with Regesto skills, override `skills_dir` deliberately so pi sees one
+copy. Its hook registers by presence rather than by settings: pi auto-discovers global
+extensions from `~/.pi/agent/extensions/`, so Regesto links its launcher there and the
+linked file self-locates the instance. The instructions target `~/.pi/agent/AGENTS.md` is
+created by Regesto (`create: true`) because pi does not ship one.
+
 ## Behavior and evidence
 
 | Integration | Consultation path | Guarantee | Evidence in this repository |
@@ -69,6 +80,7 @@ OpenCode does not ship one.
 | Copilot CLI | `SessionStart` injects JSON `additionalContext` | deterministic at the declared hook event | protocol, merge, fail-open, and installer contract tests; live-host verification is release evidence |
 | Hermes | first `pre_llm_call` per session injects JSON context | deterministic on the first turn when registration is current | protocol, session-bound, YAML recipe, allowlist, and installer contract tests; live-host verification is release evidence |
 | OpenCode | first user message per session injects context through the Regesto plugin | deterministic on the first turn of each session when the plugin link is current | protocol, link, fail-open, and installer contract tests; live-host verification is release evidence |
+| Pi | first `before_agent_start` per session injects a persistent custom message | deterministic on the first turn of each session when the extension link is current | protocol, link, fail-open, and installer contract tests; live-host verification is release evidence |
 | Codex | always-loaded instructions plus portable skills | advisory, not enforced | renderer and installer contract tests |
 | Generic/custom | whichever declared targets and supported protocol the instance profile supplies | determined by declared capabilities | profile validation, renderer, and installer contract tests |
 

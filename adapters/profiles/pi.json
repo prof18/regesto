@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "pi",
+  "display_name": "Pi coding agent",
+  "detect": {"paths": ["~/.pi"], "commands": ["pi"]},
+  "skills": {"targets": ["~/.pi/agent/skills"], "variant": "portable"},
+  "instructions": {"targets": ["~/.pi/agent/AGENTS.md"], "create": true},
+  "hooks": [{"protocol": "pi-before-agent-start-v1", "registrar": "pi-extension-file-v1", "settings": "~/.pi/agent/extensions/regesto.ts"}],
+  "memory": [{"kind": "none"}],
+  "default_trust": "supervised"
+}

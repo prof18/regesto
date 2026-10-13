@@ -35,6 +35,8 @@ func failOpenHook(args []string, output, diagnostic io.Writer, cause error) erro
 		return nil
 	case "opencode-chat-message-v1":
 		return nil
+	case "pi-before-agent-start-v1":
+		return nil
 	default:
 		return fmt.Errorf("unknown hook protocol %q", args[0])
 	}

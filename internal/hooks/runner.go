@@ -119,6 +119,23 @@ func Run(cfg *config.Config, protocol string, input io.Reader, output, diagnosti
 		}
 		return nil
 
+	case "pi-before-agent-start-v1":
+		// The pi extension reads stdout as plain text and injects it as a
+		// persistent custom message on the first agent run of a session.
+		if readErr != nil {
+			diagnose(diagnostic, protocol, readErr)
+			return nil
+		}
+		context, err := runPi(cfg, payload)
+		if err != nil {
+			diagnose(diagnostic, protocol, err)
+			return nil
+		}
+		if _, err := io.WriteString(output, context); err != nil {
+			diagnose(diagnostic, protocol, err)
+		}
+		return nil
+
 	default:
 		return fmt.Errorf("unknown hook protocol %q", protocol)
 	}

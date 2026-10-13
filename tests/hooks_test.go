@@ -152,6 +152,28 @@ func TestOpencodeHookFallsBackFromWorktreeToDirectory(t *testing.T) {
 	}
 }
 
+func TestPiHookTextContextAndFailOpenFraming(t *testing.T) {
+	cfg, cwd := hookConfig(t)
+	stdout, stderr, err := runHookDirect(t, cfg, "pi-before-agent-start-v1", []byte(`{"sessionId":"s","cwd":"`+cwd+`"}`))
+	if err != nil || stderr != "" {
+		t.Fatalf("pi before_agent_start: err=%v stderr=%q", err, stderr)
+	}
+	if !strings.Contains(stdout, "Hook fixture fact") {
+		t.Fatalf("pi context missing the scoped index:\n%s", stdout)
+	}
+	for name, payload := range map[string][]byte{
+		"malformed":          hookFixture(t, "malformed.json", cwd),
+		"duplicate key":      []byte(`{"sessionId":"s","sessionId":"t","cwd":"` + cwd + `"}`),
+		"missing cwd":        []byte(`{"sessionId":"s"}`),
+		"unusable directory": []byte(`{"sessionId":"s","cwd":"/path/that/does/not/exist"}`),
+	} {
+		stdout, stderr, err = runHookDirect(t, cfg, "pi-before-agent-start-v1", payload)
+		if err != nil || stdout != "" || stderr == "" {
+			t.Fatalf("%s pi hook: stdout=%q stderr=%q err=%v", name, stdout, stderr, err)
+		}
+	}
+}
+
 func TestAntigravityHookJSONContextAndFailOpenFraming(t *testing.T) {
 	cfg, cwd := hookConfig(t)
 	stdout, stderr, err := runHookDirect(t, cfg, "antigravity-pre-invocation-v1", hookFixture(t, "antigravity-invocation.json", cwd))

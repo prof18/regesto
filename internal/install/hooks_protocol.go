@@ -25,8 +25,8 @@ func planManualHook(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoo
 		}
 	}
 	recipe := fmt.Sprintf("in this agent's settings, run %s on the %s event", command, event)
-	if hook.Protocol == "opencode-chat-message-v1" {
-		recipe = fmt.Sprintf("link %s into the host's auto-discovered plugin directory", command)
+	if hook.Protocol == "opencode-chat-message-v1" || hook.Protocol == "pi-before-agent-start-v1" {
+		recipe = fmt.Sprintf("link %s into the host's auto-discovered launcher directory", command)
 	}
 	idTarget := canonical
 	if idTarget == "" {
@@ -162,11 +162,20 @@ func protocolHookCommand(root, sourceRoot, protocol string) (command, event stri
 	case "hermes-pre-llm-v1":
 		relative, event = filepath.Join("adapters", "hermes", "hooks", "pre-llm.sh"), "pre_llm_call"
 	case "opencode-chat-message-v1":
-		// The plugin is loaded, not executed, so a regular file is enough
+		// The launcher is loaded, not executed, so a regular file is enough
 		// and no executable bit is required.
 		relative, event = filepath.FromSlash(opencodePluginRelative), "chat.message"
 		command = filepath.Join(root, relative)
-		if err := requirePluginLauncher(sourceRoot); err != nil {
+		if err := requireLauncherFile(sourceRoot, relative); err != nil {
+			return "", "", err
+		}
+		return command, event, nil
+	case "pi-before-agent-start-v1":
+		// Same contract as OpenCode: the extension is imported by the host,
+		// so a regular file is enough and no executable bit is required.
+		relative, event = filepath.FromSlash(piExtensionRelative), "before_agent_start"
+		command = filepath.Join(root, relative)
+		if err := requireLauncherFile(sourceRoot, relative); err != nil {
 			return "", "", err
 		}
 		return command, event, nil

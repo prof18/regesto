@@ -203,10 +203,10 @@ func validateProfile(p Profile, source, fileID string) error {
 	}
 	noneHooks := 0
 	for _, h := range p.Hooks {
-		if !oneOf(h.Protocol, "antigravity-pre-invocation-v1", "claude-session-start-v1", "copilot-session-start-v1", "hermes-pre-llm-v1", "opencode-chat-message-v1", "none") {
+		if !oneOf(h.Protocol, "antigravity-pre-invocation-v1", "claude-session-start-v1", "copilot-session-start-v1", "hermes-pre-llm-v1", "opencode-chat-message-v1", "pi-before-agent-start-v1", "none") {
 			return fmt.Errorf("%s: unknown hook protocol %q", source, h.Protocol)
 		}
-		if !oneOf(h.Registrar, "antigravity-hooks-json-v1", "claude-settings-json-v1", "copilot-hooks-json-v1", "hermes-config-yaml-v1", "opencode-plugin-file-v1", "manual", "none") {
+		if !oneOf(h.Registrar, "antigravity-hooks-json-v1", "claude-settings-json-v1", "copilot-hooks-json-v1", "hermes-config-yaml-v1", "opencode-plugin-file-v1", "pi-extension-file-v1", "manual", "none") {
 			return fmt.Errorf("%s: unknown hook registrar %q", source, h.Registrar)
 		}
 		if h.Settings != "" {
@@ -240,6 +240,10 @@ func validateProfile(p Profile, source, fileID string) error {
 		case "opencode-plugin-file-v1":
 			if h.Protocol != "opencode-chat-message-v1" || h.Settings == "" {
 				return fmt.Errorf("%s: opencode-plugin-file-v1 requires opencode-chat-message-v1 and settings", source)
+			}
+		case "pi-extension-file-v1":
+			if h.Protocol != "pi-before-agent-start-v1" || h.Settings == "" {
+				return fmt.Errorf("%s: pi-extension-file-v1 requires pi-before-agent-start-v1 and settings", source)
 			}
 		case "none":
 			if h.Protocol != "none" || h.Settings != "" {
@@ -439,7 +443,7 @@ func resolveProfile(cfg *config.Config, id string, p Profile, values map[string]
 		return a, err
 	}
 	// SettingsFile is the flat projection used by text diagnostics.
-	if len(a.Hooks) > 0 && (a.Hooks[0].Registrar == "antigravity-hooks-json-v1" || a.Hooks[0].Registrar == "claude-settings-json-v1" || a.Hooks[0].Registrar == "copilot-hooks-json-v1" || a.Hooks[0].Registrar == "opencode-plugin-file-v1") {
+	if len(a.Hooks) > 0 && (a.Hooks[0].Registrar == "antigravity-hooks-json-v1" || a.Hooks[0].Registrar == "claude-settings-json-v1" || a.Hooks[0].Registrar == "copilot-hooks-json-v1" || a.Hooks[0].Registrar == "opencode-plugin-file-v1" || a.Hooks[0].Registrar == "pi-extension-file-v1") {
 		a.SettingsFile = a.Hooks[0].Settings
 	}
 	return a, nil

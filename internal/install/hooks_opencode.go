@@ -10,6 +10,12 @@ import (
 )
 
 const opencodePluginRelative = "adapters/opencode/plugins/regesto.ts"
+const piExtensionRelative = "adapters/pi/extensions/regesto.ts"
+
+// launcherRelatives are the adapter files whose presence in a host's
+// auto-discovered directory is the whole hook registration. Hosts that work
+// this way get a linked launcher instead of a settings edit.
+var launcherRelatives = []string{opencodePluginRelative, piExtensionRelative}
 
 // planOpencodePluginLink installs the OpenCode plugin as a symlink into the
 // directory OpenCode auto-discovers. OpenCode has no settings-file hook
@@ -17,17 +23,31 @@ const opencodePluginRelative = "adapters/opencode/plugins/regesto.ts"
 // self-locates the instance the same way the bin/ shims and hook wrappers do,
 // which is why this is a link rather than a rendered copy.
 func planOpencodePluginLink(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoot string) (Item, error) {
+	return planLauncherLink(p, agent, hook, sourceRoot, opencodePluginRelative)
+}
+
+// planPiExtensionLink installs the pi extension as a symlink into
+// ~/.pi/agent/extensions/, the directory pi auto-discovers global extensions
+// from. Like OpenCode, pi has no settings-file registration for this: the
+// linked launcher is the registration.
+func planPiExtensionLink(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoot string) (Item, error) {
+	return planLauncherLink(p, agent, hook, sourceRoot, piExtensionRelative)
+}
+
+// planLauncherLink plans the symlink of one adapter launcher file into a
+// host-owned auto-discovered directory declared as the hook's settings target.
+func planLauncherLink(p *Plan, agent adapters.Agent, hook adapters.Hook, sourceRoot, relative string) (Item, error) {
 	if hook.Settings == "" {
-		return Item{}, fmt.Errorf("integration %q: OpenCode registrar has no plugin target", agent.Name)
+		return Item{}, fmt.Errorf("integration %q: launcher registrar has no target", agent.Name)
 	}
-	if err := requirePluginLauncher(sourceRoot); err != nil {
+	if err := requireLauncherFile(sourceRoot, relative); err != nil {
 		return Item{}, fmt.Errorf("integration %q: %w", agent.Name, err)
 	}
 	canonical, err := canonicalLinkPath(hook.Settings)
 	if err != nil {
 		return Item{}, err
 	}
-	want := filepath.Join(p.KBRoot, filepath.FromSlash(opencodePluginRelative))
+	want := filepath.Join(p.KBRoot, filepath.FromSlash(relative))
 	item := Item{
 		ID:              "hook:" + canonical,
 		Kind:            "hook-link",
@@ -40,7 +60,7 @@ func planOpencodePluginLink(p *Plan, agent adapters.Agent, hook adapters.Hook, s
 	}
 	info, err := os.Lstat(canonical)
 	if os.IsNotExist(err) {
-		item.Action, item.CurrentState, item.DryRun = "create", "plugin not linked yet", "link the Regesto plugin"
+		item.Action, item.CurrentState, item.DryRun = "create", "launcher not linked yet", "link the Regesto launcher"
 		return item, nil
 	}
 	if err != nil {
@@ -53,7 +73,7 @@ func planOpencodePluginLink(p *Plan, agent adapters.Agent, hook adapters.Hook, s
 	resolved, resolveErr := filepath.EvalSymlinks(canonical)
 	wantResolved, wantErr := filepath.EvalSymlinks(want)
 	if resolveErr == nil && wantErr == nil && resolved == wantResolved {
-		item.Action, item.CurrentState, item.DryRun = "current", "Regesto's plugin is already linked", "no change"
+		item.Action, item.CurrentState, item.DryRun = "current", "Regesto's launcher is already linked", "no change"
 		return item, nil
 	}
 	raw, err := os.Readlink(canonical)
@@ -83,27 +103,30 @@ func planOpencodePluginLink(p *Plan, agent adapters.Agent, hook adapters.Hook, s
 
 // OtherAdapterKnowledgeBase returns the root of the Regesto knowledge base an
 // adapter launcher link points into, or "" when the target is not a Regesto
-// OpenCode plugin. Every knowledge base keeps the plugin at
-// adapters/opencode/plugins/ inside the instance.
+// launcher. Every knowledge base keeps each launcher at its adapter-relative
+// path inside the instance.
 func OtherAdapterKnowledgeBase(linkTarget string) string {
-	marker := string(filepath.Separator) + filepath.FromSlash(opencodePluginRelative)
-	if i := strings.Index(linkTarget, marker); i > 0 {
-		return linkTarget[:i]
+	for _, relative := range launcherRelatives {
+		marker := string(filepath.Separator) + filepath.FromSlash(relative)
+		if i := strings.Index(linkTarget, marker); i > 0 {
+			return linkTarget[:i]
+		}
 	}
 	return ""
 }
 
-// requirePluginLauncher reports whether the adapter source tree ships the
-// plugin file the link points at. Unlike the shell hook wrappers it is loaded,
-// not executed, so a regular file is enough and no executable bit is required.
-func requirePluginLauncher(sourceRoot string) error {
-	source := filepath.Join(sourceRoot, filepath.FromSlash(opencodePluginRelative))
+// requireLauncherFile reports whether the adapter source tree ships the
+// launcher file the link points at. Unlike the shell hook wrappers it is
+// loaded, not executed, so a regular file is enough and no executable bit is
+// required.
+func requireLauncherFile(sourceRoot, relative string) error {
+	source := filepath.Join(sourceRoot, filepath.FromSlash(relative))
 	info, err := os.Stat(source)
 	if err != nil {
-		return fmt.Errorf("plugin launcher %s is unavailable: %w", source, err)
+		return fmt.Errorf("launcher %s is unavailable: %w", source, err)
 	}
 	if info.IsDir() {
-		return fmt.Errorf("plugin launcher %s is a directory", source)
+		return fmt.Errorf("launcher %s is a directory", source)
 	}
 	return nil
 }

@@ -38,7 +38,7 @@ type LaunchResult = { ok: boolean; stdout: string; timedOut: boolean }
 // would freeze every session for up to the timeout. It never rejects; every
 // failure path resolves a failed result so the hook can degrade to injecting
 // nothing.
-function launch(payload: string): LaunchResult {
+function launch(payload: string): Promise<LaunchResult> {
   return new Promise((resolve) => {
     const fail = (timedOut: boolean): LaunchResult => ({ ok: false, stdout: "", timedOut })
     let child
