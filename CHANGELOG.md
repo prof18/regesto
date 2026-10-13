@@ -4,6 +4,28 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — the local release scripts read it from here and refuse to prepare
 or publish a version that has no section, so this file cannot fall behind.
 
+## 0.7.0
+
+**New built-in integration: the Pi coding agent.** pi auto-discovers an extension Regesto
+links into `~/.pi/agent/extensions/`, and that extension injects the knowledge-base index
+and the facts scoped to the working directory as a persistent message on the first prompt
+of every session — the same deterministic consultation Claude Code gets, with no settings
+file edited. The integration also links the portable skills into `~/.pi/agent/skills` and
+creates `~/.pi/agent/AGENTS.md` with the marked knowledge-base section. pi keeps no
+markdown memory, so harvesting is unchanged. On machines where the shared
+`~/.agents/skills` already carries Regesto skills, override `skills_dir` for pi so it does
+not load two copies of the same names.
+
+**New built-in integration: OpenCode.** OpenCode auto-discovers a plugin Regesto links
+into `~/.config/opencode/plugins/`, and that plugin injects the knowledge-base index and
+the facts scoped to the current repository on the first message of every session — the
+same deterministic consultation Claude Code gets, with no settings file edited. The
+integration also links the portable skills into `~/.config/opencode/skills` and creates
+`~/.config/opencode/AGENTS.md` with the marked knowledge-base section. OpenCode keeps no
+markdown memory, so harvesting is unchanged. On machines that also run the Claude
+integration, set `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` so OpenCode does not load the
+duplicate Claude-variant skills from `~/.claude/skills`.
+
 ## 0.6.0
 
 **You can now import the memory your agents already have.** Until now the first harvest
