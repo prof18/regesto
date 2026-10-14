@@ -56,16 +56,15 @@ A broken plugin degrades to injecting nothing — the message always goes throug
 ## Claude-compatible directories
 
 OpenCode also auto-loads skills from `~/.claude/skills` and `~/.agents/skills` for Claude
-Code compatibility. Skill names must be unique across all locations, so on a machine that
-also runs the Claude integration the same skill would appear twice with different
-variants. Keep Regesto's skills in `~/.config/opencode/skills` and silence the duplicate
-scan:
+Code compatibility, so on a machine that also runs the Claude integration the Regesto
+skills exist in a second location. OpenCode 1 could silence that scan by exporting
+`OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`; OpenCode 2 always loads those directories, and
+when a skill name exists in several of them the copy in `~/.config/opencode/skills`
+wins at startup. Editing a file under a compatibility directory later can flip which
+copy OpenCode serves until its next rescan. Nothing needs to be configured: the two
+bodies differ only in a section Claude Code fills in itself, which OpenCode never runs.
 
-```bash
-export OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1
-```
-
-The plugin and instructions surfaces are unaffected by that variable.
+The plugin and instructions surfaces are unaffected by any of this.
 
 ## Use non-default directories
 
