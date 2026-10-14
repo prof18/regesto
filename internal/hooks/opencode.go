@@ -6,9 +6,11 @@ import (
 	"github.com/prof18/regesto/internal/config"
 )
 
-// opencodePayload is the chat.message input Regesto's OpenCode plugin
-// forwards: the session id plus the directory and git worktree captured when
-// the plugin was initialized.
+// opencodePayload is what Regesto's OpenCode plugin forwards from either
+// host generation — the prompt-admission hook on OpenCode 2, chat.message on
+// OpenCode 1: the session id plus the directory and git worktree the session
+// runs in. OpenCode 2 resolves one directory from the session record and
+// sends it as both fields.
 type opencodePayload struct {
 	SessionID string `json:"sessionID"`
 	Directory string `json:"directory"`

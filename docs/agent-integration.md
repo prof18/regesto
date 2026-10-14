@@ -57,8 +57,11 @@ compatibility, and skill names must be unique across all locations — on machin
 run the Claude integration, disable that scan with `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`
 or override `skills_dir` deliberately. Its hook registers by presence rather than by
 settings: OpenCode auto-discovers every file in `~/.config/opencode/plugins/`, so Regesto
-links its launcher there and the linked file self-locates the instance. The instructions
-target `~/.config/opencode/AGENTS.md` is created by Regesto (`create: true`) because
+links its launcher there and the linked file self-locates the instance. One launcher file
+speaks both host APIs without host-package imports: OpenCode 2 reads its `setup()` and
+registers the prompt-admission hook, while OpenCode 1 (1.18.29 or newer) calls its
+`server()` for the `chat.message` hook. The instructions target
+`~/.config/opencode/AGENTS.md` is created by Regesto (`create: true`) because
 OpenCode does not ship one.
 
 Pi declares `memory: none` because its sessions are structured files under

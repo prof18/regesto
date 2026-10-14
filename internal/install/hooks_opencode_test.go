@@ -203,7 +203,7 @@ func TestOpencodeProtocolCommandNeedsNoExecutableBit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if command != plugin || event != "chat.message" {
+	if command != plugin || event != "prompt" {
 		t.Fatalf("command=%q event=%q", command, event)
 	}
 }

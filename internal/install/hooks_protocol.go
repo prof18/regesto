@@ -163,8 +163,10 @@ func protocolHookCommand(root, sourceRoot, protocol string) (command, event stri
 		relative, event = filepath.Join("adapters", "hermes", "hooks", "pre-llm.sh"), "pre_llm_call"
 	case "opencode-chat-message-v1":
 		// The launcher is loaded, not executed, so a regular file is enough
-		// and no executable bit is required.
-		relative, event = filepath.FromSlash(opencodePluginRelative), "chat.message"
+		// and no executable bit is required. The plugin speaks both host
+		// generations from one file: OpenCode 2 registers the prompt
+		// admission hook, OpenCode 1 (1.18.29+) the chat.message hook.
+		relative, event = filepath.FromSlash(opencodePluginRelative), "prompt"
 		command = filepath.Join(root, relative)
 		if err := requireLauncherFile(sourceRoot, relative); err != nil {
 			return "", "", err

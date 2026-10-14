@@ -4,11 +4,13 @@ Use the main [quick start](../README.md#quick-start) first. This page only cover
 specific to OpenCode. The [integration matrix](agent-integration.md) contains the exact
 profile metadata and capability details.
 
-OpenCode auto-discovers plugins from `~/.config/opencode/plugins/` and calls their
-`chat.message` hook on every user message, so its integration is deterministic like Claude
-Code's: on the first message of each session, Regesto's plugin retrieves the index and the
-facts scoped to the current repository and injects them as a context part. Portable skills
-provide the search and write procedures on demand.
+OpenCode auto-discovers plugins from `~/.config/opencode/plugins/`, so its integration is
+deterministic like Claude Code's: on the first message of each session, Regesto's plugin
+retrieves the index and the facts scoped to the current repository and injects them into
+that message. OpenCode 2 intercepts prompt admission and appends the context to the
+message text; OpenCode 1 (1.18.29 or newer) uses the `chat.message` hook and appends a
+context part. The same plugin file serves both. Portable skills provide the search and
+write procedures on demand.
 
 ## Install
 
@@ -39,7 +41,8 @@ Installation does three things:
    locates your knowledge base on its own, the same way Regesto's other hook wrappers do.
    Foreign `*.ts`/`*.js` files next to it are untouched.
 
-Quit and restart OpenCode after installation — plugins and skills load once at startup.
+Restart OpenCode after installation — plugins and skills load once at startup (OpenCode 2
+also reloads watched plugin directories automatically when the linked file changes).
 
 ## What to expect
 
