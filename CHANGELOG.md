@@ -4,6 +4,16 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — the local release scripts read it from here and refuse to prepare
 or publish a version that has no section, so this file cannot fall behind.
 
+## 0.7.1
+
+**The OpenCode plugin now works with OpenCode 2.** OpenCode 2 replaced its plugin API,
+and plugins written for OpenCode 1 do not load there, so OpenCode 2 sessions started
+without the knowledge-base context. The linked launcher now serves both generations from
+one file: OpenCode 2 appends the index and the facts scoped to your repository to the
+first message of each session, while OpenCode 1 (1.18.29 or newer) keeps the previous
+behavior. Existing installs only need `regesto upgrade` after installing this version,
+then a restart of OpenCode.
+
 ## 0.7.0
 
 **New built-in integration: the Pi coding agent.** pi auto-discovers an extension Regesto
