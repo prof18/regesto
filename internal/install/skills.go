@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 
 	regesto "github.com/prof18/regesto"
@@ -83,7 +85,10 @@ func planSkills(p *Plan, agents []adapters.Agent, sourceRoot string) error {
 		}
 		renders = append(renders, rendered)
 	}
-	return planSkillTargets(p, renders)
+	if err := planSkillTargets(p, renders); err != nil {
+		return err
+	}
+	return planPreviousSkillTargets(p, renders)
 }
 
 func loadPortableSkills(sourceRoot string) ([]skillSource, error) {
@@ -737,6 +742,89 @@ func planSkillTargets(p *Plan, renders []integrationRender) error {
 				return err
 			}
 			p.Items = append(p.Items, item)
+		}
+	}
+	return nil
+}
+
+// planPreviousSkillTargets removes this knowledge base's skill links from
+// directories an integration linked into before its skills moved. Only links
+// that resolve to this instance's own marker-proven stage copy are removed; a
+// directory that is still a current skills target is never touched.
+func planPreviousSkillTargets(p *Plan, renders []integrationRender) error {
+	current := map[string]bool{}
+	for _, rendered := range renders {
+		for _, declared := range rendered.agent.SkillsDirs {
+			canonical, err := CanonicalTarget(declared)
+			if err != nil {
+				return err
+			}
+			current[canonical] = true
+		}
+	}
+	type previousGroup struct {
+		owners   []string
+		declared []string
+	}
+	groups := map[string]*previousGroup{}
+	for _, rendered := range renders {
+		for _, declared := range rendered.agent.PreviousSkillsDirs {
+			canonical, err := CanonicalTarget(declared)
+			if err != nil {
+				return err
+			}
+			if current[canonical] {
+				continue
+			}
+			group := groups[canonical]
+			if group == nil {
+				group = &previousGroup{}
+				groups[canonical] = group
+			}
+			group.owners = append(group.owners, rendered.agent.Name)
+			group.declared = append(group.declared, declared)
+		}
+	}
+	keys := make([]string, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		group := groups[key]
+		entries, err := os.ReadDir(key)
+		if os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if entry.Type()&os.ModeSymlink == 0 {
+				continue
+			}
+			dest := filepath.Join(key, entry.Name())
+			raw, err := os.Readlink(dest)
+			if err != nil {
+				return err
+			}
+			if !filepath.IsAbs(raw) {
+				raw = filepath.Join(key, raw)
+			}
+			raw = filepath.Clean(raw)
+			if !regestoSkillLinkOwnership(p.KBRoot, raw, entry.Name()) {
+				continue
+			}
+			declared := make([]string, 0, len(group.declared))
+			for _, dir := range group.declared {
+				declared = append(declared, filepath.Join(dir, entry.Name()))
+			}
+			p.Items = append(p.Items, Item{
+				ID: "skill-link-previous:" + dest, Kind: "skill-link", Action: "remove", Owners: sortedUnique(group.owners),
+				DeclaredTargets: sortedUnique(declared), CanonicalTarget: dest,
+				CurrentState: "link left in this agent's old skills folder", IntendedState: "removed",
+				BackupAction: "none", DryRun: "remove the old link", before: []byte(raw),
+			})
 		}
 	}
 	return nil

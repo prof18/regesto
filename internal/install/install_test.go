@@ -965,3 +965,120 @@ func mustReadTest(t *testing.T, path string) []byte {
 	}
 	return body
 }
+
+func TestPreviousSkillsTargetLinksMoveToCurrentTarget(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	old := filepath.Join(home, ".codex", "skills")
+
+	cfg := loadTestConfig(t, root, "integrations = [\"codex\"]\n[integrations.codex]\nskills_dir = \""+old+"\"\n")
+	plan, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range plan.Items {
+		if item.Action == "remove" {
+			t.Fatalf("old layout plans a removal: %+v", item)
+		}
+	}
+	if _, err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Symlink(t.TempDir(), filepath.Join(old, "foreign-link")); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(old, "mine", "SKILL.md"), "mine\n")
+
+	cfg = loadTestConfig(t, root, "integrations = [\"codex\"]\n")
+	plan, err = Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed := map[string]bool{}
+	for _, item := range plan.Items {
+		if item.Kind == "skill-link" && item.Action == "remove" && strings.HasPrefix(item.ID, "skill-link-previous:") {
+			removed[filepath.Base(item.CanonicalTarget)] = true
+		}
+	}
+	if len(removed) != 3 || !removed["regesto-search"] || !removed["regesto-write"] || !removed["regesto-promote"] {
+		t.Fatalf("previous-target removals = %v, want the three regesto skills", removed)
+	}
+	if _, err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, skill := range []string{"regesto-search", "regesto-write", "regesto-promote"} {
+		if _, err := os.Lstat(filepath.Join(old, skill)); !os.IsNotExist(err) {
+			t.Fatalf("old %s link still present: %v", skill, err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(old, "foreign-link")); err != nil {
+		t.Fatalf("foreign link removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(old, "mine", "SKILL.md")); err != nil {
+		t.Fatalf("foreign skill removed: %v", err)
+	}
+	got, err := os.Readlink(filepath.Join(home, ".agents", "skills", "regesto-search"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, ".state", "integrations", "codex", "skills", "regesto-search"); got != want {
+		t.Fatalf("shared link = %q, want %q", got, want)
+	}
+
+	again, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Changes() != 0 {
+		t.Fatalf("second install has %d changes", again.Changes())
+	}
+}
+
+func TestPreviousSkillsTargetSkipsMissingDirectory(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := loadTestConfig(t, root, "integrations = [\"codex\"]\n")
+	plan, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range plan.Items {
+		if strings.HasPrefix(item.ID, "skill-link-previous:") {
+			t.Fatalf("missing previous target planned %+v", item)
+		}
+	}
+}
+
+func TestPreviousSkillsTargetKeepsLinksWithoutOwnershipProof(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	other := t.TempDir()
+	foreign := filepath.Join(other, ".state", "integrations", "codex", "skills", "regesto-search")
+	writeTestFile(t, filepath.Join(foreign, "SKILL.md"), "other\n")
+	old := filepath.Join(home, ".codex", "skills")
+	if err := os.MkdirAll(old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(old, "regesto-search")
+	if err := os.Symlink(foreign, link); err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadTestConfig(t, root, "integrations = [\"codex\"]\n")
+	plan, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range plan.Items {
+		if strings.HasPrefix(item.ID, "skill-link-previous:") {
+			t.Fatalf("unproven link planned for removal: %+v", item)
+		}
+	}
+	if _, err := Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.Readlink(link); err != nil || got != foreign {
+		t.Fatalf("foreign link = %q, %v; want %q", got, err, foreign)
+	}
+}

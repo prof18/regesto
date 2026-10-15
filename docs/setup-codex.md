@@ -25,8 +25,10 @@ regesto --config ~/regesto-kb/config.toml install
 regesto doctor --integration codex
 ```
 
-Installation links Regesto's skills into `~/.codex/skills/` and adds a marked
-knowledge-base section to `~/.codex/AGENTS.md`. It does not register a hook.
+Installation links Regesto's skills into `~/.agents/skills/`, the user skills directory
+Codex scans (Codex still reads the older `~/.codex/skills/`, which it treats as deprecated;
+links an earlier Regesto left there are removed), and adds a marked knowledge-base section
+to `~/.codex/AGENTS.md`. It does not register a hook.
 
 If `AGENTS.md` does not exist, create it and rerun `regesto install`; Regesto does not
 invent host-owned instruction files. Open a new Codex session after installation.
@@ -60,7 +62,7 @@ regesto --config ~/regesto-kb/config.toml install --dry-run
 
 ```bash
 regesto doctor --integration codex
-ls -l ~/.codex/skills/
+ls -l ~/.agents/skills/
 ```
 
 `doctor` reports the canonical target and remediation. Rerun `regesto install` after

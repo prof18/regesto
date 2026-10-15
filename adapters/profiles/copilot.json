@@ -3,7 +3,7 @@
   "id": "copilot",
   "display_name": "GitHub Copilot CLI",
   "detect": {"paths": ["~/.copilot"], "commands": ["copilot"]},
-  "skills": {"targets": ["~/.copilot/skills"], "variant": "portable"},
+  "skills": {"targets": ["~/.agents/skills"], "previous_targets": ["~/.copilot/skills"], "variant": "portable"},
   "instructions": {"targets": ["~/.copilot/instructions/regesto.instructions.md"], "create": true},
   "hooks": [{"protocol": "copilot-session-start-v1", "registrar": "copilot-hooks-json-v1", "settings": "~/.copilot/hooks/regesto.json"}],
   "memory": [{"kind": "none"}],

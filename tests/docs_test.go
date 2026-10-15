@@ -54,6 +54,9 @@ func TestDocsCapabilityMatrixMatchesProfileMetadata(t *testing.T) {
 func profileMatrixRow(profile adapters.Profile) string {
 	detection := "paths=" + codeList(profile.Detect.Paths) + "; commands=" + codeList(profile.Detect.Commands)
 	skills := "variant=" + codeValue(profile.Skills.Variant) + "; targets=" + codeList(profile.Skills.Targets)
+	if len(profile.Skills.PreviousTargets) > 0 {
+		skills += "; previous=" + codeList(profile.Skills.PreviousTargets)
+	}
 	instructions := "targets=" + codeList(profile.Instructions.Targets) + "; create=" + codeValue(fmt.Sprint(profile.Instructions.Create))
 	hooks := "none"
 	if len(profile.Hooks) > 0 {

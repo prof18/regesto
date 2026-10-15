@@ -3,7 +3,7 @@
   "id": "opencode",
   "display_name": "OpenCode",
   "detect": {"paths": ["~/.config/opencode"], "commands": ["opencode"]},
-  "skills": {"targets": ["~/.config/opencode/skills"], "variant": "portable"},
+  "skills": {"targets": ["~/.agents/skills"], "previous_targets": ["~/.config/opencode/skills"], "variant": "portable"},
   "instructions": {"targets": ["~/.config/opencode/AGENTS.md"], "create": true},
   "hooks": [{"protocol": "opencode-chat-message-v1", "registrar": "opencode-plugin-file-v1", "settings": "~/.config/opencode/plugins/regesto.ts"}],
   "memory": [{"kind": "none"}],

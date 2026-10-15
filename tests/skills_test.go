@@ -108,8 +108,9 @@ func TestBuiltInIntegrationsRenderIdenticalPortableSkills(t *testing.T) {
 	assertNoPortableSkillLeak(t, "codex rendered search", string(codex))
 	assertNoPortableSkillLeak(t, "copilot rendered search", string(copilot))
 	assertNoPortableSkillLeak(t, "hermes rendered search", string(hermes))
-	for id, target := range map[string]string{"antigravity": ".gemini/antigravity-cli", "claude": ".claude", "codex": ".codex", "copilot": ".copilot", "hermes": ".hermes"} {
-		link := filepath.Join(home, target, "skills", "regesto-search")
+	// codex and copilot share ~/.agents/skills; the alphabetically first owner's copy is linked.
+	for id, target := range map[string]string{"antigravity": ".gemini/antigravity-cli/skills", "claude": ".claude/skills", "codex": ".agents/skills", "hermes": ".hermes/skills"} {
+		link := filepath.Join(home, target, "regesto-search")
 		got, err := os.Readlink(link)
 		if err != nil {
 			t.Fatal(err)

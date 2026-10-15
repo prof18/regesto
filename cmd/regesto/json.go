@@ -90,6 +90,7 @@ type jsonIntegration struct {
 	Detect             jsonDetection      `json:"detect"`
 	SkillsDirs         []string           `json:"skills_dirs"`
 	SkillsVariant      string             `json:"skills_variant"`
+	PreviousSkillsDirs []string           `json:"previous_skills_dirs"`
 	InstructionsFiles  []string           `json:"instructions_files"`
 	InstructionsCreate bool               `json:"instructions_create"`
 	Hooks              []jsonHook         `json:"hooks"`
@@ -118,7 +119,8 @@ func jsonIntegrations(all []adapters.Agent) []jsonIntegration {
 			Name: a.Name, ProfileID: a.ProfileID, DisplayName: a.DisplayName,
 			Detect:     jsonDetection{Paths: append([]string{}, a.Detect.Paths...), Commands: append([]string{}, a.Detect.Commands...)},
 			SkillsDirs: append([]string{}, a.SkillsDirs...), SkillsVariant: a.SkillsVariant,
-			InstructionsFiles: append([]string{}, a.InstructionsFiles...), InstructionsCreate: a.InstructionsCreate,
+			PreviousSkillsDirs: append([]string{}, a.PreviousSkillsDirs...),
+			InstructionsFiles:  append([]string{}, a.InstructionsFiles...), InstructionsCreate: a.InstructionsCreate,
 			Hooks: hooks, MemorySources: memory, DefaultTrust: a.DefaultTrust,
 			SkillsDir: a.SkillsDir, InstructionsFile: a.InstructionsFile, SettingsFile: a.SettingsFile,
 			MemoryGlob: a.MemoryGlob, MaxCaptureBytes: a.MaxCaptureBytes, ExcludeGlobs: append([]string{}, a.ExcludeGlobs...),

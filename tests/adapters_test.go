@@ -124,8 +124,11 @@ instructions_file = "~/.dotfiles/AGENTS.md"
 	}
 
 	// An un-overridden agent keeps its vendor default.
-	if want := filepath.Join(home, ".codex", "skills"); agentByName(t, list, "codex").SkillsDir != want {
+	if want := filepath.Join(home, ".agents", "skills"); agentByName(t, list, "codex").SkillsDir != want {
 		t.Errorf("codex skills should have stayed at the default %q", want)
+	}
+	if got, want := strings.Join(agentByName(t, list, "codex").PreviousSkillsDirs, ","), filepath.Join(home, ".codex", "skills"); got != want {
+		t.Errorf("codex previous skills dirs = %q, want %q", got, want)
 	}
 }
 

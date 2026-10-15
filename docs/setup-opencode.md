@@ -31,8 +31,9 @@ regesto doctor --integration opencode
 
 Installation does three things:
 
-1. Links Regesto's skills into `~/.config/opencode/skills/`, the global skills directory
-   OpenCode discovers.
+1. Links Regesto's skills into the shared `~/.agents/skills/`, which OpenCode loads for
+   Claude Code compatibility. Links an earlier version left in `~/.config/opencode/skills/`
+   are removed.
 2. Creates or updates `~/.config/opencode/AGENTS.md` with a marked knowledge-base
    section. OpenCode always loads this file, and it stacks additively with any
    repository-level `AGENTS.md`.
@@ -55,14 +56,10 @@ A broken plugin degrades to injecting nothing — the message always goes throug
 
 ## Claude-compatible directories
 
-OpenCode also auto-loads skills from `~/.claude/skills` and `~/.agents/skills` for Claude
-Code compatibility, so on a machine that also runs the Claude integration the Regesto
-skills exist in a second location. OpenCode 1 could silence that scan by exporting
-`OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`; OpenCode 2 always loads those directories, and
-when a skill name exists in several of them the copy in `~/.config/opencode/skills`
-wins at startup. Editing a file under a compatibility directory later can flip which
-copy OpenCode serves until its next rescan. Nothing needs to be configured: the two
-bodies differ only in a section Claude Code fills in itself, which OpenCode never runs.
+OpenCode loads skills from `~/.config/opencode/skills`, `~/.claude/skills`, and
+`~/.agents/skills`. When the Claude integration links into a separate `~/.claude/skills`,
+OpenCode sees the Regesto skill names twice. Every integration installs the same skill
+text, so it does not matter which copy OpenCode serves, and nothing needs to be configured.
 
 The plugin and instructions surfaces are unaffected by any of this.
 
@@ -73,7 +70,6 @@ example, when `XDG_CONFIG_HOME` moves OpenCode's configuration away from `~/.con
 
 ```toml
 [integrations.opencode]
-skills_dir = "~/.config/opencode/skills"
 instructions_file = "~/.config/opencode/AGENTS.md"
 settings_file = "~/.config/opencode/plugins/regesto.ts"
 ```

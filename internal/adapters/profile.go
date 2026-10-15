@@ -44,8 +44,9 @@ type Detection struct {
 }
 
 type Targets struct {
-	Targets []string `json:"targets"`
-	Variant string   `json:"variant"`
+	Targets         []string `json:"targets"`
+	PreviousTargets []string `json:"previous_targets"`
+	Variant         string   `json:"variant"`
 }
 
 type Instructions struct {
@@ -191,7 +192,10 @@ func validateProfile(p Profile, source, fileID string) error {
 	if len(p.Skills.Targets) > 0 && p.Skills.Variant == "" {
 		return fmt.Errorf("%s: skills.variant must be nonempty when skills.targets are declared", source)
 	}
-	for _, path := range append(append(append([]string{}, p.Detect.Paths...), p.Skills.Targets...), p.Instructions.Targets...) {
+	if len(p.Skills.PreviousTargets) > 0 && len(p.Skills.Targets) == 0 {
+		return fmt.Errorf("%s: skills.previous_targets requires skills.targets", source)
+	}
+	for _, path := range append(append(append(append([]string{}, p.Detect.Paths...), p.Skills.Targets...), p.Skills.PreviousTargets...), p.Instructions.Targets...) {
 		if err := validateProfilePath(source, path); err != nil {
 			return err
 		}
@@ -374,6 +378,7 @@ func resolveProfile(cfg *config.Config, id string, p Profile, values map[string]
 		MaxCaptureBytes:    maxCaptureBytes(cfg),
 		ExcludeGlobs:       excludes(cfg, id, p.ExcludeGlobs),
 		SkillsDirs:         expandPaths(p.Skills.Targets),
+		PreviousSkillsDirs: expandPaths(p.Skills.PreviousTargets),
 		InstructionsFiles:  expandPaths(p.Instructions.Targets),
 		SkillsVariant:      p.Skills.Variant,
 		InstructionsCreate: p.Instructions.Create,

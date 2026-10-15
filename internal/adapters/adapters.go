@@ -25,11 +25,13 @@ type Agent struct {
 	Name string `json:"name"`
 	// ProfileID and DisplayName identify the declarative profile that produced
 	// this integration.
-	ProfileID          string         `json:"profile_id"`
-	DisplayName        string         `json:"display_name"`
-	Detect             Detection      `json:"detect"`
-	SkillsDirs         []string       `json:"skills_dirs"`
-	SkillsVariant      string         `json:"skills_variant"`
+	ProfileID     string    `json:"profile_id"`
+	DisplayName   string    `json:"display_name"`
+	Detect        Detection `json:"detect"`
+	SkillsDirs    []string  `json:"skills_dirs"`
+	SkillsVariant string    `json:"skills_variant"`
+	// PreviousSkillsDirs are directories this integration's skills were linked into before; install removes this knowledge base's links from them.
+	PreviousSkillsDirs []string       `json:"previous_skills_dirs"`
 	InstructionsFiles  []string       `json:"instructions_files"`
 	InstructionsCreate bool           `json:"instructions_create"`
 	Hooks              []Hook         `json:"hooks"`

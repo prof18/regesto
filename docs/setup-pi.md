@@ -30,10 +30,9 @@ regesto doctor --integration pi
 
 Installation does three things:
 
-1. Links Regesto's skills into `~/.pi/agent/skills/`, one of the global skills directories
-   pi scans in every session. pi also auto-discovers the shared `~/.agents/skills`
-   directory: if another integration already links Regesto skills there, override
-   `skills_dir` so pi sees a single copy instead of colliding names.
+1. Links Regesto's skills into the shared `~/.agents/skills/`, which pi auto-discovers in
+   every session alongside `~/.pi/agent/skills/`. Links an earlier version left in
+   `~/.pi/agent/skills/` are removed.
 2. Adds a marked knowledge-base section to `~/.pi/agent/AGENTS.md`, the global context
    file pi loads in every session; it stacks with a repository's own `AGENTS.md` and
    `CLAUDE.md`. Regesto creates the file when it does not exist and preserves foreign
@@ -60,7 +59,7 @@ Override the built-in paths only when your setup stores them somewhere else:
 
 ```toml
 [integrations.pi]
-skills_dir = "~/.agents/skills"
+skills_dir = "~/.pi/agent/skills"
 instructions_file = "~/.pi/agent/AGENTS.md"
 ```
 

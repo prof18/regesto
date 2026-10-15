@@ -21,23 +21,32 @@ doctor` show their resolved local values.
 |---|---|---|---|---|---|---|---|---|
 | `antigravity` | Antigravity CLI | paths=`~/.gemini/antigravity-cli`; commands=`agy` | variant=`portable`; targets=`~/.gemini/antigravity-cli/skills` | targets=`~/.gemini/GEMINI.md`; create=`true` | `antigravity-pre-invocation-v1` / `antigravity-hooks-json-v1` / `~/.gemini/config/hooks.json` | `none` | none | `supervised` |
 | `claude` | Claude Code | paths=`~/.claude`; commands=`claude` | variant=`portable`; targets=`~/.claude/skills` | targets=`~/.claude/CLAUDE.md`; create=`false` | `claude-session-start-v1` / `claude-settings-json-v1` / `~/.claude/settings.json` | `markdown-glob-v1` / `~/.claude/projects/*/memory` | none | `supervised` |
-| `codex` | Codex | paths=`~/.codex`; commands=`codex` | variant=`portable`; targets=`~/.codex/skills` | targets=`~/.codex/AGENTS.md`; create=`false` | none | `markdown-glob-v1` / `~/.codex/memories` | `raw_memories.md` | `supervised` |
-| `copilot` | GitHub Copilot CLI | paths=`~/.copilot`; commands=`copilot` | variant=`portable`; targets=`~/.copilot/skills` | targets=`~/.copilot/instructions/regesto.instructions.md`; create=`true` | `copilot-session-start-v1` / `copilot-hooks-json-v1` / `~/.copilot/hooks/regesto.json` | `none` | none | `supervised` |
+| `codex` | Codex | paths=`~/.codex`; commands=`codex` | variant=`portable`; targets=`~/.agents/skills`; previous=`~/.codex/skills` | targets=`~/.codex/AGENTS.md`; create=`false` | none | `markdown-glob-v1` / `~/.codex/memories` | `raw_memories.md` | `supervised` |
+| `copilot` | GitHub Copilot CLI | paths=`~/.copilot`; commands=`copilot` | variant=`portable`; targets=`~/.agents/skills`; previous=`~/.copilot/skills` | targets=`~/.copilot/instructions/regesto.instructions.md`; create=`true` | `copilot-session-start-v1` / `copilot-hooks-json-v1` / `~/.copilot/hooks/regesto.json` | `none` | none | `supervised` |
 | `generic` | Generic integration | paths=none; commands=none | variant=`portable`; targets=none | targets=none; create=`false` | `none` / `none` | `none` | none | `quarantine` |
 | `hermes` | Hermes | paths=`~/.hermes`; commands=`hermes` | variant=`portable`; targets=`~/.hermes/skills` | targets=`~/.hermes/SOUL.md`; create=`false` | `hermes-pre-llm-v1` / `hermes-config-yaml-v1` / `~/.hermes/config.yaml` | `markdown-glob-v1` / `~/.hermes/memories` | none | `quarantine` |
-| `opencode` | OpenCode | paths=`~/.config/opencode`; commands=`opencode` | variant=`portable`; targets=`~/.config/opencode/skills` | targets=`~/.config/opencode/AGENTS.md`; create=`true` | `opencode-chat-message-v1` / `opencode-plugin-file-v1` / `~/.config/opencode/plugins/regesto.ts` | `none` | none | `supervised` |
-| `pi` | Pi coding agent | paths=`~/.pi`; commands=`pi` | variant=`portable`; targets=`~/.pi/agent/skills` | targets=`~/.pi/agent/AGENTS.md`; create=`true` | `pi-before-agent-start-v1` / `pi-extension-file-v1` / `~/.pi/agent/extensions/regesto.ts` | `none` | none | `supervised` |
+| `opencode` | OpenCode | paths=`~/.config/opencode`; commands=`opencode` | variant=`portable`; targets=`~/.agents/skills`; previous=`~/.config/opencode/skills` | targets=`~/.config/opencode/AGENTS.md`; create=`true` | `opencode-chat-message-v1` / `opencode-plugin-file-v1` / `~/.config/opencode/plugins/regesto.ts` | `none` | none | `supervised` |
+| `pi` | Pi coding agent | paths=`~/.pi`; commands=`pi` | variant=`portable`; targets=`~/.agents/skills`; previous=`~/.pi/agent/skills` | targets=`~/.pi/agent/AGENTS.md`; create=`true` | `pi-before-agent-start-v1` / `pi-extension-file-v1` / `~/.pi/agent/extensions/regesto.ts` | `none` | none | `supervised` |
 <!-- regesto:profile-matrix:end -->
 
 `codex` has no hook entry in its profile. `generic` explicitly declares `none` hook and
 memory capabilities so absence remains visible. Codex also excludes `raw_memories.md` from
 harvest; exclusions and all raw profile fields are available in the profile JSON.
 
+Codex, Copilot, OpenCode, and pi all read the shared `~/.agents/skills` directory as well
+as their own, so their profiles install there: one copy of each skill serves all four, and
+none of them loads a Regesto skill twice (OpenCode still does when `~/.claude/skills` is a
+separate directory, see below). Their `previous` targets are where earlier versions linked
+the skills; every install removes Regesto's links from those directories, and only links
+that point at this knowledge base's own skill copies. Claude Code and Antigravity do not
+read `~/.agents/skills`, and Hermes reads it only when added to its `skills.external_dirs`;
+all three keep their own directories. Every built-in integration installs the same skill
+text, so a machine that links `~/.claude/skills` to `~/.agents/skills` shares one copy
+across all of them.
+
 Copilot declares `memory: none` because its session store is SQLite, not markdown. Its
-skills live in `~/.copilot/skills`, a personal location Copilot CLI and Copilot in VS Code
-both discover; on machines where `~/.claude/skills` symlinks to the shared `~/.agents/skills`,
-keep the separate `~/.copilot/skills` target or override `skills_dir` deliberately — one
-canonical directory can only carry one skill variant. Its hook registers in a Regesto-owned
+skills live in the shared `~/.agents/skills`, which Copilot CLI and Copilot in VS Code both
+discover. Its hook registers in a Regesto-owned
 file (`~/.copilot/hooks/regesto.json`) that both hosts also read. The instructions target is
 created by Regesto (`create: true`) because Copilot does not ship one.
 
@@ -51,15 +60,12 @@ whose foreign hook names the merge preserves. The instructions target `~/.gemini
 is created by Regesto (`create: true`) because Antigravity does not ship one.
 
 OpenCode declares `memory: none` because its sessions are structured JSON under
-`~/.local/share/opencode`, not markdown. Its skills live in `~/.config/opencode/skills`;
-OpenCode also auto-loads `~/.claude/skills` and `~/.agents/skills` for Claude Code
-compatibility, and skill names must be unique across all locations. OpenCode 2 always
-loads those directories — OpenCode 1's `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` switch no
-longer exists — so on machines that also run the Claude integration both copies load. The
-copy in `~/.config/opencode/skills` wins at startup, and a later edit under a
-compatibility directory can flip the winner until OpenCode rescans; the two bodies differ
-only in Claude's preloaded-search section. Its hook registers by presence rather than by
-settings: OpenCode auto-discovers every file in `~/.config/opencode/plugins/`, so Regesto
+`~/.local/share/opencode`, not markdown. Its skills live in the shared
+`~/.agents/skills`, which OpenCode loads for Claude Code compatibility alongside
+`~/.claude/skills` and `~/.config/opencode/skills`. On a machine where `~/.claude/skills`
+is a separate directory OpenCode sees the Regesto skill names twice; every integration
+installs the same text, so whichever copy it serves is identical. Its hook registers by
+presence rather than by settings: OpenCode auto-discovers every file in `~/.config/opencode/plugins/`, so Regesto
 links its launcher there and the linked file self-locates the instance. One launcher file
 speaks both host APIs without host-package imports: OpenCode 2 reads its `setup()` and
 registers the prompt-admission hook, while OpenCode 1 (1.18.29 or newer) calls its
@@ -68,12 +74,9 @@ registers the prompt-admission hook, while OpenCode 1 (1.18.29 or newer) calls i
 OpenCode does not ship one.
 
 Pi declares `memory: none` because its sessions are structured files under
-`~/.pi/agent/sessions/`, not markdown. Its skills live in `~/.pi/agent/skills`; pi also
-auto-discovers the shared `~/.agents/skills` directory, and skill names must be unique
-across all locations — on machines where another integration already fills
-`~/.agents/skills` with Regesto skills, override `skills_dir` deliberately so pi sees one
-copy. Its hook registers by presence rather than by settings: pi auto-discovers global
-extensions from `~/.pi/agent/extensions/`, so Regesto links its launcher there and the
+`~/.pi/agent/sessions/`, not markdown. Its skills live in the shared `~/.agents/skills`,
+which pi auto-discovers alongside `~/.pi/agent/skills`. Its hook registers by presence
+rather than by settings: pi auto-discovers global extensions from `~/.pi/agent/extensions/`, so Regesto links its launcher there and the
 linked file self-locates the instance. The instructions target `~/.pi/agent/AGENTS.md` is
 created by Regesto (`create: true`) because pi does not ship one.
 

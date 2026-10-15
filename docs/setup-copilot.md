@@ -29,12 +29,9 @@ regesto doctor --integration copilot
 
 Installation does three things:
 
-1. Links Regesto's skills into `~/.copilot/skills/` — a personal skills directory that
-   Copilot CLI and Copilot in VS Code both discover. On machines where `~/.claude/skills`
-   symlinks to the shared `~/.agents/skills`, keep this separate target: one directory can
-   only carry one skill variant, and Regesto's Claude variant carries Claude-specific
-   syntax. To share one directory deliberately, override
-   `skills_dir = "~/.agents/skills"`.
+1. Links Regesto's skills into `~/.agents/skills/`, a personal skills directory Copilot
+   CLI and Copilot in VS Code both discover and Codex, OpenCode, and pi share. Links an
+   earlier version left in `~/.copilot/skills/` are removed.
 2. Creates `~/.copilot/instructions/regesto.instructions.md` with a marked
    knowledge-base section. Copilot has no host-owned user instructions file, so this one
    is Regesto-created; it is always loaded, and in VS Code it stacks additively with any
@@ -57,7 +54,7 @@ A broken hook degrades to injecting nothing — the session always starts.
 ## Copilot in VS Code
 
 No separate integration is needed. Copilot in VS Code reads the same three surfaces:
-`~/.copilot/skills`, `~/.copilot/instructions`, and `~/.copilot/hooks`. Installing the
+`~/.agents/skills`, `~/.copilot/instructions`, and `~/.copilot/hooks`. Installing the
 `copilot` integration covers both hosts.
 
 If user instructions do not appear in VS Code, check that the Copilot Chat extension is
@@ -70,7 +67,7 @@ Override the built-in paths only when your setup stores them somewhere else:
 
 ```toml
 [integrations.copilot]
-skills_dir = "~/.agents/skills"
+skills_dir = "~/.copilot/skills"
 instructions_file = "~/.copilot/instructions/regesto.instructions.md"
 ```
 
@@ -85,13 +82,15 @@ regesto --config ~/regesto-kb/config.toml install --dry-run
 
 ```bash
 regesto doctor --integration copilot
-ls -l ~/.copilot/skills/
+ls -l ~/.agents/skills/
 cat ~/.copilot/hooks/regesto.json
 ```
 
 `doctor` reports the canonical target and remediation. Rerun `regesto install` after
 changing a path. Note that Copilot stops loading `~/.agents/skills` when the
-`COPILOT_HOME` environment variable or `--config-dir` overrides its config home.
+`COPILOT_HOME` environment variable or `--config-dir` overrides its config home. In that
+case set `skills_dir` under `[integrations.copilot]` to the `skills` folder inside that
+config home.
 
 ## Harvest
 

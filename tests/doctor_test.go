@@ -297,7 +297,7 @@ func TestDoctorCopilotCapabilitiesAndDeterministicPlan(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".copilot", "instructions", "regesto.instructions.md")); err != nil {
 		t.Fatalf("copilot instructions missing: %v", err)
 	}
-	if link, err := os.Readlink(filepath.Join(home, ".copilot", "skills", "regesto-search")); err != nil || !strings.HasSuffix(link, filepath.Join(".state", "integrations", "copilot", "skills", "regesto-search")) {
+	if link, err := os.Readlink(filepath.Join(home, ".agents", "skills", "regesto-search")); err != nil || !strings.HasSuffix(link, filepath.Join(".state", "integrations", "copilot", "skills", "regesto-search")) {
 		t.Fatalf("copilot skill link = %q err=%v", link, err)
 	}
 }
