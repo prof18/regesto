@@ -770,6 +770,11 @@ func planPreviousSkillTargets(p *Plan, renders []integrationRender) error {
 	for _, rendered := range renders {
 		for _, declared := range rendered.agent.PreviousSkillsDirs {
 			canonical, err := CanonicalTarget(declared)
+			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+				// A previous folder that no longer resolves (a broken symlink,
+				// say) holds nothing to clean and must not block install.
+				continue
+			}
 			if err != nil {
 				return err
 			}

@@ -1082,3 +1082,24 @@ func TestPreviousSkillsTargetKeepsLinksWithoutOwnershipProof(t *testing.T) {
 		t.Fatalf("foreign link = %q, %v; want %q", got, err, foreign)
 	}
 }
+
+func TestPreviousSkillsTargetSkipsDanglingSymlink(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(home, "gone"), filepath.Join(home, ".codex", "skills")); err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadTestConfig(t, root, "integrations = [\"codex\"]\n")
+	plan, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatalf("broken old skills folder blocks install: %v", err)
+	}
+	for _, item := range plan.Items {
+		if strings.HasPrefix(item.ID, "skill-link-previous:") {
+			t.Fatalf("dangling previous target planned %+v", item)
+		}
+	}
+}
