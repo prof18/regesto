@@ -4,6 +4,31 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — the local release scripts read it from here and refuse to prepare
 or publish a version that has no section, so this file cannot fall behind.
 
+## 0.8.0
+
+**Upgrade every synced machine's engine before any of them runs `regesto upgrade`.**
+This version adds a field to the integration profiles in your knowledge base, and 0.7.1
+refuses to load profiles it does not recognise. If a knowledge base syncs between machines,
+install 0.8.0 on all of them first, then run `regesto upgrade` on one of them.
+
+**Codex, Copilot, OpenCode, and pi now share one copy of the skills.** All four read the
+shared `~/.agents/skills` folder as well as their own, so each Regesto skill used to load
+twice in them. Regesto now links the skills into `~/.agents/skills` only. `regesto upgrade`
+removes the links it left in `~/.codex/skills`, `~/.copilot/skills`,
+`~/.config/opencode/skills`, and `~/.pi/agent/skills`, and only links that point at this
+knowledge base's own skill copies; anything else in those folders stays. Claude Code,
+Antigravity, and Hermes keep their own skills folders. If you set `skills_dir` for one of
+the four to avoid duplicates, you can drop that override now.
+
+**Every agent now gets the same skill text.** Claude Code's search skill no longer runs the
+search before it loads; it calls the search command with your actual query, like every
+other agent. The old shortcut put Claude-only syntax into folders other agents read, and
+invoking it without a query printed the whole index. The
+`OPENCODE_DISABLE_CLAUDE_CODE_SKILLS` advice from 0.7.0 no longer applies: when OpenCode
+sees a Regesto skill twice, both copies are identical.
+
+After upgrading, start new sessions in your agents so they reload their skills.
+
 ## 0.7.1
 
 **The OpenCode plugin now works with OpenCode 2.** OpenCode 2 replaced its plugin API,
