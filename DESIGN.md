@@ -144,8 +144,9 @@ that ignores the rule entirely.
 
 Where a host exposes the right event, hooks guarantee consultation. Skills are the
 complement and the most portable piece of the design: the common files follow the
-[agentskills.io](https://agentskills.io) open standard, while a declared integration
-variant may append an optimization that no other rendered tree receives.
+[agentskills.io](https://agentskills.io) open standard, and every built-in integration
+renders them byte for byte. A profile may still declare an append-only variant for a
+tested host optimization; no built-in profile does.
 
 A skill is on-demand instructions in `<dir>/skills/<name>/SKILL.md` with YAML frontmatter.
 Only its `description` sits in context; the body loads when invoked. That fits the central
@@ -174,10 +175,11 @@ The same skill is the **manual store procedure**. Invoke it explicitly through t
 skill UI or ask naturally ("remember this"). The first trigger is absolute: the agent
 never replies "noted" without writing the file.
 
-**`regesto-search`** — deep query. The portable body tells the host to call the stable
-search CLI with the user's actual query. The declared `claude` variant appends its dynamic
-pre-execution block, so that integration receives results before the body while portable
-integrations receive no unsupported syntax.
+**`regesto-search`** — deep query. The body tells the host to call the stable search CLI
+with the user's actual query. An earlier Claude-only variant pre-ran that search through
+Claude Code's dynamic context injection; it was dropped because hosts sharing a skills
+directory with Claude received syntax they never execute, and an invocation without
+arguments dumped the whole index.
 
 **`regesto-promote`** — chat export → durable facts → archive, for any conversation host
 that cannot participate automatically. Its portable description and body make explicit
@@ -200,10 +202,9 @@ Three limits worth knowing:
   has stale results by turn 20 — which is why a per-prompt hook still earns its place.
 - **Descriptions drive discovery.** Only portable `name` and `description` metadata is
   required at startup, so the description leads with the trigger and concrete use case.
-- **Dynamic pre-execution skill injection is a profile variant.** The built-in `claude`
-  profile selects that append variant under `adapters/variants/`; portable integrations
-  receive the common procedure byte-for-byte, and render tests prevent cross-profile
-  leakage.
+- **Dynamic pre-execution skill injection is a profile variant, and no built-in uses it.**
+  Variants live under `adapters/variants/`; render tests prevent cross-profile leakage, and
+  a shared skills directory refuses integrations whose variants differ.
 
 ---
 

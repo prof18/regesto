@@ -7,8 +7,7 @@ description: Search the personal Regesto knowledge base for prior decisions, con
 
 The knowledge-base root is `{{kb_root}}`.
 
-Use any result lines already supplied by an integration-specific section below. Otherwise
-run the stable search command with the user's actual query terms:
+Run the stable search command with the user's actual query terms:
 
 ```sh
 {{kb_root}}/bin/regesto-search <query terms>

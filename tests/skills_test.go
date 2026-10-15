@@ -76,7 +76,7 @@ func assertNoPortableSkillLeak(t *testing.T, path, text string) {
 	}
 }
 
-func TestSkillVariantsRenderPerIntegrationWithoutLeakage(t *testing.T) {
+func TestBuiltInIntegrationsRenderIdenticalPortableSkills(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
 	for _, dir := range []string{".gemini/antigravity-cli", ".claude", ".codex", ".copilot", ".hermes"} {
@@ -97,13 +97,14 @@ func TestSkillVariantsRenderPerIntegrationWithoutLeakage(t *testing.T) {
 		return mustRead(t, filepath.Join(root, ".state", "integrations", id, "skills", "regesto-search", "SKILL.md"))
 	}
 	antigravity, claude, codex, copilot, hermes := readRendered("antigravity"), readRendered("claude"), readRendered("codex"), readRendered("copilot"), readRendered("hermes")
-	if !bytes.Contains(claude, []byte("$ARGUMENTS")) || !bytes.Contains(claude, []byte("!`")) {
-		t.Fatalf("Claude variant lacks its declared optimization:\n%s", claude)
+	if !bytes.Equal(claude, codex) {
+		t.Fatalf("claude render differs from portable:\nClaude:\n%s\nCodex:\n%s", claude, codex)
 	}
 	if !bytes.Equal(antigravity, codex) || !bytes.Equal(codex, copilot) || !bytes.Equal(codex, hermes) {
 		t.Fatalf("portable variants differ:\nAntigravity:\n%s\nCodex:\n%s\nCopilot:\n%s\nHermes:\n%s", antigravity, codex, copilot, hermes)
 	}
 	assertNoPortableSkillLeak(t, "antigravity rendered search", string(antigravity))
+	assertNoPortableSkillLeak(t, "claude rendered search", string(claude))
 	assertNoPortableSkillLeak(t, "codex rendered search", string(codex))
 	assertNoPortableSkillLeak(t, "copilot rendered search", string(copilot))
 	assertNoPortableSkillLeak(t, "hermes rendered search", string(hermes))
@@ -157,12 +158,44 @@ func TestCustomIntegrationRendersPortableTreeWithoutBuiltInName(t *testing.T) {
 	}
 }
 
+func writeDemoVariant(t *testing.T, root, protocols string) {
+	t.Helper()
+	writeAt(t, root, "adapters/variants/demo/variant.json", `{"schema_version":1,"id":"demo","mode":"append","requires_hook_protocols":[`+protocols+`]}`)
+	writeAt(t, root, "adapters/variants/demo/skills/regesto-search/SKILL.md", "Demo appendix.\n")
+	writeAt(t, root, "adapters/profiles/demo.json", `{"schema_version":1,"id":"demo","display_name":"Demo","skills":{"targets":["~/.demo/skills"],"variant":"demo"},"instructions":{"targets":[]},"hooks":[{"protocol":"none","registrar":"none"}],"memory":[{"kind":"none"}],"default_trust":"quarantine"}`)
+}
+
+func TestInstanceVariantAppendsOnlyToItsIntegration(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	writeDemoVariant(t, root, "")
+	body := "integrations = [\"demo\", \"synthetic\"]\n" +
+		"[integrations.synthetic]\nprofile = \"generic\"\nskills_dir = \"" + filepath.Join(home, ".synthetic", "skills") + "\"\n"
+	cfg := skillTestConfig(t, root, body)
+	plan, err := regestoinstall.Build(cfg, regestoinstall.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := regestoinstall.Apply(plan); err != nil {
+		t.Fatal(err)
+	}
+	demo := string(mustRead(t, filepath.Join(root, ".state", "integrations", "demo", "skills", "regesto-search", "SKILL.md")))
+	synthetic := string(mustRead(t, filepath.Join(root, ".state", "integrations", "synthetic", "skills", "regesto-search", "SKILL.md")))
+	if !strings.Contains(demo, "Demo appendix.") {
+		t.Fatalf("demo render lacks its variant appendix:\n%s", demo)
+	}
+	if strings.Contains(synthetic, "Demo appendix.") {
+		t.Fatalf("variant leaked into synthetic render:\n%s", synthetic)
+	}
+}
+
 func TestSharedSkillsTargetRejectsDifferentVariants(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
 	shared := filepath.Join(home, "shared-skills")
-	body := "integrations = [\"hooked\", \"portable\"]\n" +
-		"[integrations.hooked]\nprofile = \"claude\"\nskills_dir = \"" + shared + "\"\n" +
+	writeDemoVariant(t, root, "")
+	body := "integrations = [\"demo\", \"portable\"]\n" +
+		"[integrations.demo]\nskills_dir = \"" + shared + "\"\n" +
 		"[integrations.portable]\nprofile = \"generic\"\nskills_dir = \"" + shared + "\"\n"
 	cfg := skillTestConfig(t, root, body)
 	_, err := regestoinstall.Build(cfg, regestoinstall.Options{})
@@ -174,9 +207,8 @@ func TestSharedSkillsTargetRejectsDifferentVariants(t *testing.T) {
 func TestVariantRequiresDeclaredHookProtocol(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
-	profile := `{"schema_version":1,"id":"bad-variant","display_name":"Bad variant","skills":{"targets":["~/.bad/skills"],"variant":"claude"},"instructions":{"targets":[]},"hooks":[{"protocol":"none","registrar":"none"}],"memory":[{"kind":"none"}],"default_trust":"quarantine"}`
-	writeAt(t, root, "adapters/profiles/bad-variant.json", profile)
-	cfg := skillTestConfig(t, root, "integrations = [\"bad-variant\"]\n")
+	writeDemoVariant(t, root, `"claude-session-start-v1"`)
+	cfg := skillTestConfig(t, root, "integrations = [\"demo\"]\n")
 	_, err := regestoinstall.Build(cfg, regestoinstall.Options{})
 	if err == nil || !strings.Contains(err.Error(), "requires undeclared hook protocol") {
 		t.Fatalf("variant protocol error = %v", err)
