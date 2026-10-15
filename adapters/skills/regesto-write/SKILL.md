@@ -39,6 +39,8 @@ for explicit human promotion or the documented human inbox workflow.
 7. Submit only the semantic fields to the validated writer. Regesto supplies timestamps,
    schema version, path, validation, and reconciliation state.
 
+For a `global` claim, drop `--dir <repo>` from the command below; the writer rejects it.
+
 ```sh
 {{kb_root}}/bin/regesto-write --source <integration>@<machine> --dir <repo> --json-input --json <<'JSON'
 {
