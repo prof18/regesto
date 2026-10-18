@@ -4,6 +4,21 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — the local release scripts read it from here and refuse to prepare
 or publish a version that has no section, so this file cannot fall behind.
 
+## 0.8.1
+
+**`regesto upgrade` now refreshes an engine copied into your knowledge base.** The
+`bin/regesto-*` commands prefer `<knowledge base>/bin/regesto` over the engine on your PATH,
+but outside a source checkout nothing ever updated that copy. After an upgrade to 0.8.0 it
+could be an older engine that rejects the new profile field, so every `bin/regesto-*` command
+failed with `unknown field "previous_targets"`. Upgrade now replaces that copy with the
+engine running the upgrade. It doesn't create one where there was none, and it leaves
+symlinks and source checkouts alone.
+
+**The write skill now tells agents to drop `--dir` for global facts.** The writer rejects
+`--dir` on a global claim, and agents copying the example command kept hitting that error.
+
+Run `regesto upgrade` after installing to pick up both.
+
 ## 0.8.0
 
 **Upgrade every synced machine's engine before any of them runs `regesto upgrade`.**

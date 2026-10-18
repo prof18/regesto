@@ -143,6 +143,20 @@ func runUpgrade(cfg *config.Config, args []string) error {
 		}
 	}
 
+	// An engine copied into the instance is preferred by every bin/ shim, so
+	// it must speak the format of the files just written. Left behind, it
+	// rejects them and every shim fails.
+	if exe, err := runningEngine(); err == nil {
+		refreshed, err := refreshInstanceEngine(cfg.KBRoot, exe, *dry)
+		if err != nil {
+			return err
+		}
+		if refreshed {
+			fmt.Printf("  Update   %-44s replaced with the engine running this upgrade\n", instanceEngine)
+			written++
+		}
+	}
+
 	if *dry {
 		printUpgradeCounts(written, removed, kept)
 		fmt.Print("\nAgent files\n\n")
@@ -177,6 +191,70 @@ func runUpgrade(cfg *config.Config, args []string) error {
 		return err
 	}
 	return repointSchedule(cfg)
+}
+
+// instanceEngine is where an instance may hold its own engine binary.
+const instanceEngine = "bin/regesto"
+
+// runningEngine returns the executable running now, resolved through
+// symlinks. A `go run` build is refused: it is deleted on exit, so copying it
+// in would pin the instance to a throwaway build.
+func runningEngine() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if exe, err = filepath.EvalSymlinks(exe); err != nil {
+		return "", err
+	}
+	if d := filepath.Dir(exe); strings.Contains(d, "go-build") {
+		return "", fmt.Errorf("temporary build %s", exe)
+	}
+	return exe, nil
+}
+
+// refreshInstanceEngine replaces <root>/bin/regesto with the engine at exe
+// when the two differ. The bin/ shims prefer that copy over anything on PATH,
+// but nothing else updates it outside a source checkout, so after an upgrade
+// it could be an older engine that rejects the files the upgrade just wrote.
+//
+// It never creates the binary (an instance need not hold one), never follows
+// a symlink there, and leaves source checkouts (go.mod present) alone:
+// `regesto-install` rebuilds those from the checkout's own sources.
+func refreshInstanceEngine(root, exe string, dry bool) (bool, error) {
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err == nil {
+		return false, nil
+	}
+	instance, name, err := openInstanceRoot(root, instanceEngine)
+	if err != nil {
+		return false, err
+	}
+	defer instance.Close()
+	info, err := instance.Lstat(name)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() {
+		return false, nil
+	}
+	current, err := instance.ReadFile(name)
+	if err != nil {
+		return false, err
+	}
+	want, err := os.ReadFile(exe)
+	if err != nil {
+		return false, fmt.Errorf("read running engine: %w", err)
+	}
+	if bytes.Equal(current, want) {
+		return false, nil
+	}
+	if dry {
+		return true, nil
+	}
+	return true, writeInstanceFile(root, instanceEngine, want)
 }
 
 // upgradePlanSourceRoot constructs the adapter source tree that will exist

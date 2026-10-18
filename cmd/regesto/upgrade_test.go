@@ -103,3 +103,98 @@ func TestUpgradeWritesAndBackupsRestoreModeAfterUmask(t *testing.T) {
 		t.Fatalf("backup mode = %o, want 644", got)
 	}
 }
+
+func TestRefreshInstanceEngineReplacesStaleCopy(t *testing.T) {
+	root, tools := t.TempDir(), t.TempDir()
+	exe := filepath.Join(tools, "regesto")
+	if err := os.WriteFile(exe, []byte("new engine\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(root, "bin", "regesto")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("old engine\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A dry run reports the replacement without making it.
+	refreshed, err := refreshInstanceEngine(root, exe, true)
+	if err != nil || !refreshed {
+		t.Fatalf("dry run: refreshed=%v err=%v", refreshed, err)
+	}
+	if body, _ := os.ReadFile(stale); string(body) != "old engine\n" {
+		t.Fatalf("dry run wrote the engine: %q", body)
+	}
+
+	refreshed, err = refreshInstanceEngine(root, exe, false)
+	if err != nil || !refreshed {
+		t.Fatalf("refresh: refreshed=%v err=%v", refreshed, err)
+	}
+	body, err := os.ReadFile(stale)
+	if err != nil || string(body) != "new engine\n" {
+		t.Fatalf("instance engine: body=%q err=%v", body, err)
+	}
+	if info, err := os.Stat(stale); err != nil || info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("instance engine is not executable: %v %v", info, err)
+	}
+
+	// Once current, there is nothing to do.
+	if refreshed, err := refreshInstanceEngine(root, exe, false); err != nil || refreshed {
+		t.Fatalf("second refresh: refreshed=%v err=%v", refreshed, err)
+	}
+}
+
+func TestRefreshInstanceEngineLeavesOtherCasesAlone(t *testing.T) {
+	tools := t.TempDir()
+	exe := filepath.Join(tools, "regesto")
+	if err := os.WriteFile(exe, []byte("new engine\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// No binary in the instance: none is created.
+	empty := t.TempDir()
+	if refreshed, err := refreshInstanceEngine(empty, exe, false); err != nil || refreshed {
+		t.Fatalf("empty instance: refreshed=%v err=%v", refreshed, err)
+	}
+	if _, err := os.Stat(filepath.Join(empty, "bin", "regesto")); !os.IsNotExist(err) {
+		t.Fatalf("an engine was created in an instance that had none: %v", err)
+	}
+
+	// A source checkout rebuilds its own engine; upgrade must not overwrite it.
+	checkout := t.TempDir()
+	if err := os.WriteFile(filepath.Join(checkout, "go.mod"), []byte("module fixture\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	built := filepath.Join(checkout, "bin", "regesto")
+	if err := os.MkdirAll(filepath.Dir(built), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(built, []byte("checkout build\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if refreshed, err := refreshInstanceEngine(checkout, exe, false); err != nil || refreshed {
+		t.Fatalf("checkout: refreshed=%v err=%v", refreshed, err)
+	}
+	if body, _ := os.ReadFile(built); string(body) != "checkout build\n" {
+		t.Fatalf("checkout engine overwritten: %q", body)
+	}
+
+	// A symlink is the user's choice of engine; it is not followed or replaced.
+	linked, target := t.TempDir(), filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.WriteFile(target, []byte("linked engine\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(linked, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(linked, "bin", "regesto")); err != nil {
+		t.Fatal(err)
+	}
+	if refreshed, err := refreshInstanceEngine(linked, exe, false); err != nil || refreshed {
+		t.Fatalf("symlink: refreshed=%v err=%v", refreshed, err)
+	}
+	if body, _ := os.ReadFile(target); string(body) != "linked engine\n" {
+		t.Fatalf("symlink target overwritten: %q", body)
+	}
+}
