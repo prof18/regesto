@@ -1,23 +1,46 @@
 # Regesto
 
-**A local knowledge base your agents consult—not another memory cache.**
+**Your agents consult a local knowledge base of plain Markdown files that you own.**
 
 > *[Regèsto](https://it.wikipedia.org/wiki/Regesto)* (Latin *regĕsta*, “carried back”): an
 > archivist’s register of an archive too large to read end to end—one short entry per
 > document, recording its date, source, and subject.
 
-Agents forget, compress, and rewrite their own memory. Regesto keeps the decisions you
-want to preserve as plain Markdown files you own. Before an agent acts, it can search
-those files for the relevant project decisions, preferences, conventions, and environment
-facts.
+Agents forget, compress, and rewrite their own memory. Regesto keeps what you want
+preserved—decisions, preferences, conventions, environment facts—as one durable claim per
+file.
 
-Regesto is designed around three ideas:
+Before an agent acts, the claims that matter for the project at hand are already in front
+of it. Regesto is not only for code: anything a recorded claim could settle belongs in it,
+from how a project is built to how this machine is set up.
 
-- one durable claim per Markdown file;
-- a validated way for agents to search and write claims;
-- visible history: an outdated claim is marked `superseded`, not deleted.
+## How it works
 
-For example, a project decision can look like this:
+**1. Facts get in.** A claim can reach the base in four ways:
+
+- tell a connected agent to remember something, and its `regesto-write` skill records it
+  through a validated path;
+- write one yourself with `regesto write`;
+- let `regesto harvest` pick up what your agents write to their own native memory;
+- run `regesto promote` on an exported conversation from a client that cannot reach your
+  files.
+
+**2. Regesto reconciles them.** `regesto cycle` normalizes new captures, finds the claim a
+new one contradicts, marks the old one `superseded` instead of deleting it, rebuilds the
+index and topic pages, and commits a clean pass. `regesto lint` reports contradictions and
+schema breaks on demand.
+
+**3. Agents consult them.** On most clients a session-start hook injects the slice of the
+base that matches the current project, so an agent does not have to remember to look.
+Mid-task it can search with `regesto search` or `regesto mcp`. Antigravity, Claude Code,
+Codex, Copilot, Hermes, OpenCode, and Pi are built in; any other client connects through
+skills, MCP, or conversation exports.
+
+**4. You keep them.** The base is a folder of Markdown you own and version in Git. It
+stays greppable without Regesto installed, and any file-sync tool can carry it to another
+machine.
+
+## What a fact looks like
 
 ```markdown
 ---
@@ -37,12 +60,28 @@ Session state lives server-side. The cookie contains only an opaque identifier.
 ```
 
 The `subject` and `relation` identify what the claim is about. If that decision changes,
-Regesto can find the previous claim exactly instead of relying on fuzzy similarity.
+Regesto can find the previous claim exactly instead of relying on fuzzy similarity—which
+is what makes visible history possible rather than silent contradiction.
+
+## How the base is laid out
+
+```
+INDEX.md                           generated manifest and controlled vocabulary
+knowledge/facts/global/            claims that apply everywhere
+knowledge/facts/projects/<name>/   claims scoped to one project, by canonical name
+knowledge/topics/                  generated pages linking related claims
+inbox/<agent>@<machine>/           raw captures awaiting normalization
+adapters/                          per-agent glue: skills, hooks, instructions
+archive/                           immutable raw sources
+```
+
+[SCHEMA.md](SCHEMA.md) is the full contract: what a claim is, the four claim types, and how
+supersession works.
 
 ## Quick start
 
-This path is for the built-in **Antigravity**, **Claude Code**, **Codex**, **Copilot**, **Hermes**, **OpenCode**, and **Pi** integrations.
-For another client, skip to [Connect another agent](#connect-another-agent).
+This path covers the seven built-in integrations named above. For another client, skip
+to [Connect another agent](#connect-another-agent).
 
 ### 1. Install Regesto
 

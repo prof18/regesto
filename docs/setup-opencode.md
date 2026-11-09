@@ -7,10 +7,12 @@ profile metadata and capability details.
 OpenCode auto-discovers plugins from `~/.config/opencode/plugins/`, so its integration is
 deterministic like Claude Code's: on the first message of each session, Regesto's plugin
 retrieves the index and the facts scoped to the current repository and injects them into
-that message. OpenCode 2 intercepts prompt admission and appends the context to the
-message text; OpenCode 1 (1.18.29 or newer) uses the `chat.message` hook and appends a
-context part. The same plugin file serves both. Portable skills provide the search and
-write procedures on demand.
+that message.
+
+OpenCode 2 intercepts prompt admission and appends the context to the message text, while
+OpenCode 1 (1.18.29 or newer) uses the `chat.message` hook and appends a context part. The
+same plugin file serves both. Portable skills provide the search and write procedures on
+demand.
 
 ## Install
 

@@ -48,8 +48,10 @@ Open a new pi session after installation.
 The first prompt of every session carries the knowledge-base index and the facts scoped to
 the working directory, injected as a persistent custom message the model sees but the
 transcript does not print; the session file records it under the `regesto-context` custom
-type. The agent should still use the search skill for anything the index only summarizes,
-and the write skill when you explicitly ask it to remember something.
+type.
+
+The agent should still use the search skill for anything the index only summarizes, and the
+write skill when you explicitly ask it to remember something.
 
 A broken extension degrades to injecting nothing — the prompt always proceeds.
 

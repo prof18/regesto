@@ -28,28 +28,35 @@ The same reasoning covers `adapters/`, `bin/` and `SCHEMA.md` generally: those f
 copied *into* people's knowledge bases, and `regesto upgrade` will offer to replace them.
 It refuses to touch any copy that differs from what the engine recorded writing, so a
 change of yours reaches an instance only where the user never edited that file. Write them
-as if someone has forked their copy, because someone has.
+as if the user has already forked their copy, because some of them have.
 
 ## Adding an agent
 
-Prefer a declarative integration profile under `adapters/profiles/<id>.json`; it can
+Prefer a declarative integration profile under `adapters/profiles/<id>.json`. It can
 declare detection, skills, instructions, hooks, memory, exclusion, and trust capabilities
-without adding a Go vendor table. Use the portable skills variant unless the host has a tested optimization.
-Host-specific append-only skill variants live under `adapters/variants/<variant>/`, and a
-host-facing hook wrapper belongs under `adapters/<profile>/hooks/` while protocol
-translation and registrar implementations live in `internal/install`. Add adapter and
-render tests asserting that defaults remain under `$HOME`, contain no personal path
-element, and do not leak a host optimization into another integration. Update the
-generated-checked profile table and evidence notes in
-`docs/agent-integration.md`, then link that matrix from any new product setup page. Add
-doctor coverage for missing, current, manual, and unsupported capabilities; diagnostics
-must stay read-only.
+without adding a Go vendor table. Use the portable skills variant unless the host has a
+tested optimization.
+
+Where things go:
+
+- host-specific append-only skill variants: `adapters/variants/<variant>/`;
+- a host-facing hook wrapper: `adapters/<profile>/hooks/`;
+- protocol translation and registrar implementations: `internal/install`.
+
+What a new integration also needs:
+
+- adapter and render tests asserting that defaults stay under `$HOME`, contain no personal
+  path element, and do not leak a host optimization into another integration;
+- an update to the generated-checked profile table and evidence notes in
+  `docs/agent-integration.md`, with that matrix linked from any new product setup page;
+- doctor coverage for missing, current, manual, and unsupported capabilities. Diagnostics
+  must stay read-only.
 
 A one-off host needs no engine change: configure the generic profile and its actual paths
 in the instance's `config.toml`.
 
 Nothing under `knowledge/` changes, and neither does `SCHEMA.md`. If your adapter needs a
-schema change, say so in the issue first — that is a different conversation.
+schema change, say so in the issue first; it is reviewed separately.
 
 ## Engine and instance
 

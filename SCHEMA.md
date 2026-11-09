@@ -143,12 +143,12 @@ source. A missed trigger is not fatal (harvest picks up native memory later), bu
 write is the fast path and the default.
 
 If what the user hands over is half-formed — a fragment, a hunch, no clear
-`(subject, relation)` yet — don't lose it and don't force it: capture it to
-`inbox/human@<machine>/` as a raw note and let lint normalize it on the next pass.
-That canonical namespace has an implicit supervised default, while an exact or
-pattern source policy can still quarantine it. Facts produced from it are stamped
-with the authoritative source `human`, not the inbox routing ID. A rough note in
-the inbox beats a wrong pair in `facts/`.
+`(subject, relation)` yet — capture it to `inbox/human@<machine>/` as a raw note rather
+than forcing a pair, and let lint normalize it on the next pass.
+
+That canonical namespace has an implicit supervised default, while an exact or pattern
+source policy can still quarantine it. Facts produced from it are stamped with the
+authoritative source `human`, not the inbox routing ID.
 
 ## Superseding
 

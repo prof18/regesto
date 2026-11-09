@@ -34,51 +34,50 @@ memory capabilities so absence remains visible. Codex also excludes `raw_memorie
 harvest; exclusions and all raw profile fields are available in the profile JSON.
 
 Codex, Copilot, OpenCode, and pi all read the shared `~/.agents/skills` directory as well
-as their own, so their profiles install there: one copy of each skill serves all four, and
-none of them loads a Regesto skill twice (OpenCode still does when `~/.claude/skills` is a
-separate directory, see below). Their `previous` targets are where earlier versions linked
-the skills; every install removes Regesto's links from those directories, and only links
-that point at this knowledge base's own skill copies. Claude Code and Antigravity do not
-read `~/.agents/skills`, and Hermes reads it only when added to its `skills.external_dirs`;
-all three keep their own directories. Every built-in integration installs the same skill
-text, so a machine that links `~/.claude/skills` to `~/.agents/skills` shares one copy
-across all of them.
+as their own, so their profiles install there and one copy of each skill serves all four.
+Claude Code and Antigravity do not read it, and Hermes reads it only when added to its
+`skills.external_dirs`, so those three keep their own directories.
 
-Copilot declares `memory: none` because its session store is SQLite, not markdown. Its
-skills live in the shared `~/.agents/skills`, which Copilot CLI and Copilot in VS Code both
-discover. Its hook registers in a Regesto-owned
-file (`~/.copilot/hooks/regesto.json`) that both hosts also read. The instructions target is
-created by Regesto (`create: true`) because Copilot does not ship one.
+Their `previous` targets are where earlier versions linked the skills. Every install
+removes Regesto's links from those directories, and only links that point at this
+knowledge base's own skill copies.
 
-Antigravity declares `memory: none` because its transcripts are JSONL plus SQLite under
-`~/.gemini/antigravity-cli/brain/`, not markdown. Its global skills live in
-`~/.gemini/antigravity-cli/skills`; a repository's `.agents/skills/` is a per-workspace
-surface and not an install target, because these integrations are machine-global and the
-hook resolves per-repo scope from the payload's `workspacePaths`. Its hook registers under
-the `regesto` name in `~/.gemini/config/hooks.json`, a host-owned customization directory
-whose foreign hook names the merge preserves. The instructions target `~/.gemini/GEMINI.md`
-is created by Regesto (`create: true`) because Antigravity does not ship one.
+Every built-in integration installs the same skill text. A machine that links
+`~/.claude/skills` to `~/.agents/skills` therefore shares one copy across all of them, and
+no host loads a Regesto skill twice — except OpenCode, where those stay separate
+directories (see below).
 
-OpenCode declares `memory: none` because its sessions are structured JSON under
-`~/.local/share/opencode`, not markdown. Its skills live in the shared
-`~/.agents/skills`, which OpenCode loads for Claude Code compatibility alongside
-`~/.claude/skills` and `~/.config/opencode/skills`. On a machine where `~/.claude/skills`
-is a separate directory OpenCode sees the Regesto skill names twice; every integration
-installs the same text, so whichever copy it serves is identical. Its hook registers by
-presence rather than by settings: OpenCode auto-discovers every file in `~/.config/opencode/plugins/`, so Regesto
-links its launcher there and the linked file self-locates the instance. One launcher file
-speaks both host APIs without host-package imports: OpenCode 2 reads its `setup()` and
-registers the prompt-admission hook, while OpenCode 1 (1.18.29 or newer) calls its
-`server()` for the `chat.message` hook. The instructions target
-`~/.config/opencode/AGENTS.md` is created by Regesto (`create: true`) because
-OpenCode does not ship one.
+Four profiles declare `memory: none`, because harvest reads markdown and their sessions
+are in another format:
 
-Pi declares `memory: none` because its sessions are structured files under
-`~/.pi/agent/sessions/`, not markdown. Its skills live in the shared `~/.agents/skills`,
-which pi auto-discovers alongside `~/.pi/agent/skills`. Its hook registers by presence
-rather than by settings: pi auto-discovers global extensions from `~/.pi/agent/extensions/`, so Regesto links its launcher there and the
-linked file self-locates the instance. The instructions target `~/.pi/agent/AGENTS.md` is
-created by Regesto (`create: true`) because pi does not ship one.
+| Profile | Native session store |
+|---|---|
+| `copilot` | SQLite |
+| `antigravity` | JSONL plus SQLite under `~/.gemini/antigravity-cli/brain/` |
+| `opencode` | structured JSON under `~/.local/share/opencode` |
+| `pi` | structured files under `~/.pi/agent/sessions/` |
+
+All four get an instructions file Regesto creates (`create: true`), because none of them
+ships one. Copilot, OpenCode, and pi take the shared `~/.agents/skills`; Antigravity keeps
+its own global `~/.gemini/antigravity-cli/skills`. The rest is per host:
+
+- **Copilot** registers its hook in a Regesto-owned file,
+  `~/.copilot/hooks/regesto.json`, which both Copilot CLI and Copilot in VS Code read.
+- **Antigravity** registers under the `regesto` name in `~/.gemini/config/hooks.json`, a
+  host-owned customization directory whose foreign hook names the merge preserves. A
+  repository's `.agents/skills/` is a per-workspace surface and not an install target:
+  these integrations are machine-global, and the hook resolves per-repo scope from the
+  payload's `workspacePaths`.
+- **OpenCode** and **pi** register by presence rather than by settings. Each
+  auto-discovers a directory — `~/.config/opencode/plugins/` and
+  `~/.pi/agent/extensions/` — so Regesto links a launcher there and the linked file
+  self-locates the instance. Pi also auto-discovers `~/.pi/agent/skills`, and OpenCode
+  loads `~/.claude/skills` and `~/.config/opencode/skills` for Claude Code compatibility.
+- **OpenCode**'s single launcher speaks both host APIs without host-package imports:
+  OpenCode 2 reads its `setup()` and registers the prompt-admission hook, while OpenCode 1
+  (1.18.29 or newer) calls its `server()` for the `chat.message` hook. Where
+  `~/.claude/skills` is a separate directory it sees the Regesto skill names twice; every
+  integration installs the same text, so whichever copy it serves is identical.
 
 ## Behavior and evidence
 
@@ -93,9 +92,9 @@ created by Regesto (`create: true`) because pi does not ship one.
 | Codex | always-loaded instructions plus portable skills | advisory, not enforced | renderer and installer contract tests |
 | Generic/custom | whichever declared targets and supported protocol the instance profile supplies | determined by declared capabilities | profile validation, renderer, and installer contract tests |
 
-“Tested” here means the protocol and registration boundary is covered by automated fixtures.
-It is intentionally separate from a dated live-host result; those release records belong in
-the validation ledger rather than being implied forever by this matrix.
+“Tested” here means the protocol and registration boundary is covered by automated
+fixtures, which is separate from a dated live-host result. Those release records belong in
+the validation ledger, not in this matrix.
 
 ## Configure an unknown local host
 

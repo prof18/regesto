@@ -165,10 +165,12 @@ regesto --config ~/regesto-kb/config.toml harvest --dry-run   # first run record
 
 To bring this machine's existing agent memory into the shared knowledge base, run
 `harvest --backfill` once. The notes are collected on this machine and processed by the
-lint host's next cycle. Expect some of them to repeat facts other machines already
-recorded; the normalizer skips known facts, and `regesto lint` reports near-duplicates.
-The same applies on a machine that was already harvesting before `--backfill` existed:
-the import can include notes an earlier harvest collected.
+lint host's next cycle.
+
+Expect some of them to repeat facts other machines already recorded; the normalizer skips
+known facts, and `regesto lint` reports near-duplicates. The same applies on a machine that
+was already harvesting before `--backfill` existed: the import can include notes an earlier
+harvest collected.
 
 **Home directories differ between machines**, and that is handled: everything resolves
 relative to `config.toml`'s location, and the instructions section renders `~/`-relative
@@ -230,8 +232,8 @@ check `regesto schedule status` there.
 
 ### A machine kept using its old engine after you installed a new one
 
-Two leftovers shadow a freshly installed engine, and neither announces itself — everything
-keeps working, on the old one:
+Two leftovers take precedence over a freshly installed engine. Neither reports itself, and
+everything keeps working on the old binary:
 
 - `<instance>/bin/regesto`, which the shims check **before** PATH. It does not sync, so a
   machine that once built its own engine still has it.
