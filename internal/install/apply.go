@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/prof18/regesto/internal/fsutil"
 )
 
 type Result struct {
@@ -265,9 +267,11 @@ func applyFile(item Item, withBackup bool, result *Result) error {
 		return err
 	}
 	if item.before == nil {
-		// A hard link publishes without replacing a target that appeared after
-		// verification. Removing the temporary name leaves the linked inode live.
-		return root.Link(tmpName, name)
+		// Prefer a hard link so a target that appeared after verification is
+		// refused rather than replaced. On filesystems without hard links
+		// (SMB/CIFS, some NFS, FAT), fall back to O_EXCL create+copy.
+		// Removing the temporary name leaves the published file live.
+		return fsutil.PublishExclusive(root, tmpName, name)
 	}
 	return root.Rename(tmpName, name)
 }
