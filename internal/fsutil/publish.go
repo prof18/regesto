@@ -3,7 +3,6 @@ package fsutil
 
 import (
 	"errors"
-	"io"
 	"os"
 	"syscall"
 )
@@ -12,8 +11,9 @@ import (
 // destName without replacing an existing target. Prefer a hard link so a race
 // that creates destName after verification fails with EEXIST instead of
 // overwriting. On filesystems that reject hard links (SMB/CIFS, some NFS, FAT),
-// fall back to O_CREAT|O_EXCL create and copy, which preserves the same
-// exclusive semantics.
+// fall back to reserving destName with O_EXCL and renaming the temp over it,
+// which keeps exclusive create semantics and publishes complete content in one
+// rename (carrying the temp's mode across).
 func PublishExclusive(root *os.Root, tmpName, destName string) error {
 	err := root.Link(tmpName, destName)
 	if err == nil {
@@ -22,12 +22,19 @@ func PublishExclusive(root *os.Root, tmpName, destName string) error {
 	if !IsLinkUnsupported(err) {
 		return err
 	}
-	return exclusiveCopyFromTemp(root, tmpName, destName)
+	if fallbackErr := exclusiveRenameFromTemp(root, tmpName, destName); fallbackErr != nil {
+		return errors.Join(err, fallbackErr)
+	}
+	return nil
 }
 
 // IsLinkUnsupported reports whether err means this filesystem cannot create
 // hard links. EEXIST and other real failures must stay false so callers keep
 // refusing to overwrite.
+//
+// ENOTSUP and EOPNOTSUPP are identical on many Unixes but not all Darwin
+// builds, so both are listed. EINVAL and EPERM cover CIFS/FAT refusals; the
+// fallback still uses O_EXCL, so nothing can be overwritten.
 func IsLinkUnsupported(err error) bool {
 	for _, code := range []syscall.Errno{
 		syscall.ENOTSUP,
@@ -42,42 +49,22 @@ func IsLinkUnsupported(err error) bool {
 	return false
 }
 
-func exclusiveCopyFromTemp(root *os.Root, tmpName, destName string) error {
-	info, err := root.Stat(tmpName)
+// exclusiveRenameFromTemp reserves destName with O_EXCL, then renames the
+// already-complete temp over that reservation. The empty reservation is never
+// left readable as the published fact: either rename replaces it with the full
+// temp inode, or the reservation is removed on failure.
+func exclusiveRenameFromTemp(root *os.Root, tmpName, destName string) error {
+	reserve, err := root.OpenFile(destName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
-	src, err := root.Open(tmpName)
-	if err != nil {
+	if err := reserve.Close(); err != nil {
+		_ = root.Remove(destName)
 		return err
 	}
-	defer src.Close()
-
-	mode := info.Mode().Perm()
-	if mode == 0 {
-		mode = 0o644
-	}
-	dst, err := root.OpenFile(destName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
-	if err != nil {
+	if err := root.Rename(tmpName, destName); err != nil {
+		_ = root.Remove(destName)
 		return err
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = dst.Close()
-			_ = root.Remove(destName)
-		}
-	}()
-
-	if _, err := io.Copy(dst, src); err != nil {
-		return err
-	}
-	if err := dst.Sync(); err != nil {
-		return err
-	}
-	if err := dst.Close(); err != nil {
-		return err
-	}
-	committed = true
 	return nil
 }

@@ -4,15 +4,16 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — the local release scripts read it from here and refuse to prepare
 or publish a version that has no section, so this file cannot fall behind.
 
-## Unreleased
+## 0.8.2
 
 **Fact writes and `regesto install` work on filesystems without hard links.** Publishing a
 new fact or rendered skill used a same-directory hard link so a concurrent create could
 never replace an existing file. SMB/CIFS mounts (and some NFS/FAT volumes) reject that
 with "operation not supported", so install and write failed even though ordinary file
 creates worked. Publication still prefers a hard link where the filesystem allows it; when
-links are unsupported it falls back to an exclusive create and copy, keeping the same
-no-overwrite rule. Local disks that support hard links behave as before.
+links are unsupported it reserves the destination with an exclusive create and renames the
+complete temporary file over it, keeping the no-overwrite rule and publishing finished
+content in one step. Local disks that support hard links behave as before.
 
 ## 0.8.1
 
