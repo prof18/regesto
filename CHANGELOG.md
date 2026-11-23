@@ -11,9 +11,11 @@ new fact or rendered skill used a same-directory hard link so a concurrent creat
 never replace an existing file. SMB/CIFS mounts (and some NFS/FAT volumes) reject that
 with "operation not supported", so install and write failed even though ordinary file
 creates worked. Publication still prefers a hard link where the filesystem allows it; when
-links are unsupported it reserves the destination with an exclusive create and renames the
-complete temporary file over it, keeping the no-overwrite rule and publishing finished
-content in one step. Local disks that support hard links behave as before.
+links are unsupported it reserves the destination with an exclusive create, then
+renames the complete temporary file over that reservation when the filesystem allows
+it. Some SMB clients reject rename entirely; those fall through to copy+sync into the
+reservation (still never overwriting an existing name). Local disks that support hard
+links behave as before.
 
 ## 0.8.1
 

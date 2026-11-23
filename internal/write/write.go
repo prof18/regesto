@@ -492,8 +492,8 @@ func render(f facts.Fact) []byte {
 // publishExclusive makes a complete same-directory temporary file visible in
 // one operation. Rooted filesystem operations reject traversal and symlink
 // escapes without a check-then-open race. fsutil.PublishExclusive prefers a
-// hard link and falls back to O_EXCL create+copy on filesystems that reject
-// links, so a concurrent writer can never replace an existing fact.
+// hard link and falls back to O_EXCL plus rename-or-copy on filesystems that
+// reject links, so a concurrent writer can never replace an existing fact.
 func publishExclusive(kbRoot, path string, data []byte) error {
 	root, err := os.OpenRoot(kbRoot)
 	if err != nil {

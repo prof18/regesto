@@ -33,7 +33,7 @@ Anything meeting that works. Some shapes it can take:
 | **Continuous peer-to-peer** (Syncthing, Resilio) | No third party holds your knowledge. `regesto init` writes a `.stignore` for exactly this case |
 | **A hosted drive** (Dropbox, Google Drive, OneDrive) | Selective sync excludes the two directories. Your knowledge sits in plaintext on someone else's disk — decide that deliberately |
 | **Scheduled `rsync` or `unison`** | Total control, no client to run. Prefer `unison`: plain `rsync` in one direction will happily overwrite the newer copy |
-| **A mounted share** (NFS, SMB) | Works for reading and writing facts and for `regesto install`, even when the share rejects hard links (publication falls back to exclusive name reservation + rename of the complete temp file). There is still no replica — reads stop when the network does, and the offline-on-a-train property goes with it |
+| **A mounted share** (NFS, SMB) | Works for reading and writing facts and for `regesto install`, even when the share rejects hard links (publication falls back to exclusive name reservation, then rename or copy+sync of the complete temp file). There is still no replica — reads stop when the network does, and the offline-on-a-train property goes with it |
 | **iCloud Drive** | Not recommended. "Optimize Mac Storage" evicts file contents and leaves stubs, which breaks requirement 3 silently |
 | **git** | Deliberately not — [DESIGN §9](../DESIGN.md#9-sync-and-transport). It fails open: miss a pull and the agent confidently reads stale knowledge |
 

@@ -18,7 +18,7 @@ func TestIsLinkUnsupported(t *testing.T) {
 		{"nil", nil, false},
 		{"exist", os.ErrExist, false},
 		{"enotsup", syscall.ENOTSUP, true},
-		{"eopnotsupp same value", syscall.EOPNOTSUPP, true},
+		{"eopnotsupp distinct on darwin", syscall.EOPNOTSUPP, true},
 		{"einval", syscall.EINVAL, true},
 		{"eperm", syscall.EPERM, true},
 		{"wrapped enotsup", &os.PathError{Op: "link", Path: "x", Err: syscall.ENOTSUP}, true},
@@ -118,21 +118,85 @@ func TestExclusiveRenameFromTemp(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected O_EXCL failure when dest exists")
 	}
-	if !errors.Is(err, os.ErrExist) && !errors.Is(err, syscall.EEXIST) {
-		got, readErr := os.ReadFile(filepath.Join(dir, "dest.md"))
-		if readErr != nil {
-			t.Fatal(readErr)
-		}
-		if string(got) != "renamed\n" {
-			t.Fatalf("dest overwritten: %q (err=%v)", got, err)
-		}
-	}
 	got, readErr := os.ReadFile(filepath.Join(dir, "dest.md"))
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
 	if string(got) != "renamed\n" {
-		t.Fatalf("dest overwritten: %q", got)
+		t.Fatalf("dest overwritten: %q (err=%v)", got, err)
+	}
+}
+
+func TestPublishExclusiveOnSMB(t *testing.T) {
+	base := os.Getenv("REGESTO_SMB_DIR")
+	if base == "" {
+		t.Skip("set REGESTO_SMB_DIR to a directory on an SMB mount to run this test")
+	}
+	info, err := os.Stat(base)
+	if err != nil {
+		t.Fatalf("REGESTO_SMB_DIR %q: %v", base, err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("REGESTO_SMB_DIR %q is not a directory", base)
+	}
+
+	dir, err := os.MkdirTemp(base, "regesto-smb-publish-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp on SMB: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	tmpPath := filepath.Join(dir, "tmp")
+	if err := os.WriteFile(tmpPath, []byte("smb-body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(tmpPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	linkErr := root.Link("tmp", "link-probe")
+	if linkErr == nil {
+		t.Fatal("expected hard link to fail on SMB mount; Link succeeded")
+	}
+	if !IsLinkUnsupported(linkErr) {
+		t.Fatalf("expected IsLinkUnsupported Link error on SMB, got %v", linkErr)
+	}
+	t.Logf("Link unsupported as expected: %v", linkErr)
+
+	if err := PublishExclusive(root, "tmp", "dest.md"); err != nil {
+		t.Fatalf("PublishExclusive on SMB: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "dest.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "smb-body\n" {
+		t.Fatalf("dest content = %q", got)
+	}
+	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
+		t.Fatalf("temp should be gone after publish, stat err=%v", err)
+	}
+	t.Log("exclusive publish (rename or copy into O_EXCL reservation) succeeded on SMB")
+
+	if err := os.WriteFile(filepath.Join(dir, "tmp2"), []byte("other\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err = PublishExclusive(root, "tmp2", "dest.md")
+	if err == nil {
+		t.Fatal("expected exclusive publish to fail when dest exists on SMB")
+	}
+	got, readErr := os.ReadFile(filepath.Join(dir, "dest.md"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != "smb-body\n" {
+		t.Fatalf("dest overwritten on SMB: %q (err=%v)", got, err)
 	}
 }
 
