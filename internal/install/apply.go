@@ -125,7 +125,10 @@ func Apply(plan *Plan) (Result, error) {
 				return result, err
 			}
 		case "skill-render":
-			if err := applyFile(*item, false, &result); err != nil {
+			// Backup on update too: on rename-rejecting shares a failed
+			// renameat can delete the target, and skill-render is the ordinary
+			// re-install path.
+			if err := applyFile(*item, item.Action == "update", &result); err != nil {
 				return result, err
 			}
 		case "instructions", "hook":
@@ -218,7 +221,19 @@ func applyLink(item Item) error {
 	if filepath.Clean(raw) != string(item.before) {
 		return fmt.Errorf("refuse %s: owned link target changed before publication", item.ID)
 	}
-	return root.Rename(tmpName, name)
+	if err := root.Rename(tmpName, name); err == nil {
+		return nil
+	}
+	// Some SMB clients reject renameat and may delete the destination. Fall
+	// back to remove+symlink after the ownership recheck above.
+	if _, err := root.Lstat(name); err == nil {
+		if err := root.Remove(name); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return root.Symlink(item.linkTarget, name)
 }
 
 func applyFile(item Item, withBackup bool, result *Result) error {
@@ -269,11 +284,11 @@ func applyFile(item Item, withBackup bool, result *Result) error {
 	if item.before == nil {
 		// Prefer a hard link so a target that appeared after verification is
 		// refused rather than replaced. On filesystems without hard links
-		// (SMB/CIFS, some NFS, FAT), fall back to O_EXCL create+copy.
+		// (SMB/CIFS, some NFS, FAT), fall back to O_EXCL plus rename-or-copy.
 		// Removing the temporary name leaves the published file live.
 		return fsutil.PublishExclusive(root, tmpName, name)
 	}
-	return root.Rename(tmpName, name)
+	return fsutil.PublishReplace(root, tmpName, name)
 }
 
 func verifyItemOwnership(item Item) error {

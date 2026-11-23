@@ -13,8 +13,11 @@ import (
 // that creates destName after verification fails with EEXIST instead of
 // overwriting. On filesystems that reject hard links (SMB/CIFS, some NFS, FAT),
 // fall back to reserving destName with O_EXCL and publishing the temp into that
-// name (rename when the filesystem allows it; otherwise copy+sync into a fresh
-// reservation). Exclusive create semantics are preserved either way.
+// name (rename when the filesystem allows it; otherwise copy+sync into the
+// reservation fd). Exclusive create semantics are preserved either way; the
+// copy tier is not atomic — readers may observe an empty or partial file, and
+// an interrupt mid-copy can leave a stub that later creates refuse with
+// "already exists" until removed by hand.
 func PublishExclusive(root *os.Root, tmpName, destName string) error {
 	err := root.Link(tmpName, destName)
 	if err == nil {
@@ -27,6 +30,18 @@ func PublishExclusive(root *os.Root, tmpName, destName string) error {
 		return errors.Join(err, fallbackErr)
 	}
 	return nil
+}
+
+// PublishReplace publishes a complete same-directory temporary file over an
+// existing destName. Prefer rename. When rename fails (some SMB clients reject
+// renameat and may delete the destination), write the temp into the destination
+// by fd — recreating with O_EXCL if the failed rename removed the name — so the
+// update does not depend on a working rename.
+func PublishReplace(root *os.Root, tmpName, destName string) error {
+	if err := root.Rename(tmpName, destName); err == nil {
+		return nil
+	}
+	return replaceByCopy(root, tmpName, destName)
 }
 
 // IsLinkUnsupported reports whether err means this filesystem cannot create
@@ -51,49 +66,114 @@ func IsLinkUnsupported(err error) bool {
 }
 
 // exclusivePublishFromTemp reserves destName with O_EXCL, then publishes the
-// already-complete temp into that name. Prefer rename-over-reservation so the
-// empty file is never left as the published fact. Some SMB clients reject
-// renameat and, on failure, delete the destination while leaving the source;
-// recover by reserving again and copy+sync into it. On any failure the
-// reservation is removed so nothing corrupt remains.
+// already-complete temp into that name. Prefer rename-over-reservation. On
+// rename failure, reopen only the reservation we created (SameFile) or, if the
+// name was deleted by a broken renameat, reserve again with O_EXCL — never
+// Remove a name we cannot prove we still own, and never reopen+O_TRUNC by name
+// alone.
 func exclusivePublishFromTemp(root *os.Root, tmpName, destName string) error {
-	if err := reserveExclusive(root, destName); err != nil {
-		return err
-	}
-	if err := root.Rename(tmpName, destName); err == nil {
-		return nil
-	}
-	// Failed rename may have removed destName (observed on macOS SMB).
-	_ = root.Remove(destName)
-	if err := reserveExclusive(root, destName); err != nil {
-		return err
-	}
-	if err := copyTempIntoReserved(root, tmpName, destName); err != nil {
-		_ = root.Remove(destName)
-		return err
-	}
-	return nil
-}
-
-// exclusiveRenameFromTemp is the exclusive publish used by tests that exercise
-// the hard-link fallback path.
-func exclusiveRenameFromTemp(root *os.Root, tmpName, destName string) error {
-	return exclusivePublishFromTemp(root, tmpName, destName)
-}
-
-func reserveExclusive(root *os.Root, destName string) error {
 	reserve, err := root.OpenFile(destName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
+		return err
+	}
+	reserveInfo, err := reserve.Stat()
+	if err != nil {
+		_ = reserve.Close()
+		_ = root.Remove(destName)
 		return err
 	}
 	if err := reserve.Close(); err != nil {
 		_ = root.Remove(destName)
 		return err
 	}
+	if err := root.Rename(tmpName, destName); err == nil {
+		return nil
+	}
+
+	dst, err := reopenOwnedReservation(root, destName, reserveInfo)
+	if err != nil {
+		return err
+	}
+	ownedInfo := reserveInfo
+	if info, statErr := dst.Stat(); statErr == nil {
+		ownedInfo = info
+	}
+	if err := copyTempIntoFD(root, tmpName, dst); err != nil {
+		if stillOwned(root, destName, ownedInfo) {
+			_ = root.Remove(destName)
+		}
+		return err
+	}
 	return nil
 }
 
-func copyTempIntoReserved(root *os.Root, tmpName, destName string) error {
+// reopenOwnedReservation returns a writable fd for destName only when it is
+// still the inode we reserved, or a fresh O_EXCL fd when a failed rename
+// deleted the name. If another writer holds the name, returns an exist error
+// without removing anything.
+func reopenOwnedReservation(root *os.Root, destName string, reserveInfo os.FileInfo) (*os.File, error) {
+	f, err := root.OpenFile(destName, os.O_WRONLY, 0)
+	if err == nil {
+		info, statErr := f.Stat()
+		if statErr != nil {
+			_ = f.Close()
+			return nil, statErr
+		}
+		if os.SameFile(info, reserveInfo) {
+			if err := f.Truncate(0); err != nil {
+				_ = f.Close()
+				return nil, err
+			}
+			if _, err := f.Seek(0, io.SeekStart); err != nil {
+				_ = f.Close()
+				return nil, err
+			}
+			return f, nil
+		}
+		_ = f.Close()
+		return nil, os.ErrExist
+	}
+	if !os.IsNotExist(err) {
+		return nil, err
+	}
+	return root.OpenFile(destName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+}
+
+func stillOwned(root *os.Root, destName string, reserveInfo os.FileInfo) bool {
+	info, err := root.Stat(destName)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(info, reserveInfo)
+}
+
+func replaceByCopy(root *os.Root, tmpName, destName string) error {
+	dst, err := root.OpenFile(destName, os.O_WRONLY, 0)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		// Failed rename may have removed dest; publish exclusively from tmp.
+		return exclusivePublishFromTemp(root, tmpName, destName)
+	}
+	if err := dst.Truncate(0); err != nil {
+		_ = dst.Close()
+		return err
+	}
+	if _, err := dst.Seek(0, io.SeekStart); err != nil {
+		_ = dst.Close()
+		return err
+	}
+	return copyTempIntoFD(root, tmpName, dst)
+}
+
+func copyTempIntoFD(root *os.Root, tmpName string, dst *os.File) (err error) {
+	defer func() {
+		if closeErr := dst.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+
 	src, err := root.Open(tmpName)
 	if err != nil {
 		return err
@@ -104,23 +184,13 @@ func copyTempIntoReserved(root *os.Root, tmpName, destName string) error {
 	if err != nil {
 		return err
 	}
-
-	dst, err := root.OpenFile(destName, os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
 	if _, err := io.Copy(dst, src); err != nil {
-		_ = dst.Close()
 		return err
 	}
 	if err := dst.Sync(); err != nil {
-		_ = dst.Close()
 		return err
 	}
-	if err := dst.Close(); err != nil {
-		return err
-	}
-	if err := root.Chmod(destName, info.Mode().Perm()); err != nil {
+	if err := dst.Chmod(info.Mode().Perm()); err != nil {
 		return err
 	}
 	return root.Remove(tmpName)

@@ -74,7 +74,7 @@ func TestPublishExclusiveHardlink(t *testing.T) {
 	}
 }
 
-func TestExclusiveRenameFromTemp(t *testing.T) {
+func TestExclusivePublishFromTemp(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	root, err := os.OpenRoot(dir)
@@ -90,8 +90,8 @@ func TestExclusiveRenameFromTemp(t *testing.T) {
 	if err := os.Chmod(tmpPath, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := exclusiveRenameFromTemp(root, "tmp", "dest.md"); err != nil {
-		t.Fatalf("exclusiveRenameFromTemp: %v", err)
+	if err := exclusivePublishFromTemp(root, "tmp", "dest.md"); err != nil {
+		t.Fatalf("exclusivePublishFromTemp: %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(dir, "dest.md"))
 	if err != nil {
@@ -114,7 +114,7 @@ func TestExclusiveRenameFromTemp(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "tmp2"), []byte("other\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err = exclusiveRenameFromTemp(root, "tmp2", "dest.md")
+	err = exclusivePublishFromTemp(root, "tmp2", "dest.md")
 	if err == nil {
 		t.Fatal("expected O_EXCL failure when dest exists")
 	}
@@ -124,6 +124,184 @@ func TestExclusiveRenameFromTemp(t *testing.T) {
 	}
 	if string(got) != "renamed\n" {
 		t.Fatalf("dest overwritten: %q (err=%v)", got, err)
+	}
+}
+
+func TestExclusivePublishFromTempMode600(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	tmpPath := filepath.Join(dir, "tmp")
+	if err := os.WriteFile(tmpPath, []byte("secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(tmpPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := exclusivePublishFromTemp(root, "tmp", "dest.md"); err != nil {
+		t.Fatalf("exclusivePublishFromTemp: %v", err)
+	}
+	info, err := os.Stat(filepath.Join(dir, "dest.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("dest mode = %o, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestCopyTempIntoFD(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	tmpPath := filepath.Join(dir, "tmp")
+	if err := os.WriteFile(tmpPath, []byte("copied\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(tmpPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dst, err := root.OpenFile("dest.md", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := copyTempIntoFD(root, "tmp", dst); err != nil {
+		t.Fatalf("copyTempIntoFD: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "dest.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "copied\n" {
+		t.Fatalf("dest content = %q", got)
+	}
+	info, err := os.Stat(filepath.Join(dir, "dest.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Fatalf("dest mode = %o, want 0644", info.Mode().Perm())
+	}
+	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
+		t.Fatalf("temp should be gone after copy, stat err=%v", err)
+	}
+}
+
+func TestCopyTempIntoFDDoesNotOpenByName(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	if err := os.WriteFile(filepath.Join(dir, "tmp"), []byte("ours\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Reservation fd for dest.md
+	dst, err := root.OpenFile("dest.md", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Replace the directory entry with a different file while the fd is held.
+	// copyTempIntoFD must write through the fd, not reopen "dest.md" by name.
+	if err := os.Remove(filepath.Join(dir, "dest.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dest.md"), []byte("not ours\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyTempIntoFD(root, "tmp", dst); err != nil {
+		t.Fatalf("copyTempIntoFD: %v", err)
+	}
+	// The directory entry still holds the other writer's content.
+	got, err := os.ReadFile(filepath.Join(dir, "dest.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "not ours\n" {
+		t.Fatalf("directory entry overwritten by name: %q", got)
+	}
+}
+
+func TestReopenOwnedReservationRejectsForeignFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	reserve, err := root.OpenFile("dest.md", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reserveInfo, err := reserve.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reserve.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "dest.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dest.md"), []byte("foreign\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = reopenOwnedReservation(root, "dest.md", reserveInfo)
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("expected ErrExist for foreign dest, got %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "dest.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "foreign\n" {
+		t.Fatalf("foreign dest modified: %q", got)
+	}
+}
+
+func TestPublishReplace(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	if err := os.WriteFile(filepath.Join(dir, "dest.md"), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tmp"), []byte("new\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(dir, "tmp"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := PublishReplace(root, "tmp", "dest.md"); err != nil {
+		t.Fatalf("PublishReplace: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "dest.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new\n" {
+		t.Fatalf("dest content = %q", got)
 	}
 }
 
@@ -182,7 +360,7 @@ func TestPublishExclusiveOnSMB(t *testing.T) {
 	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
 		t.Fatalf("temp should be gone after publish, stat err=%v", err)
 	}
-	t.Log("exclusive publish (rename or copy into O_EXCL reservation) succeeded on SMB")
+	t.Log("exclusive publish succeeded on SMB")
 
 	if err := os.WriteFile(filepath.Join(dir, "tmp2"), []byte("other\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -198,32 +376,19 @@ func TestPublishExclusiveOnSMB(t *testing.T) {
 	if string(got) != "smb-body\n" {
 		t.Fatalf("dest overwritten on SMB: %q (err=%v)", got, err)
 	}
-}
 
-func TestExclusiveRenameFromTempMode600(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	root, err := os.OpenRoot(dir)
+	if err := os.WriteFile(filepath.Join(dir, "tmp3"), []byte("replaced\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := PublishReplace(root, "tmp3", "dest.md"); err != nil {
+		t.Fatalf("PublishReplace on SMB: %v", err)
+	}
+	got, err = os.ReadFile(filepath.Join(dir, "dest.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
-
-	tmpPath := filepath.Join(dir, "tmp")
-	if err := os.WriteFile(tmpPath, []byte("secret\n"), 0o600); err != nil {
-		t.Fatal(err)
+	if string(got) != "replaced\n" {
+		t.Fatalf("dest after replace = %q", got)
 	}
-	if err := os.Chmod(tmpPath, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := exclusiveRenameFromTemp(root, "tmp", "dest.md"); err != nil {
-		t.Fatalf("exclusiveRenameFromTemp: %v", err)
-	}
-	info, err := os.Stat(filepath.Join(dir, "dest.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("dest mode = %o, want 0600", info.Mode().Perm())
-	}
+	t.Log("PublishReplace succeeded on SMB")
 }
