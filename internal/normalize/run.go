@@ -11,6 +11,7 @@ import (
 
 	"github.com/prof18/regesto/internal/config"
 	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/fsutil"
 	writeop "github.com/prof18/regesto/internal/write"
 )
 
@@ -352,18 +353,11 @@ func archive(cfg *config.Config, c Capture) (string, error) {
 	dest := filepath.Join(destDir, name)
 	src := filepath.Join(cfg.KBRoot, c.Path)
 
-	if err := os.Rename(src, dest); err != nil {
-		// Rename fails across filesystems; fall back to copy-then-remove.
-		data, readErr := os.ReadFile(src)
-		if readErr != nil {
-			return "", readErr
-		}
-		if writeErr := os.WriteFile(dest, data, 0o644); writeErr != nil {
-			return "", writeErr
-		}
-		if rmErr := os.Remove(src); rmErr != nil {
-			return "", rmErr
-		}
+	// Rename fails across filesystems, and some SMB clients reject it outright;
+	// fsutil falls back to a copy that claims the archive name exclusively and
+	// undoes itself if the capture cannot be removed afterwards.
+	if err := fsutil.MovePath(src, dest); err != nil {
+		return "", err
 	}
 	pruneEmptyDirs(filepath.Join(cfg.KBRoot, "inbox"), filepath.Dir(src))
 	return filepath.ToSlash(filepath.Join(relDir, name)), nil

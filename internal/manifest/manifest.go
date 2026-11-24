@@ -21,6 +21,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/prof18/regesto/internal/fsutil"
 )
 
 // FileName is the manifest's name at the KB root. Dotted so markdown vaults and
@@ -122,7 +124,7 @@ func Save(root string, m *Manifest) error {
 			instance.Remove(tmp)
 			return err
 		}
-		if err := instance.Rename(tmp, FileName); err != nil {
+		if err := fsutil.PublishReplace(instance, tmp, FileName); err != nil {
 			instance.Remove(tmp)
 			return err
 		}

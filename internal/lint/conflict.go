@@ -1,12 +1,14 @@
 package lint
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/fsutil"
 )
 
 // ConflictResolution is one decided sync conflict, for the run summary.
@@ -28,6 +30,12 @@ type ConflictResolution struct {
 // loser is archived rather than deleted, so a wrong call is recoverable. This is
 // the one place lint overwrites a file's content rather than a single field,
 // which is exactly why every resolution is reported.
+//
+// Every step goes through fsutil rather than a bare rename, so a share that
+// rejects renameat can still resolve conflicts. Archiving a losing copy is a
+// move that rolls itself back if the source survives it; when the copy wins,
+// the displaced content is archived as a copy and the winner published over
+// the original, so the fact is never absent from its own path.
 //
 // Two cases are left for a human. A conflict copy that does not parse cannot be
 // compared, and a conflict whose original has been deleted is a delete-versus-edit
@@ -99,21 +107,27 @@ func ResolveConflicts(kbRoot string, conflicts []facts.Conflict, apply bool, now
 		}
 
 		if !identical && conflictTime.After(baseTime) {
-			// The conflict copy wins: archive what the file currently holds,
-			// then promote the copy into its place.
-			losingName := filepath.Base(c.BasePath) + ".superseded-" + now.UTC().Format("20060102T150405Z")
-			if err := os.Rename(baseFull, filepath.Join(archiveDir, losingName)); err != nil {
+			// The conflict copy wins: archive a copy of what the file
+			// currently holds, then publish the conflict copy over it. The
+			// fact stays live throughout — moving it into the archive first
+			// would leave it missing if the promotion failed, and the next
+			// run would misread that as a delete against an edit.
+			losingName, err := archiveUnder(archiveDir,
+				filepath.Base(c.BasePath)+".superseded-"+now.UTC().Format("20060102T150405Z"),
+				func(dest string) error { return fsutil.CopyPath(baseFull, dest) })
+			if err != nil {
 				return out, err
 			}
-			if err := os.Rename(conflictFull, baseFull); err != nil {
+			if err := fsutil.PublishReplacePath(conflictFull, baseFull); err != nil {
 				return out, err
 			}
 			res.Archived = filepath.ToSlash(filepath.Join("archive", "inbox",
 				now.UTC().Format("2006-01-02"), "sync-conflicts", losingName))
 		} else {
 			// The file stands; the copy is archived untouched.
-			losingName := filepath.Base(c.ConflictPath)
-			if err := os.Rename(conflictFull, filepath.Join(archiveDir, losingName)); err != nil {
+			losingName, err := archiveUnder(archiveDir, filepath.Base(c.ConflictPath),
+				func(dest string) error { return fsutil.MovePath(conflictFull, dest) })
+			if err != nil {
 				return out, err
 			}
 			res.Archived = filepath.ToSlash(filepath.Join("archive", "inbox",
@@ -122,4 +136,23 @@ func ResolveConflicts(kbRoot string, conflicts []facts.Conflict, apply bool, now
 		out = append(out, res)
 	}
 	return out, nil
+}
+
+// archiveUnder runs place against archiveDir/name, and against name-2, name-3
+// and so on while the name is taken. The names come from one timestamp per
+// run, so two newer conflict copies of one fact displace two versions under the
+// same name in one pass: refusing the second would abort the whole cycle, and
+// overwriting it — what a bare rename used to do — would lose an archived copy.
+func archiveUnder(archiveDir, name string, place func(dest string) error) (string, error) {
+	candidate := name
+	for n := 2; ; n++ {
+		err := place(filepath.Join(archiveDir, candidate))
+		if err == nil {
+			return candidate, nil
+		}
+		if !errors.Is(err, os.ErrExist) || n > 100 {
+			return "", err
+		}
+		candidate = fmt.Sprintf("%s-%d", name, n)
+	}
 }

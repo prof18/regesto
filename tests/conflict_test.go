@@ -107,6 +107,52 @@ func TestNewerConflictCopyWinsInPlace(t *testing.T) {
 	}
 }
 
+// Two conflict copies of one fact, both newer than it, displace two versions in
+// one pass. Their archive names come from one timestamp, so the second must get
+// a name of its own: refusing it would abort the cycle, and overwriting the
+// first would lose an archived version.
+func TestTwoNewerConflictCopiesBothArchiveTheirDisplacedVersion(t *testing.T) {
+	root := conflictStore(t)
+	base := putFact(t, root, "dec-a.md", "dec-a", "2026-07-01T09:00:00Z", "the oldest body")
+	putFact(t, root, "dec-a.sync-conflict-20260729-101500-AAA.md", "dec-a", "2026-07-20T09:00:00Z", "the middle body")
+	putFact(t, root, "dec-a.sync-conflict-20260729-101600-BBB.md", "dec-a", "2026-07-21T09:00:00Z", "the newest body")
+
+	conflicts, _ := facts.FindConflicts(root)
+	res, err := lint.ResolveConflicts(root, conflicts, true, conflictNow)
+	if err != nil {
+		t.Fatalf("resolution aborted: %v", err)
+	}
+	if len(res) != 2 {
+		t.Fatalf("expected two resolutions, got %+v", res)
+	}
+	body, _ := os.ReadFile(base)
+	if !strings.Contains(string(body), "the newest body") {
+		t.Errorf("the newest copy did not win:\n%s", body)
+	}
+	seen := map[string]bool{}
+	var archived []string
+	for _, r := range res {
+		if r.Archived == "" || seen[r.Archived] {
+			t.Fatalf("archive names must be distinct and present: %+v", res)
+		}
+		seen[r.Archived] = true
+		raw, err := os.ReadFile(filepath.Join(root, r.Archived))
+		if err != nil {
+			t.Fatal(err)
+		}
+		archived = append(archived, string(raw))
+	}
+	joined := strings.Join(archived, "\n")
+	for _, want := range []string{"the oldest body", "the middle body"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("no archived version holds %q", want)
+		}
+	}
+	if left, _ := facts.FindConflicts(root); len(left) != 0 {
+		t.Errorf("conflict files survived: %+v", left)
+	}
+}
+
 func TestOlderConflictCopyLosesAndIsArchived(t *testing.T) {
 	root := conflictStore(t)
 	base := putFact(t, root, "dec-b.md", "dec-b", "2026-07-20T09:00:00Z", "the surviving body")
@@ -238,6 +284,71 @@ func TestScopeAliasesAreCanonicalised(t *testing.T) {
 	}
 	if _, err := os.Stat(stray); err == nil {
 		t.Error("the aliased copy still exists")
+	}
+}
+
+// A scope move that cannot complete must leave the fact exactly as it was found.
+// Rewritten but unmoved, its scope and directory disagree — a lint error that no
+// repair retries, because the scope then reads as canonical — and regesto cycle
+// aborts on any lint error, so every later pass would stop.
+func TestFailedScopeMoveRestoresTheFact(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions, so the move cannot be made to fail")
+	}
+	root := conflictStore(t)
+	aliasDir := filepath.Join(root, "knowledge", "facts", "projects", "aurora-2")
+	canonicalDir := filepath.Join(root, "knowledge", "facts", "projects", "aurora")
+	for _, dir := range []string{aliasDir, canonicalDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	body := "---\nschema_version: 1\nid: fact-a\ntitle: A claim\ntype: fact\n" +
+		"scope: project:aurora-2\nsubject: s\nrelation: r\nstatus: active\nsource: codex@studio\n" +
+		"created:  2026-07-01T09:00:00Z\nmodified: 2026-07-01T09:00:00Z\n---\n\nThe claim body.\n"
+	stray := filepath.Join(aliasDir, "fact-a.md")
+	if err := os.WriteFile(stray, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A read-only destination makes both the rename and its copy fallback fail.
+	if err := os.Chmod(canonicalDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(canonicalDir, 0o755) })
+
+	cfgPath := filepath.Join(root, "config.toml")
+	if err := os.WriteFile(cfgPath, []byte("integrations = [\"claude\"]\n\n[projects]\n\"aurora-2\" = \"aurora\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, err := facts.LoadAll(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := lint.CanonicaliseScopes(root, cfg, all, true, conflictNow); err == nil {
+		t.Fatal("expected the move into a read-only directory to fail")
+	}
+	got, err := os.ReadFile(stray)
+	if err != nil {
+		t.Fatalf("the fact left its alias directory: %v", err)
+	}
+	if string(got) != body {
+		t.Errorf("the fact was not restored byte for byte:\n%s", got)
+	}
+	for _, dir := range []string{aliasDir, canonicalDir} {
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), ".regesto") {
+				t.Errorf("temp %s leaked into %s", e.Name(), dir)
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(canonicalDir, "fact-a.md")); !os.IsNotExist(err) {
+		t.Errorf("a copy reached the canonical directory, stat err = %v", err)
 	}
 }
 

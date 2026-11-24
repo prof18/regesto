@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/fsutil"
 )
 
 // DefaultRenagHours is how long a persisting failure stays quiet after it has
@@ -244,7 +245,7 @@ func writeState(path string, s State) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := fsutil.PublishReplacePath(tmpName, path); err != nil {
 		return err
 	}
 	removeTemp = false

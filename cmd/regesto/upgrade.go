@@ -14,6 +14,7 @@ import (
 	regesto "github.com/prof18/regesto"
 	"github.com/prof18/regesto/internal/adapters"
 	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/fsutil"
 	regestoinstall "github.com/prof18/regesto/internal/install"
 	"github.com/prof18/regesto/internal/manifest"
 	"github.com/prof18/regesto/internal/version"
@@ -584,7 +585,12 @@ func writeInstanceFile(root, rel string, body []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return instance.Rename(tmpName, name)
+	if regesto.Executable(rel) {
+		// bin/regesto and the bin/regesto-* shims may be running right now; a
+		// shim falls back to the engine on PATH while the name is briefly gone.
+		return fsutil.PublishReplaceExecutable(instance, tmpName, name)
+	}
+	return fsutil.PublishReplace(instance, tmpName, name)
 }
 
 func openInstanceRoot(root, rel string) (*os.Root, string, error) {

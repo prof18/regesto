@@ -22,6 +22,7 @@ import (
 
 	"github.com/prof18/regesto/internal/adapters"
 	"github.com/prof18/regesto/internal/config"
+	"github.com/prof18/regesto/internal/fsutil"
 )
 
 func runIntegrations(cfg *config.Config, args []string) error {
@@ -244,7 +245,7 @@ func saveIntegrations(cfg *config.Config, list []string) ([]string, error) {
 	if !slices.Equal(parsed.Integrations, list) {
 		return nil, fmt.Errorf("could not update config.toml safely, nothing written: the integrations line did not come out as expected")
 	}
-	if err := os.Rename(tmp.Name(), cfg.Path); err != nil {
+	if err := fsutil.PublishReplacePath(tmp.Name(), cfg.Path); err != nil {
 		return nil, err
 	}
 	return dropped, nil
