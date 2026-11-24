@@ -236,7 +236,7 @@ func TestCopyTempIntoFDDoesNotOpenByName(t *testing.T) {
 	}
 }
 
-func TestReopenOwnedReservationRejectsForeignFile(t *testing.T) {
+func TestHeldReservationDetectsUnlinkedName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	root, err := os.OpenRoot(dir)
@@ -249,22 +249,38 @@ func TestReopenOwnedReservationRejectsForeignFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reserveInfo, err := reserve.Stat()
+	defer reserve.Close()
+
+	nlink, err := fileNlink(reserve)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := reserve.Close(); err != nil {
-		t.Fatal(err)
+	if nlink == 0 {
+		t.Fatal("expected reservation to be linked")
 	}
+
 	if err := os.Remove(filepath.Join(dir, "dest.md")); err != nil {
 		t.Fatal(err)
 	}
+	nlink, err = fileNlink(reserve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nlink != 0 {
+		t.Fatalf("after Remove, Nlink = %d, want 0", nlink)
+	}
+
 	if err := os.WriteFile(filepath.Join(dir, "dest.md"), []byte("foreign\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err = reopenOwnedReservation(root, "dest.md", reserveInfo)
-	if !errors.Is(err, os.ErrExist) {
-		t.Fatalf("expected ErrExist for foreign dest, got %v", err)
+	// Name is gone from our inode (Nlink == 0). A fresh O_EXCL must refuse the
+	// foreign file — even if Linux recycled our inode number onto it.
+	_, err = root.OpenFile("dest.md", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err == nil {
+		t.Fatal("expected O_EXCL to fail while foreign file holds the name")
+	}
+	if !errors.Is(err, os.ErrExist) && !errors.Is(err, syscall.EEXIST) {
+		t.Fatalf("expected exist error, got %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(dir, "dest.md"))
 	if err != nil {

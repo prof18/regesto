@@ -3,6 +3,7 @@ package fsutil
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"syscall"
@@ -65,86 +66,70 @@ func IsLinkUnsupported(err error) bool {
 	return false
 }
 
-// exclusivePublishFromTemp reserves destName with O_EXCL, then publishes the
-// already-complete temp into that name. Prefer rename-over-reservation. On
-// rename failure, reopen only the reservation we created (SameFile) or, if the
-// name was deleted by a broken renameat, reserve again with O_EXCL — never
-// Remove a name we cannot prove we still own, and never reopen+O_TRUNC by name
-// alone.
+// exclusivePublishFromTemp reserves destName with O_EXCL and keeps that fd.
+// Prefer rename-over-reservation while the fd is held. On rename failure,
+// decide from the held fd's link count (not from SameFile through the
+// directory — Linux recycles inode numbers promptly): Nlink == 0 means the
+// name was deleted, so close and O_EXCL again; Nlink > 0 means write into
+// the held fd. Never Remove a name without the held inode still being linked.
 func exclusivePublishFromTemp(root *os.Root, tmpName, destName string) error {
 	reserve, err := root.OpenFile(destName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
-	reserveInfo, err := reserve.Stat()
+	if err := root.Rename(tmpName, destName); err == nil {
+		_ = reserve.Close()
+		return nil
+	}
+
+	nlink, err := fileNlink(reserve)
 	if err != nil {
+		_ = reserve.Close()
+		return err
+	}
+	if nlink == 0 {
+		// Failed rename deleted the name (observed on macOS SMB). The held
+		// inode is orphaned — do not write into it. Fresh O_EXCL: EEXIST if
+		// another writer already claimed the name.
+		_ = reserve.Close()
+		reserve, err = root.OpenFile(destName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			return err
+		}
+	} else if err := prepareHeldReservation(reserve); err != nil {
 		_ = reserve.Close()
 		_ = root.Remove(destName)
 		return err
 	}
-	if err := reserve.Close(); err != nil {
-		_ = root.Remove(destName)
-		return err
-	}
-	if err := root.Rename(tmpName, destName); err == nil {
-		return nil
-	}
 
-	dst, err := reopenOwnedReservation(root, destName, reserveInfo)
-	if err != nil {
-		return err
-	}
-	ownedInfo := reserveInfo
-	if info, statErr := dst.Stat(); statErr == nil {
-		ownedInfo = info
-	}
-	if err := copyTempIntoFD(root, tmpName, dst); err != nil {
-		if stillOwned(root, destName, ownedInfo) {
-			_ = root.Remove(destName)
-		}
+	if err := copyTempIntoFD(root, tmpName, reserve); err != nil {
+		// We held an O_EXCL claim on destName; remove our failed stub. If a
+		// racer replaced the name after Nlink dropped to 0 we never reached
+		// copy (fresh O_EXCL would have failed with ErrExist).
+		_ = root.Remove(destName)
 		return err
 	}
 	return nil
 }
 
-// reopenOwnedReservation returns a writable fd for destName only when it is
-// still the inode we reserved, or a fresh O_EXCL fd when a failed rename
-// deleted the name. If another writer holds the name, returns an exist error
-// without removing anything.
-func reopenOwnedReservation(root *os.Root, destName string, reserveInfo os.FileInfo) (*os.File, error) {
-	f, err := root.OpenFile(destName, os.O_WRONLY, 0)
-	if err == nil {
-		info, statErr := f.Stat()
-		if statErr != nil {
-			_ = f.Close()
-			return nil, statErr
-		}
-		if os.SameFile(info, reserveInfo) {
-			if err := f.Truncate(0); err != nil {
-				_ = f.Close()
-				return nil, err
-			}
-			if _, err := f.Seek(0, io.SeekStart); err != nil {
-				_ = f.Close()
-				return nil, err
-			}
-			return f, nil
-		}
-		_ = f.Close()
-		return nil, os.ErrExist
+func prepareHeldReservation(reserve *os.File) error {
+	if err := reserve.Truncate(0); err != nil {
+		return err
 	}
-	if !os.IsNotExist(err) {
-		return nil, err
-	}
-	return root.OpenFile(destName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	_, err := reserve.Seek(0, io.SeekStart)
+	return err
 }
 
-func stillOwned(root *os.Root, destName string, reserveInfo os.FileInfo) bool {
-	info, err := root.Stat(destName)
+func fileNlink(f *os.File) (uint64, error) {
+	info, err := f.Stat()
 	if err != nil {
-		return false
+		return 0, err
 	}
-	return os.SameFile(info, reserveInfo)
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, fmt.Errorf("stat for %s: no syscall.Stat_t", f.Name())
+	}
+	return uint64(st.Nlink), nil
 }
 
 func replaceByCopy(root *os.Root, tmpName, destName string) error {
@@ -156,11 +141,7 @@ func replaceByCopy(root *os.Root, tmpName, destName string) error {
 		// Failed rename may have removed dest; publish exclusively from tmp.
 		return exclusivePublishFromTemp(root, tmpName, destName)
 	}
-	if err := dst.Truncate(0); err != nil {
-		_ = dst.Close()
-		return err
-	}
-	if _, err := dst.Seek(0, io.SeekStart); err != nil {
+	if err := prepareHeldReservation(dst); err != nil {
 		_ = dst.Close()
 		return err
 	}
@@ -178,14 +159,18 @@ func copyTempIntoFD(root *os.Root, tmpName string, dst *os.File) (err error) {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
-
 	info, err := src.Stat()
 	if err != nil {
+		_ = src.Close()
 		return err
 	}
-	if _, err := io.Copy(dst, src); err != nil {
-		return err
+	_, copyErr := io.Copy(dst, src)
+	// Close before Remove: some SMB clients return EBUSY while the temp is open.
+	if closeErr := src.Close(); copyErr == nil {
+		copyErr = closeErr
+	}
+	if copyErr != nil {
+		return copyErr
 	}
 	if err := dst.Sync(); err != nil {
 		return err
