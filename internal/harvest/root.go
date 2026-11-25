@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/prof18/regesto/internal/fsutil"
 )
 
 func openHarvestRoot(path string) (*os.Root, string, error) {
@@ -164,7 +166,7 @@ func writeRootAtomic(anchor *os.Root, path string, data []byte, mode os.FileMode
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return root.Rename(tmpName, name)
+	return fsutil.PublishReplace(root, tmpName, name)
 }
 
 func writeRootExclusive(anchor *os.Root, path string, data []byte, mode os.FileMode) error {

@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/prof18/regesto/internal/config"
 	"github.com/prof18/regesto/internal/facts"
+	"github.com/prof18/regesto/internal/fsutil"
 )
 
 // ScopeFix is one fact filed under a non-canonical project name.
@@ -76,16 +78,32 @@ func CanonicaliseScopes(kbRoot string, cfg *config.Config, all []facts.Fact, app
 			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 				return out, err
 			}
-			// Rewrite the scope before moving, so a failure between the two
-			// leaves a file whose scope and location still agree.
 			src := filepath.Join(kbRoot, f.RelPath)
+			// Keep the exact bytes, so a move that cannot complete puts the
+			// fact back as it was found rather than approximately.
+			original, err := os.ReadFile(src)
+			if err != nil {
+				return out, err
+			}
+			// Rewrite the scope first: it is the half that decides what a
+			// scoped search returns, and it no longer depends on rename.
 			if err := facts.SetFields(src, map[string]string{
 				"scope":    fix.Scope,
 				"modified": now.UTC().Format(time.RFC3339),
 			}); err != nil {
 				return out, err
 			}
-			if err := os.Rename(src, dest); err != nil {
+			if err := fsutil.MovePath(src, dest); err != nil {
+				// Left rewritten but unmoved, the fact's scope and directory
+				// disagree — a lint error that no repair retries, because the
+				// scope now reads as canonical and nothing maps a canonical
+				// name to itself. That would halt every later cycle until a
+				// human moved the file, so restore it, and say if that fails.
+				if restoreErr := restoreFile(src, original); restoreErr != nil {
+					return out, errors.Join(err, fmt.Errorf(
+						"could not restore %s after the failed move; move it to %s by hand: %w",
+						f.RelPath, fix.To, restoreErr))
+				}
 				return out, err
 			}
 			// Leave no empty alias directory behind to invite the mistake again.
@@ -125,4 +143,26 @@ func KnownProjects(cfg *config.Config, all []facts.Fact) []string {
 		}
 	}
 	return out
+}
+
+// restoreFile puts back a file's exact earlier content through the same
+// same-directory publish every other write uses.
+func restoreFile(path string, content []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".regesto-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(content); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		return err
+	}
+	return fsutil.PublishReplacePath(tmpName, path)
 }

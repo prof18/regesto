@@ -3,7 +3,10 @@ package facts
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/prof18/regesto/internal/fsutil"
 )
 
 // SetFields rewrites named frontmatter keys in place, inserting any that are
@@ -88,12 +91,20 @@ func SetFields(path string, updates map[string]string) error {
 	return writeAtomic(path, []byte(strings.Join(out, "\n")))
 }
 
-// writeAtomic writes via a temporary file in the same directory and renames.
-// Hermes is always-on and lint runs hourly, so there is no quiet window
-// (DESIGN §8) — a reader must never observe a half-written fact.
+// writeAtomic writes via a temporary file in the same directory and publishes
+// it over the original. Hermes is always-on and lint runs hourly, so there is
+// no quiet window (DESIGN §8) — a reader must never observe a half-written fact.
+//
+// Publication goes through fsutil rather than a bare rename because some SMB
+// clients reject renameat and delete the destination when it fails, which lost
+// the fact this was editing. Where rename works the write stays atomic; where
+// it does not, fsutil copies into the existing file, which a reader can catch
+// mid-write — worse than atomic, better than losing the fact.
 func writeAtomic(path string, data []byte) error {
-	dir := path[:strings.LastIndex(path, "/")+1]
-	tmp, err := os.CreateTemp(dir, ".regesto-*")
+	// filepath.Dir, not the text before the last slash: a bare filename has
+	// no slash, and an empty dir would put the temp in $TMPDIR, which the
+	// same-directory publish below refuses.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".regesto-*")
 	if err != nil {
 		return err
 	}
@@ -110,5 +121,5 @@ func writeAtomic(path string, data []byte) error {
 	if err := os.Chmod(tmpName, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, path)
+	return fsutil.PublishReplacePath(tmpName, path)
 }

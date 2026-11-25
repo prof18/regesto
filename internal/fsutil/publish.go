@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"syscall"
+	"time"
 )
 
 // PublishExclusive makes a complete same-directory temporary file visible at
@@ -37,12 +39,167 @@ func PublishExclusive(root *os.Root, tmpName, destName string) error {
 // existing destName. Prefer rename. When rename fails (some SMB clients reject
 // renameat and may delete the destination), write the temp into the destination
 // by fd — recreating with O_EXCL if the failed rename removed the name — so the
-// update does not depend on a working rename.
+// update does not depend on a working rename. That copy is not atomic: a reader
+// can catch it mid-write, and a copy that fails part-way leaves the
+// destination partial while the caller's temp still holds the full content.
 func PublishReplace(root *os.Root, tmpName, destName string) error {
-	if err := root.Rename(tmpName, destName); err == nil {
+	return publishReplace(root, tmpName, destName, false)
+}
+
+// PublishReplaceExecutable is PublishReplace for a binary or script. Its
+// fallback never writes into the old file: a running binary is paged from its
+// file (macOS kills it on an invalid code page; Linux refuses the open with
+// ETXTBSY), and a shell reads its script incrementally while running it. The
+// old name is unlinked instead, so anything still running keeps the old inode,
+// and the content is published as a fresh file. The name is briefly absent, so
+// this is only for files whose callers can fall back when it is missing.
+//
+// The caller has to say a file is executable. Mode bits cannot: SMB mounts
+// commonly report every file as 0700 or 0755 and ignore chmod.
+func PublishReplaceExecutable(root *os.Root, tmpName, destName string) error {
+	return publishReplace(root, tmpName, destName, true)
+}
+
+func publishReplace(root *os.Root, tmpName, destName string, executable bool) error {
+	renameErr := root.Rename(tmpName, destName)
+	if renameErr == nil {
 		return nil
 	}
-	return replaceByCopy(root, tmpName, destName)
+	fallback := replaceByCopy
+	if executable {
+		fallback = replaceByNewFile
+	}
+	if fallbackErr := fallback(root, tmpName, destName); fallbackErr != nil {
+		// Keep the rename error: it names why the fast path was refused,
+		// which the fallback's own error does not.
+		return errors.Join(renameErr, fallbackErr)
+	}
+	return nil
+}
+
+// PublishReplacePath is PublishReplace for the callers that hold plain paths
+// rather than an open root. Both paths must name files in one directory, which
+// is what every temp-then-publish caller already does; rooting the operation
+// there keeps the fallback's exclusive re-create in the same directory as the
+// destination.
+func PublishReplacePath(tmpPath, destPath string) error {
+	dir := filepath.Dir(destPath)
+	if filepath.Dir(tmpPath) != dir {
+		return fmt.Errorf("publish %s over %s: both must be in one directory", tmpPath, destPath)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return PublishReplace(root, filepath.Base(tmpPath), filepath.Base(destPath))
+}
+
+// MovePath relocates an existing file into another directory. The publish
+// helpers cannot: they take a temporary file beside its destination, and the
+// fallback's exclusive re-create has to land in the destination's own
+// directory. Lint's repairs genuinely move a fact — into the archive, or out
+// of an alias project directory into the canonical one — so they need this.
+//
+// An occupied destPath is refused (os.ErrExist) rather than replaced. Prefer
+// rename. Where rename is rejected, copy into the destination directory under
+// an exclusive create, then remove the source; if the source cannot be removed
+// the copy is deleted again, so a half-move does not strand one fact under two
+// paths — for a scope move, one id in two project directories. If even that
+// undo fails, the returned error says so.
+func MovePath(srcPath, destPath string) error {
+	// rename(2) would silently replace an occupied destination, which the
+	// fallback refuses; check first so both paths agree. The check is not
+	// atomic with the rename — there is no portable no-replace rename in the
+	// standard library — but it closes everything short of a racing writer.
+	if _, err := os.Lstat(destPath); err == nil {
+		return fmt.Errorf("move %s to %s: %w", srcPath, destPath, os.ErrExist)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	renameErr := os.Rename(srcPath, destPath)
+	if renameErr == nil {
+		return nil
+	}
+	if fallbackErr := moveByCopy(srcPath, destPath); fallbackErr != nil {
+		return errors.Join(renameErr, fallbackErr)
+	}
+	return nil
+}
+
+func moveByCopy(srcPath, destPath string) error {
+	if err := CopyPath(srcPath, destPath); err != nil {
+		return err
+	}
+	if err := os.Remove(srcPath); err != nil {
+		if rbErr := os.Remove(destPath); rbErr != nil {
+			return errors.Join(err, fmt.Errorf("undo the copy at %s: %w", destPath, rbErr))
+		}
+		return err
+	}
+	return nil
+}
+
+// CopyPath copies an existing file into destPath, which may be in another
+// directory and must not exist yet: the name is claimed exclusively, so a file
+// another writer put there is refused rather than overwritten. The source is
+// left in place. Conflict resolution archives the displaced fact this way, so
+// the fact stays live until its replacement has landed.
+func CopyPath(srcPath, destPath string) error {
+	root, err := os.OpenRoot(filepath.Dir(destPath))
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	tmpName, err := copyIntoRoot(root, srcPath)
+	if err != nil {
+		return err
+	}
+	// A successful hard link leaves the temporary name behind; the copy tier
+	// consumes it, and removing a name that is already gone is harmless.
+	defer func() { _ = root.Remove(tmpName) }()
+
+	return PublishExclusive(root, tmpName, filepath.Base(destPath))
+}
+
+// copyIntoRoot writes srcPath's contents and permissions into a fresh
+// temporary file inside root, and returns its name for publication.
+func copyIntoRoot(root *os.Root, srcPath string) (string, error) {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return "", err
+	}
+	defer src.Close()
+	info, err := src.Stat()
+	if err != nil {
+		return "", err
+	}
+
+	name := fmt.Sprintf(".regesto-move-%d-%d", os.Getpid(), time.Now().UnixNano())
+	tmp, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return "", err
+	}
+	finish := func(err error) (string, error) {
+		_ = tmp.Close()
+		_ = root.Remove(name)
+		return "", err
+	}
+	if _, err := io.Copy(tmp, src); err != nil {
+		return finish(err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return finish(err)
+	}
+	if err := tmp.Chmod(info.Mode().Perm()); err != nil {
+		return finish(err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = root.Remove(name)
+		return "", err
+	}
+	return name, nil
 }
 
 // IsLinkUnsupported reports whether err means this filesystem cannot create
@@ -120,19 +277,16 @@ func prepareHeldReservation(reserve *os.File) error {
 	return err
 }
 
-func fileNlink(f *os.File) (uint64, error) {
-	info, err := f.Stat()
-	if err != nil {
-		return 0, err
-	}
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, fmt.Errorf("stat for %s: no syscall.Stat_t", f.Name())
-	}
-	return uint64(st.Nlink), nil
-}
-
 func replaceByCopy(root *os.Root, tmpName, destName string) error {
+	// Open the temp before touching the destination: an unreadable temp must
+	// fail while the destination still holds its old content, not after it
+	// has been truncated.
+	probe, err := root.Open(tmpName)
+	if err != nil {
+		return err
+	}
+	_ = probe.Close()
+
 	dst, err := root.OpenFile(destName, os.O_WRONLY, 0)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -146,6 +300,13 @@ func replaceByCopy(root *os.Root, tmpName, destName string) error {
 		return err
 	}
 	return copyTempIntoFD(root, tmpName, dst)
+}
+
+func replaceByNewFile(root *os.Root, tmpName, destName string) error {
+	if err := root.Remove(destName); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return exclusivePublishFromTemp(root, tmpName, destName)
 }
 
 func copyTempIntoFD(root *os.Root, tmpName string, dst *os.File) (err error) {

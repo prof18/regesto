@@ -20,6 +20,34 @@ That copy tier keeps the no-overwrite rule for creates but is not atomic: reader
 see a partial file, and interrupting mid-copy can leave a stub that later creates refuse
 until removed by hand. Local disks that support hard links behave as before.
 
+**The rest of the writes into your knowledge base no longer depend on rename either.**
+Publishing a fact was only half the story: editing one through `regesto lint` or `regesto
+cycle`, writing the manifest during `init` and `upgrade`, adding an integration to
+`config.toml`, saving harvest's per-machine baseline, and recording whether the last
+scheduled pass failed all still ended in a bare rename. On a share whose client rejects
+rename — and deletes the destination when it fails — that did not merely fail, it took the
+file with it, so a field update could lose the fact it was editing. They all publish
+through the same fallback now. Where that fallback replaces an executable, such as a
+`bin/` command or the engine copy in your knowledge base, it never writes into the old
+file: a binary or shell script that is running at that moment would be corrupted, so the
+old name is removed and the new content published as a fresh file instead.
+
+**The steps that move a file rather than publish one now work there too.** Resolving a
+sync conflict, moving a fact out of an alias project directory, and archiving a capture the
+normalizer has processed relocate a file that already exists, between directories, so
+they could not use the same fallback. They now try rename first and, where it is
+rejected, copy the file into its new directory under an exclusive create and then remove
+the original — undoing the copy if the original survives, so one fact is never left living
+under two paths, and an archive name another writer holds is refused rather than
+overwritten. When a newer conflict copy wins, the displaced content is now archived as a
+copy before the winner is published over it, so the fact is never missing from its own
+path, even if the step fails halfway. Two such copies of one fact in a single pass used to
+give their displaced versions the same archive name, and the second overwrote the first;
+each now gets a name of its own. A scope move that cannot complete also puts the fact
+back exactly as it was found: left rewritten but unmoved, it was a lint error
+no repair retried, and `regesto cycle` aborts on any lint error, so one failed move could
+stop every later pass until someone moved the file by hand.
+
 ## 0.8.1
 
 **`regesto upgrade` now refreshes an engine copied into your knowledge base.** The
