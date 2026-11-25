@@ -39,8 +39,8 @@ Claude Code and Antigravity do not read it, and Hermes reads it only when added 
 `skills.external_dirs`, so those three keep their own directories.
 
 Their `previous` targets are where earlier versions linked the skills. Every install
-removes Regesto's links from those directories, and only links that point at this
-knowledge base's own skill copies.
+removes Regesto's links from those directories, and it removes only links that point at
+this knowledge base's own skill copies.
 
 Every built-in integration installs the same skill text. A machine that links
 `~/.claude/skills` to `~/.agents/skills` therefore shares one copy across all of them, and
@@ -63,21 +63,21 @@ its own global `~/.gemini/antigravity-cli/skills`. The rest is per host:
 
 - **Copilot** registers its hook in a Regesto-owned file,
   `~/.copilot/hooks/regesto.json`, which both Copilot CLI and Copilot in VS Code read.
-- **Antigravity** registers under the `regesto` name in `~/.gemini/config/hooks.json`, a
-  host-owned customization directory whose foreign hook names the merge preserves. A
-  repository's `.agents/skills/` is a per-workspace surface and not an install target:
-  these integrations are machine-global, and the hook resolves per-repo scope from the
-  payload's `workspacePaths`.
-- **OpenCode** and **pi** register by presence rather than by settings. Each
-  auto-discovers a directory — `~/.config/opencode/plugins/` and
-  `~/.pi/agent/extensions/` — so Regesto links a launcher there and the linked file
-  self-locates the instance. Pi also auto-discovers `~/.pi/agent/skills`, and OpenCode
+- **Antigravity** registers under the `regesto` name in `~/.gemini/config/hooks.json`,
+  inside a host-owned customization directory. The merge preserves hooks registered under
+  other names. Regesto does not install into a repository's `.agents/skills/`, which is a
+  per-workspace surface. These integrations are machine-global, and the hook resolves
+  per-repo scope from the payload's `workspacePaths`.
+- **OpenCode** and **pi** register by presence rather than by settings. OpenCode
+  auto-discovers `~/.config/opencode/plugins/` and pi auto-discovers
+  `~/.pi/agent/extensions/`, so Regesto links a launcher into each, and the linked file
+  locates the instance itself. Pi also auto-discovers `~/.pi/agent/skills`, and OpenCode
   loads `~/.claude/skills` and `~/.config/opencode/skills` for Claude Code compatibility.
 - **OpenCode**'s single launcher speaks both host APIs without host-package imports:
   OpenCode 2 reads its `setup()` and registers the prompt-admission hook, while OpenCode 1
   (1.18.29 or newer) calls its `server()` for the `chat.message` hook. Where
-  `~/.claude/skills` is a separate directory it sees the Regesto skill names twice; every
-  integration installs the same text, so whichever copy it serves is identical.
+  `~/.claude/skills` is a separate directory, OpenCode sees the Regesto skill names twice.
+  Every integration installs the same text, so whichever copy it serves is identical.
 
 ## Behavior and evidence
 
@@ -92,9 +92,9 @@ its own global `~/.gemini/antigravity-cli/skills`. The rest is per host:
 | Codex | always-loaded instructions plus portable skills | advisory, not enforced | renderer and installer contract tests |
 | Generic/custom | whichever declared targets and supported protocol the instance profile supplies | determined by declared capabilities | profile validation, renderer, and installer contract tests |
 
-“Tested” here means the protocol and registration boundary is covered by automated
-fixtures, which is separate from a dated live-host result. Those release records belong in
-the validation ledger, not in this matrix.
+“Tested” here means automated fixtures cover the protocol and registration boundary. A
+dated live-host result is separate: those release records belong in the validation ledger,
+not in this matrix.
 
 ## Configure an unknown local host
 
@@ -158,14 +158,14 @@ directly, so an MCP-only client does not need to appear in `integrations`:
 If the client does not inherit your shell `PATH`, replace `regesto` with the output of
 `command -v regesto`. The knowledge-base path must be absolute because MCP clients may not
 expand `~`. The equivalent shell command is
-`regesto --config ~/regesto-kb/config.toml mcp`. It exposes search,
+`regesto --config ~/regesto-kb/config.toml mcp`. The server exposes search,
 exact fact reads, project resolution, validated writes, the generated index, and fact
-resources over stdin/stdout only. Diagnostics go to stderr and it opens no network
-listener. MCP makes the tools available; persistent client instructions are still needed
-if consultation must be habitual rather than requested.
+resources over stdin/stdout only. It writes diagnostics to stderr and opens no network
+listener. MCP makes the tools available, but the client still needs persistent
+instructions if consultation must be habitual rather than requested.
 
 If a host supports neither local skills/instructions nor local MCP, export the
-conversation and run `regesto promote <export>` from the knowledge-base directory. No
-silently skipped capability is treated as an installation success; `regesto doctor`
+conversation and run `regesto promote <export>` from the knowledge-base directory. Regesto
+never treats a silently skipped capability as an installation success: `regesto doctor`
 reports `unsupported` for an intentionally absent capability, `manual` for a safe human
 step, and `warning` or `error` when remediation is required.

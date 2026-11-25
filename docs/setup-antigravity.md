@@ -6,9 +6,9 @@ specific to Google Antigravity CLI (`agy`). The
 capability details.
 
 Antigravity supports `PreInvocation` hooks that run before every model call and can inject
-steps into the conversation, so its integration is deterministic like Claude Code's: on the
-first invocation of each conversation, the hook retrieves the index and the facts scoped to
-the mounted workspace, and the agent starts already knowing what exists. Portable skills
+steps into the conversation, so its integration is deterministic like Claude Code's. On
+the first invocation of each conversation, the hook retrieves the index and the facts scoped
+to the mounted workspace, so the agent starts already knowing what exists. Portable skills
 provide the search and write procedures on demand.
 
 ## Install
@@ -35,11 +35,11 @@ Installation does three things:
    `.agents/skills/` is a separate, per-workspace surface Regesto does not touch: these
    integrations are machine-global, and per-repo scoping happens in the hook at runtime.
 2. Adds a marked knowledge-base section to `~/.gemini/GEMINI.md`, the global context file
-   Antigravity consults in every session; it stacks with a repository's own `AGENTS.md`
+   Antigravity consults in every session. It stacks with a repository's own `AGENTS.md`
    and `GEMINI.md`. Regesto creates the file when it does not exist and preserves foreign
-   content when it does. The file is also Gemini CLI's global context file: on a machine
-   with both, both products read the section, but Gemini CLI loads skills from
-   `~/.gemini/skills`, not `~/.gemini/antigravity-cli/skills` — override `instructions_file`
+   content when it does. The file is also Gemini CLI's global context file, so on a machine
+   with both products, both read the section. Gemini CLI loads skills from
+   `~/.gemini/skills`, not `~/.gemini/antigravity-cli/skills`. Override `instructions_file`
    if you want the surfaces kept apart.
 3. Registers the PreInvocation hook under the `regesto` name in
    `~/.gemini/config/hooks.json`, the customization directory shared by the Antigravity
@@ -54,7 +54,7 @@ scoped to the first mounted workspace. The agent should still use the search ski
 anything the index only summarizes, and the write skill when you explicitly ask it to
 remember something.
 
-A broken hook degrades to injecting nothing — the model call always proceeds. A session
+If the hook breaks, it injects nothing and the model call still proceeds. A session
 without a mounted workspace (for example a bare `agy --print` outside any project) also
 starts without injection: Antigravity reports `workspacePaths` only for mounted
 workspaces, and Regesto does not guess a scope the host did not declare.
@@ -90,5 +90,5 @@ changing a path. Inspect loaded hooks inside a session with `/hooks`.
 ## Harvest
 
 Antigravity's transcripts are JSONL plus SQLite under `~/.gemini/antigravity-cli/brain/`,
-so there is no native memory to harvest. Anything worth keeping should be written through
-the write skill or promoted from an exported conversation with `regesto promote`.
+so there is no native memory to harvest. Save anything worth keeping with the write skill,
+or promote an exported conversation with `regesto promote`.

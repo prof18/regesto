@@ -1,13 +1,13 @@
 # Setup — more than one machine
 
 Regesto works on one machine with nothing else installed. This page is only for
-replicating a knowledge base across several, and it is deliberately short: there is no
-server to configure, because there is no server.
+replicating a knowledge base across several. It is deliberately short, because Regesto has
+no server to configure.
 
 Read [DESIGN.md §9](../DESIGN.md#9-sync-and-transport) for why it is shaped this way. The
-short version: **a file-sync client for transport, git for history.** Git-as-transport
-fails open — miss a pull and the agent confidently reads stale knowledge. Sync fails
-closed: the worst case is a visible conflict file that lint resolves.
+short version: **a file-sync client moves the files, and git keeps the history.** Git as a
+transport fails open: if a machine misses a pull, its agent reads stale knowledge without
+noticing. Sync fails closed: the worst case is a visible conflict file that lint resolves.
 
 ## The shape
 
@@ -17,23 +17,24 @@ offline if need be. No machine ever queries another to consult knowledge.
 
 ## What the transport has to do
 
-Regesto has no opinion about how the folder gets from one machine to another. The contract
-is three lines long:
+Regesto has no opinion about how the folder gets from one machine to another. The transport
+has to meet three requirements:
 
-1. **Replicate a directory of plain files.** No database, no API, no daemon of ours.
+1. **Replicate a directory of plain files.** Regesto runs no database, API or daemon of its
+   own.
 2. **Let you exclude two paths** — `.state/` and `.git`. Both are directories, so per-folder
    exclusion is enough; pattern matching is not needed.
 3. **Keep the files real and local.** An agent greps them directly, so anything that stores
    placeholders and fetches on demand will not do.
 
-Anything meeting that works. Some shapes it can take:
+Any transport that meets these requirements works. Some options:
 
 | | |
 |---|---|
 | **Continuous peer-to-peer** (Syncthing, Resilio) | No third party holds your knowledge. `regesto init` writes a `.stignore` for exactly this case |
 | **A hosted drive** (Dropbox, Google Drive, OneDrive) | Selective sync excludes the two directories. Your knowledge sits in plaintext on someone else's disk — decide that deliberately |
 | **Scheduled `rsync` or `unison`** | Total control, no client to run. Prefer `unison`: plain `rsync` in one direction will happily overwrite the newer copy |
-| **A mounted share** (NFS, SMB) | Works for reading, writing and editing facts and for `regesto init`, `install` and `upgrade`, even when the share rejects hard links and — as some SMB clients do — rename. Publication falls back to an exclusive reservation and then a copy into the descriptor it is holding: still never overwriting another writer, but no longer atomic, so an interrupt mid-copy can leave a stub to delete before retrying. The steps that move a file rather than publish one — archiving a sync conflict or a processed capture, and moving a fact out of an alias project directory — fall back to the same copy, then remove the original, undoing the copy if the original survives — and saying so, if even that undo fails, rather than leaving a fact under two paths unreported. There is still no replica — reads stop when the network does, and the offline-on-a-train property goes with it |
+| **A mounted share** (NFS, SMB) | Works for reading, writing and editing facts and for `regesto init`, `install` and `upgrade`, even when the share rejects hard links or rename. There, Regesto copies files instead. A copy still never overwrites another writer's file, but it is not atomic: an interrupted write can leave a stub that you delete before retrying. A move whose original cannot be removed deletes its copy again, and reports it if even that fails. There is no replica, so reads stop when the network does, and so does offline access |
 | **iCloud Drive** | Not recommended. "Optimize Mac Storage" evicts file contents and leaves stubs, which breaks requirement 3 silently |
 | **git** | Deliberately not — [DESIGN §9](../DESIGN.md#9-sync-and-transport). It fails open: miss a pull and the agent confidently reads stale knowledge |
 
@@ -44,8 +45,8 @@ When two machines edit the same fact, the client writes a second copy alongside 
 nothing is deleted. Until then the copy is invisible to search, the index and the hook —
 an unresolved conflict must not reach a session's context.
 
-Finding those copies is the one thing that depends on your client, because each names them
-differently. It is a setting, not a constant:
+Each client names those copies differently, so finding them is the one thing that depends on
+your client. The pattern is a config setting:
 
 ```toml
 [sync]
@@ -55,9 +56,9 @@ conflict_pattern = " \(.*conflicted copy.*\)"
 Config values are taken literally — backslashes are not escape characters here — so write
 the expression exactly as a regex, with single backslashes.
 
-A regular expression, and the part it matches is **cut out** of the name to get back to the
-original — which is what makes it work across clients whose shapes differ, not merely their
-wording. Syncthing appends before the extension:
+The value is a regular expression. Regesto **cuts out** the part it matches to get back to
+the original name, so one setting works for clients whose names differ in shape, not merely
+in wording. Syncthing appends before the extension:
 
 ```
 dec-a.sync-conflict-20260729-101500-ABCDEF.md   →   dec-a.md
@@ -69,15 +70,15 @@ while others bracket the insertion mid-name:
 dec-a (someone's conflicted copy 2026-07-30).md   →   dec-a.md
 ```
 
-The default matches Syncthing, so leave it alone if that is what you run. A pattern that is
-not valid regex is refused at startup rather than quietly ignored: a conflict copy that
-stops being recognised would load as a real fact, and two claims would share one id.
+The default matches Syncthing, so leave it alone if that is what you run. Regesto refuses a
+pattern that is not valid regex at startup rather than ignoring it. Otherwise a conflict copy
+that stops being recognised would load as a real fact, and two claims would share one id.
 
 ## Two things must never sync
 
 `regesto init` writes a `.stignore` covering both, which Syncthing and Resilio read
 directly. With any other transport you configure the same two exclusions its own way —
-selective sync, an `--exclude` flag, an ignore list. Do not tidy either away.
+selective sync, an `--exclude` flag, an ignore list. Do not remove either exclusion.
 
 **`.state/`** — each machine diffs its agents' native memory against **its own** baseline
 snapshot. Share those snapshots and machines overwrite each other's baselines, and
@@ -89,7 +90,8 @@ facts by definition.
 
 **`.git`** — keep the repository on one machine. Syncing it is unenforceable: any agent
 session on a second machine runs `git status` and becomes a second writer to the same
-index. The markdown is the knowledge; git is convenience and offsite history.
+index. The knowledge lives in the markdown files; git only adds convenience and offsite
+history.
 
 > `.stignore` is **per-device** in Syncthing. Adding a pattern on one machine does not
 > protect the others. Set them everywhere, and re-check after adding a device.
@@ -98,9 +100,9 @@ index. The markdown is the knowledge; git is convenience and offsite history.
 
 Every machine runs `regesto harvest` — native memory is local, so nothing else can see it.
 
-**One machine runs `regesto cycle`.** Capture happens everywhere; deciding what becomes a
-fact happens in one place, or two machines mint competing vocabulary for the same claim and
-neither ever detects the contradiction. Name it in the instance config:
+**One machine runs `regesto cycle`.** Every machine captures, but only one decides what
+becomes a fact. Otherwise two machines mint competing vocabulary for the same claim, and
+neither ever detects the contradiction. Name that machine in the instance config:
 
 ```toml
 [roles]
@@ -108,8 +110,8 @@ lint = "workstation"
 ```
 
 `regesto schedule install` then installs both jobs on that machine and only the harvest job
-elsewhere. Machines with no `[roles].lint` entry assume they are it, which is correct for
-the single-machine case.
+elsewhere. Machines with no `[roles].lint` entry assume they are the lint machine, which is
+correct for the single-machine case.
 
 ## Adding a machine
 
@@ -152,9 +154,10 @@ regesto --config ~/regesto-kb/config.toml schedule install
 `[roles].lint` names it or is unset.
 
 The installed jobs get a deterministic `PATH` rather than launchd's system-only default.
-Regesto includes normaliser/notifier locations it can resolve during installation and the
-usual user, Homebrew and system directories. If this machine keeps a required CLI elsewhere,
-add `[schedule].extra_path = "~/path/to/bin"` and reinstall the schedule.
+That `PATH` includes the normaliser and notifier locations Regesto can resolve during
+installation, plus the usual user, Homebrew and system directories. If this machine keeps a
+required CLI elsewhere, add `[schedule].extra_path = "~/path/to/bin"` and reinstall the
+schedule.
 
 **5. Check it.** Open a session in a project and confirm its facts appear.
 
@@ -164,15 +167,15 @@ regesto --config ~/regesto-kb/config.toml harvest --dry-run   # first run record
 ```
 
 To bring this machine's existing agent memory into the shared knowledge base, run
-`harvest --backfill` once. The notes are collected on this machine and processed by the
-lint host's next cycle.
+`harvest --backfill` once. This machine collects the notes, and the lint host processes them
+on its next cycle.
 
 Expect some of them to repeat facts other machines already recorded; the normalizer skips
 known facts, and `regesto lint` reports near-duplicates. The same applies on a machine that
 was already harvesting before `--backfill` existed: the import can include notes an earlier
 harvest collected.
 
-**Home directories differ between machines**, and that is handled: everything resolves
+**Home directories differ between machines**, and Regesto handles that: everything resolves
 relative to `config.toml`'s location, and the instructions section renders `~/`-relative
 paths rather than absolute ones. Do not hardcode a path anywhere yourself.
 
@@ -190,8 +193,8 @@ which never syncs.
 ## An always-on third node
 
 A NAS or small server running the same sync client gives you a replica that is always up
-and a backup target. It runs nothing else — no regesto, no agents, no scheduled jobs. It is
-a third copy, and that is the whole job.
+and a backup target. It runs nothing else: no regesto, no agents and no scheduled jobs. Its
+only job is to hold a third copy.
 
 Filesystem snapshots there protect against a bad sync propagating. They do not protect
 against the building burning down, so if every replica lives in one place, add an offsite
@@ -204,23 +207,25 @@ accumulated personal knowledge in plaintext.
 
 ### The first harvest on a new machine captures nothing
 
-By design. It records a baseline instead, so you do not get that machine's entire existing
-memory store dumped into the inbox at once. Captures start from the *next* change. Run
+This is by design. The first harvest records a baseline instead, so you do not get that
+machine's entire existing memory store dumped into the inbox at once. Captures start from
+the *next* change. Run
 `regesto harvest --backfill` once if you do want that existing memory. A second backfill
 imports nothing again; it only collects changes, like an ordinary harvest.
 
 ### Conflict files
 
-Two machines editing one fact produces `<name>.sync-conflict-<timestamp>.md`. `regesto
-cycle` resolves these: it keeps the copy with the newer `modified` and moves the loser into
-`archive/inbox/<date>/`. Nothing is deleted, so a wrong call is recoverable.
+When two machines edit one fact, the sync client writes a copy such as
+`<name>.sync-conflict-<timestamp>.md`. `regesto cycle` resolves these: it keeps the copy
+with the newer `modified` and moves the loser into `archive/inbox/<date>/`. Nothing is
+deleted, so a wrong call is recoverable.
 
 If you resolve one by hand, follow the same rule, and never delete the loser.
 
 ### `regesto cycle` refuses to run on a machine
 
-Expected if that machine has no `.git` — which is deliberate, since git lives on one
-machine only. Either it is not the lint host (check `[roles].lint`), or you are on the
+This is expected if that machine has no `.git`. That is deliberate, because git lives on
+one machine only. Either it is not the lint host (check `[roles].lint`), or you are on the
 wrong machine.
 
 ### Facts appear twice with slightly different subjects
@@ -240,13 +245,13 @@ everything keeps working on the old binary:
 - `~/.local/bin/regesto`, the symlink `regesto-install` creates, which sits earlier in PATH
   than Homebrew.
 
-Delete both, then `bin/regesto-install` and `regesto schedule install` — or just
-`regesto upgrade`, which does all of it. `regesto version` reports whichever binary won, so
+Delete both, then run `bin/regesto-install` and `regesto schedule install`. Or run
+`regesto upgrade`, which does all of that. `regesto version` reports whichever binary won, so
 compare it against what you installed.
 
 ### The machine name keeps changing
 
 macOS increments a counter on the hostname when rejoining networks. Regesto strips the
-suffix, but if `regesto config` reports `machine_source=hostname` you are relying on a
-guess — and the machine name is in `inbox/<agent>@<machine>/` and in every fact's
-`source:`. Pin it in `.state/machine`, which is per-machine and never synced.
+suffix, but if `regesto config` reports `machine_source=hostname`, the name is still a
+guess. The machine name appears in `inbox/<agent>@<machine>/` and in every fact's
+`source:`, so pin it in `.state/machine`, which is per-machine and never synced.

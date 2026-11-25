@@ -12,8 +12,8 @@ The knowledge-base root is `{{kb_root}}`.
    directory or under `{{kb_root}}/archive/`.
 2. Extract durable decisions and their reasons, conventions, repeated corrections,
    preferences, and non-obvious environment or project facts. Skip transient state and
-   facts derivable from source material already at hand. Most transcripts yielding no
-   facts is normal.
+   facts derivable from source material already at hand. It is normal for most
+   transcripts to yield no facts.
 3. Write each fact through the `regesto-write` procedure: check controlled vocabulary,
    keep one claim per file, preserve provenance, and obey supersession rules. Use the
    original conversation integration as `<integration>@<machine>` when known; otherwise
@@ -21,5 +21,5 @@ The knowledge-base root is `{{kb_root}}`.
 4. Move the raw transcript, without editing it, to
    `{{kb_root}}/archive/chat-exports/<YYYY-MM-DD>-<short-name>.<ext>`. Do not leave a
    duplicate in its original location and never delete archived exports.
-5. Report every fact written as id, title, and path, plus the archive destination. Call
+5. Report the id, title, and path of every fact written, plus the archive destination. Call
    out any proposed claim that still awaits human review.

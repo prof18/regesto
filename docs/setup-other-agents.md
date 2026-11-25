@@ -1,8 +1,9 @@
 # Connect any agent to Regesto
 
-Use this guide when your client is not Antigravity, Claude Code, Codex, Copilot, or Hermes, or when you are
-building an integration for a new agent. The [integration matrix](agent-integration.md) is
-the advanced reference for exact profiles and protocols.
+Use this guide when your client is not Antigravity, Claude Code, Codex, Copilot, Hermes,
+OpenCode, or pi, or when you are building an integration for a new agent. The
+[integration matrix](agent-integration.md) is the advanced reference for exact profiles and
+protocols.
 
 ## Choose a connection
 
@@ -10,12 +11,12 @@ Start with the first capability your client supports:
 
 | Client capability | Setup path | Result |
 |---|---|---|
-| Built-in Antigravity, Claude Code, Codex, Copilot, or Hermes profile | [Built-in integrations](#built-in-integrations) | Regesto already knows the client paths and supported hooks |
+| Built-in Antigravity, Claude Code, Codex, Copilot, Hermes, OpenCode, or pi profile | [Built-in integrations](#built-in-integrations) | Regesto already knows the client paths and supported hooks |
 | Local skills or a persistent instructions file | [Custom local integration](#custom-local-integration) | Regesto installs only the capabilities you configure |
 | Local stdio MCP servers | [MCP client](#mcp-client) | The client gets Regesto search, read, project, and write tools |
 | None of these | [No local integration surface](#no-local-integration-surface) | Export a conversation and promote it manually |
 
-The local and MCP paths can be combined. For example, persistent instructions can make
+You can combine the local and MCP paths. For example, persistent instructions can make
 consultation habitual while MCP provides the actual tools.
 
 Before continuing, install Regesto and create a knowledge base:
@@ -30,11 +31,12 @@ Run the remaining commands from `~/regesto-kb`, or pass
 
 ## Built-in integrations
 
-For Antigravity, Claude Code, Codex, Copilot, or Hermes, add the built-in ID to `config.toml` and run the normal
-installer. You do not need to configure paths or copy a custom profile:
+For Antigravity, Claude Code, Codex, Copilot, Hermes, OpenCode, or pi, add the built-in ID
+to `config.toml` and run the normal installer. You do not need to configure paths or copy
+a custom profile:
 
 ```toml
-integrations = ["antigravity", "claude", "codex", "copilot", "hermes"]
+integrations = ["antigravity", "claude", "codex", "copilot", "hermes", "opencode", "pi"]
 ```
 
 ```bash
@@ -46,7 +48,9 @@ regesto doctor
 
 Keep only the integrations you use. See the short setup notes for
 [Antigravity](setup-antigravity.md), [Claude Code](setup-claude-code.md),
-[Codex](setup-codex.md), [Copilot](setup-copilot.md), or [Hermes](setup-hermes.md) if `doctor` reports a host-specific step.
+[Codex](setup-codex.md), [Copilot](setup-copilot.md), [Hermes](setup-hermes.md),
+[OpenCode](setup-opencode.md), or [pi](setup-pi.md) if `doctor` reports a host-specific
+step.
 
 ## Custom local integration
 
@@ -126,8 +130,8 @@ write new changes under `inbox/my-agent@<machine>/` for review and normalization
 import what the client had already written, run `regesto harvest --backfill my-agent`
 once.
 
-Do not point `memory_location` at Regesto's `knowledge/` directory. Client memory is an
-input to harvest, not the canonical store.
+Do not point `memory_location` at Regesto's `knowledge/` directory. Harvest reads client
+memory as input, and `knowledge/` is the canonical store.
 
 ### Optional: add a hook
 
@@ -178,7 +182,7 @@ The client owns the process and communicates over stdin/stdout. Regesto opens no
 listener. It exposes tools for searching facts, reading an exact fact, resolving a
 project, and writing a validated fact, plus resources for the index and individual facts.
 
-MCP makes the tools available; it does not force the model to use them. If the client
+MCP makes the tools available but does not force the model to use them. If the client
 supports persistent instructions, add a short rule telling it to search Regesto whenever
 a recorded decision or preference could settle the task, and to use the Regesto write
 tool when the user explicitly asks it to remember something.
@@ -214,7 +218,7 @@ Review the resulting facts, then run `regesto lint --fix --rebuild`.
 
 ## Reading `doctor`
 
-`regesto doctor --integration <id>` uses four useful states:
+`regesto doctor --integration <id>` reports four kinds of state:
 
 - `ok` or `current`: no action is required;
 - `manual`: complete the printed step;
@@ -222,4 +226,4 @@ Review the resulting facts, then run `regesto lint --fix --rebuild`.
 - `warning` or `error`: follow the attached remediation before testing a new session.
 
 Do not expose `regesto mcp` through a public network listener. It provides access to the
-complete local knowledge base and is intended to be launched locally by the client.
+complete local knowledge base, and the client is meant to launch it locally.

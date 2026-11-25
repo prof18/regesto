@@ -26,9 +26,9 @@ regesto doctor --integration codex
 ```
 
 Installation links Regesto's skills into `~/.agents/skills/`, the user skills directory
-Codex scans (Codex still reads the older `~/.codex/skills/`, which it treats as deprecated;
-links an earlier Regesto left there are removed), and adds a marked knowledge-base section
-to `~/.codex/AGENTS.md`. It does not register a hook.
+that Codex scans. Codex still reads the older `~/.codex/skills/` but treats it as
+deprecated, and Regesto removes any links an earlier version left there. Installation also
+adds a marked knowledge-base section to `~/.codex/AGENTS.md`. It does not register a hook.
 
 If `AGENTS.md` does not exist, create it and rerun `regesto install`; Regesto does not
 invent host-owned instruction files. Open a new Codex session after installation.

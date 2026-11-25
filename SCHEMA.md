@@ -3,15 +3,15 @@
 This file defines how knowledge is stored. It is hand-written and authoritative: agents
 follow it, generated artifacts conform to it, and `regesto` implements it.
 
-It ships in two places — in the engine as the spec, and in every instance `regesto init`
-creates, as the document the write skill points agents at. So it names no sibling file:
-the reasoning behind these choices, and the rule that a schema change needs a migration
-note, both live in the engine repository.
+It ships in two places: in the engine as the spec, and in every instance `regesto init`
+creates, where the write skill points agents at it. The instance copy has no engine files
+beside it, so this file names no sibling file. The reasoning behind these choices, and the
+rule that a schema change needs a migration note, both live in the engine repository.
 
 ## The rule that governs everything
 
-**Nothing is ever deleted.** A claim that stops being true is marked `status: superseded`,
-not removed. History is part of the knowledge.
+**Nothing is ever deleted.** A claim that stops being true is marked `status: superseded`
+and stays in the store, so the history of what was believed stays part of the knowledge.
 
 ## Layout
 
@@ -95,9 +95,9 @@ instead of a judgement call.
 
 **This only works if terms are reused.** If one agent writes `relation: console-flags` and
 another writes `cli-flags` for the same claim, the contradiction is never detected and both
-stay `active` — silent corruption of the whole model.
+stay `active`. The knowledge base then silently holds two conflicting answers.
 
-So:
+To keep terms consistent:
 
 1. **Before inventing a pair, check the controlled vocabulary in `INDEX.md`.** If an existing
    `(subject, relation)` fits, use it exactly.
@@ -107,38 +107,39 @@ So:
 Pick them so a future contradicting claim would naturally land on the same pair:
 
 - ✅ `subject: gradle`, `relation: console-flags`
-- ❌ `subject: always run gradle with -q --console=plain` — the whole claim, so nothing can
-  ever collide with it, so it can never be superseded
+- ❌ `subject: always run gradle with -q --console=plain` — this puts the whole claim in
+  `subject`, so no later claim can ever collide with it and supersede it
 
 ## What to record
 
-**Record** — and not only about code: decisions and *why*; conventions that differ from
-tool defaults; corrections you had to give more than once; non-obvious facts about the
-environment, the tooling, or the user's own life and admin; preferences about how work
-should be done; anything that would take real effort to rediscover.
+**Record** these, whether or not they concern code: decisions and *why*; conventions that
+differ from tool defaults; corrections you had to give more than once; non-obvious facts
+about the environment, the tooling, or the user's own life and admin; preferences about how
+work should be done; anything that would take real effort to rediscover.
 
-**Don't record:** anything derivable from a source already at hand — the code, this repo's
-own files, official documentation; transient state (branch names, current bugs, in-flight
-work).
+**Don't record** anything you can derive from a source already at hand, such as the code,
+this repo's own files or official documentation. Don't record transient state either
+(branch names, current bugs, in-flight work).
 
-If in doubt: *would a competent stranger need to be told this, and would they struggle to
-find it out?*
+If in doubt, ask: *would a competent stranger need to be told this, and would they struggle
+to find it out?*
 
 ### Write unprompted
 
-Agents record facts **at the moment they occur, without being asked**. The triggers:
+Agents record facts **at the moment they occur, without being asked**. These events trigger
+a write:
 
 - **the user asks to store something** — any phrasing ("remember this", "note that down",
-  "store this in the kb", `/regesto-write …`) → record it *now*, whatever type fits. This
+  "store this in the kb", `/regesto-write …`): record it *now*, whatever type fits. This
   trigger is absolute: never answer "I'll keep that in mind" without writing the file.
-- a decision is agreed in conversation ("let's go with X because Y") → `dec-`
-- a preference is stated, or a correction is given for the second time → `pref-`
-- a non-obvious fact about the environment, tooling, or a project surfaces → `fact-`
-- a recurring approach is settled on → `pat-`
+- a decision is agreed in conversation ("let's go with X because Y"): record a `dec-`
+- a preference is stated, or a correction is given for the second time: record a `pref-`
+- a non-obvious fact about the environment, tooling, or a project surfaces: record a `fact-`
+- a recurring approach is settled on: record a `pat-`
 
 Record it then and there via `regesto-write` — not at the end of the session, and never wait
 for the user to say "note that down." The skill submits the claim through Regesto's validated
-write interface, which owns the path, schema version, and timestamps and stamps the explicit
+write interface, which owns the path, schema version and timestamps, and stamps the explicit
 source. A missed trigger is not fatal (harvest picks up native memory later), but the direct
 write is the fast path and the default.
 
@@ -146,7 +147,7 @@ If what the user hands over is half-formed — a fragment, a hunch, no clear
 `(subject, relation)` yet — capture it to `inbox/human@<machine>/` as a raw note rather
 than forcing a pair, and let lint normalize it on the next pass.
 
-That canonical namespace has an implicit supervised default, while an exact or pattern
+The `human@<machine>` inbox namespace is `supervised` by default, but an exact or pattern
 source policy can still quarantine it. Facts produced from it are stamped with the
 authoritative source `human`, not the inbox routing ID.
 
@@ -154,10 +155,11 @@ authoritative source `human`, not the inbox routing ID.
 
 When a new claim contradicts an existing one with the same `(subject, relation)`:
 
-1. New file gets `supersedes: <old-id>`.
-2. Old file gets `status: superseded` and a bumped `modified`. **Its content stays intact.**
-3. Never edit the old claim's body to "fix" it. The record of what you used to believe is
-   the point.
+1. The new file gets `supersedes: <old-id>`.
+2. The old file gets `status: superseded` and a bumped `modified`. **Its content stays
+   intact.**
+3. Never edit the old claim's body to "fix" it. Keep it as the record of what you used to
+   believe.
 
 Resolution rules, in order:
 
@@ -167,12 +169,12 @@ Resolution rules, in order:
 2. **An agent-sourced claim never auto-supersedes a `human` claim.** It lands as
    `proposed` with `supersedes: <old-id>` recorded as *intent*; the human claim keeps
    `status: active`, and lint flags the pair for review. The human decides — see
-   "Resolving a review" below. Recency only settles contests between equals.
+   "Resolving a review" below. Recency settles a contest only between claims of equal trust.
 3. Otherwise, newer `modified` wins. Never resolve by similarity or judgement.
 4. **Lint reports every supersession it performs** in its run summary. Auto-resolution is
-   mechanical, but it must never be silent — a wrongly-merged pair (two *complementary*
-   claims that happened to share a `(subject, relation)`) is only catchable if you see it
-   happen.
+   mechanical, but it must never be silent. You can catch a wrongly merged pair (two
+   *complementary* claims that happened to share a `(subject, relation)`) only if you see
+   the supersession happen.
 
 ### Resolving a review
 
@@ -181,8 +183,8 @@ A `proposed` claim flagged against a `human` claim waits for exactly one human e
 - **Accept:** set the proposed claim to `status: active`. Its `supersedes: <old-id>` is
   already in place, and lint's standing rule — *any claim named in an `active` claim's
   `supersedes:` is flipped to `superseded`* — retires the old claim on the next pass.
-  Acceptance is a one-field edit; the human touching `status` is what authorizes crossing
-  the trust boundary, so rule 2 no longer applies.
+  Acceptance is a one-field edit. The human's edit to `status` authorizes crossing the
+  trust boundary, so rule 2 no longer applies.
 - **Reject:** set the proposed claim to `status: superseded` directly. It never becomes
   active, the human claim stands, and the record of the rejected assertion survives like
   any other superseded claim.
@@ -201,31 +203,35 @@ it itself.
 
 ## Trust
 
-`source` records who asserted a claim. Not all sources are equal:
+`source` records who asserted a claim. Regesto does not trust every source equally:
 
-- `human` — authoritative, lands as `active`. **Never auto-superseded by an agent claim**
-  — see Superseding.
-- Agent capture trust is resolved from the configured integration surface, not a
-  product name or spelling of `source`. Before any rule applies, a capture must use
+- `human` claims are authoritative and land as `active`. **An agent claim never
+  auto-supersedes them** — see Superseding.
+- Regesto resolves agent capture trust from the configured integration surface, not from a
+  product name or the spelling of `source`. Before any rule applies, a capture must use
   exactly `<integration>@<machine>` with nonempty parts, and its integration and
   machine must equal the inbox directory's integration ID and machine. Malformed or
   mismatched captures are quarantined.
-- Source policy resolves in this order: an exact `[source_policies]` entry; an exact
-  legacy `[trusted_sources]` entry; the longest matching trailing-`*`
-  `[source_policies]` prefix; the reserved `human@<machine>` inbox authority; the
-  configured integration's `default_trust`; then quarantine. `human` cannot be a
-  configured integration ID, and facts normalized from its inbox namespace are
-  stamped with source `human`. `[source_policies]` values are exactly `supervised`
-  or `quarantine`.
-  Its exact keys are complete `<integration>@<machine>` source IDs; its patterns have
-  one final `*`, such as `"hermes@studio-*" = "quarantine"`. Exact rules therefore
-  can explicitly quarantine a stale legacy approval, while legacy entries retain their
-  meaning whenever no exact source policy conflicts.
+- Source policy resolves in this order:
+  1. an exact `[source_policies]` entry;
+  2. an exact legacy `[trusted_sources]` entry;
+  3. the longest matching trailing-`*` `[source_policies]` prefix;
+  4. the reserved `human@<machine>` inbox authority;
+  5. the configured integration's `default_trust`;
+  6. quarantine.
+
+  `human` cannot be a configured integration ID, and facts normalized from its inbox
+  namespace are stamped with source `human`. `[source_policies]` values are exactly
+  `supervised` or `quarantine`. Its exact keys are complete `<integration>@<machine>`
+  source IDs, and its patterns have one final `*`, such as
+  `"hermes@studio-*" = "quarantine"`. Because exact rules come first, an exact rule can
+  explicitly quarantine a stale legacy approval. A legacy entry keeps its meaning whenever
+  no exact source policy conflicts with it.
 - A configured integration whose resolved profile or override defaults to `supervised`
   may normalize its own captures. Product identity does not grant trust: built-in and
-  custom integrations follow the same precedence, and unknown, unattended,
-  unconfigured, and empty sources quarantine unless an explicit policy or configured
-  trust says otherwise. Give separate surfaces separate integration IDs (for example
+  custom integrations follow the same precedence. Unknown, unattended, unconfigured, and
+  empty sources quarantine unless an explicit policy or configured trust says otherwise.
+  Give separate surfaces separate integration IDs (for example
   `hermes-private` and `hermes-public`) even if they use the same profile, then assign
   each its own default trust. This keeps provenance namespaces distinct without
   changing the `source` schema.
@@ -233,8 +239,8 @@ it itself.
   `inbox/<integration>@<machine>/`, invisible to `regesto-search`, hooks, and
   `INDEX.md`, until a human reviews and promotes it (by hand or via
   `regesto-promote`). A promoted claim enters `facts/` as `active` and keeps its
-  source for provenance. Quarantined must mean *invisible*: a planted claim that
-  reaches a session's context before review has already done its damage.
+  source for provenance. A quarantined capture must stay *invisible*, because a planted
+  claim that reaches a session's context before review has already influenced it.
 
 ## Inbox lifecycle
 
@@ -246,13 +252,13 @@ this schema, on any machine; lint validates them in place on its next pass.
 2. Lint normalizes each into a fact under `knowledge/facts/` — **except quarantined
    captures** (as resolved by the source policy in Trust), which it never touches:
    they wait in the inbox until a human promotes them.
-3. The raw capture moves to `archive/inbox/<date>/` — not deleted, so a bad normalization
-   can be re-run against the original.
+3. The raw capture moves to `archive/inbox/<date>/`. It is not deleted, so a bad
+   normalization can be re-run against the original.
 
 ## Generated artifacts
 
 `INDEX.md` and everything under `knowledge/topics/` are **rebuilt from `facts/`**. Never
-hand-edit them — edits are lost on the next lint pass. If a topic page is wrong, fix the
+hand-edit them: the next lint pass discards the edits. If a topic page is wrong, fix the
 underlying fact.
 
 `docs/` holds design documents *about* this system. It is **not knowledge** — skip it when

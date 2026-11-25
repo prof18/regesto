@@ -28,8 +28,8 @@ for explicit human promotion or the documented human inbox workflow.
    `{{kb_root}}/inbox/human@<machine>/` instead of forcing a fact.
 2. Skip transient state, restatements of source material already at hand, and anything a
    competent reader can derive easily from the code.
-3. Choose `type` and id prefix: `decision`/`dec-`, `preference`/`pref-`, `fact`/`fact-`,
-   or `pattern`/`pat-`.
+3. Choose the `type` and its matching id prefix: `decision`/`dec-`, `preference`/`pref-`,
+   `fact`/`fact-`, or `pattern`/`pat-`.
 4. Read `{{kb_root}}/INDEX.md` and reuse its controlled `(subject, relation)` vocabulary
    exactly. A synonym creates a separate claim stream and can hide contradictions.
 5. Choose `global` scope only when the claim is true beyond one project. Otherwise pass

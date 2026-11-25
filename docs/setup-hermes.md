@@ -57,4 +57,4 @@ regesto doctor --integration hermes
 
 If context exists but the hook is `manual`, complete the printed YAML step. If the hook
 or allowlist is stale, rerun `regesto install`. Hermes' hook fails open, so an integration
-problem does not block the session; `doctor` is the reliable place to see it.
+problem does not block the session. Run `doctor` to see such a problem.

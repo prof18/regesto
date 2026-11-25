@@ -60,8 +60,9 @@ Session state lives server-side. The cookie contains only an opaque identifier.
 ```
 
 The `subject` and `relation` identify what the claim is about. If that decision changes,
-Regesto can find the previous claim exactly instead of relying on fuzzy similarity—which
-is what makes visible history possible rather than silent contradiction.
+Regesto can find the previous claim by that exact pair instead of by fuzzy similarity. It
+then marks the old claim `superseded`, so the history stays visible and the two claims do
+not silently contradict each other.
 
 ## How the base is laid out
 
@@ -110,8 +111,8 @@ adds them to `config.toml`. Check that the list matches the agents you want to c
 integrations = ["antigravity", "claude", "codex", "copilot", "hermes"]
 ```
 
-Keep only the integrations you use. Detection is an initial suggestion, not a permanent
-setting.
+Keep only the integrations you use. Detection only fills in the first version of this
+list, and you can edit it at any time.
 
 ### 3. Connect the agents
 
@@ -121,9 +122,9 @@ regesto install
 regesto doctor
 ```
 
-The dry run shows planned changes and summarizes files already up to date. Installation adds the appropriate
-skills and instructions, registers supported hooks, and backs up host files before
-editing them. It is safe to run again.
+The dry run shows planned changes and summarizes files already up to date. Installation
+adds the appropriate skills and instructions, registers supported hooks, and backs up host
+files before editing them. It is safe to run again.
 
 `doctor` is read-only. It reports what is installed, what needs attention, and the exact
 remediation for manual steps.
@@ -153,9 +154,10 @@ optional.
 | OpenCode | An auto-discovered plugin injects relevant context on the first message of each session | [OpenCode setup](docs/setup-opencode.md) |
 | Pi | An auto-discovered extension injects relevant context on the first prompt of each session | [Pi setup](docs/setup-pi.md) |
 
-Antigravity, Claude, Copilot, Hermes, OpenCode, and Pi can enforce consultation at their supported hook boundaries. Codex has
-no equivalent built-in startup hook, so its consultation is instruction-driven. The
-[integration matrix](docs/agent-integration.md) contains the exact capability reference.
+Antigravity, Claude, Copilot, Hermes, OpenCode, and Pi can enforce consultation at their
+supported hook boundaries. Codex has no equivalent built-in startup hook, so its
+consultation is instruction-driven. The [integration matrix](docs/agent-integration.md)
+contains the exact capability reference.
 
 ## Connect another agent
 
@@ -190,8 +192,10 @@ The scheduled workflow runs two operations:
 The first harvest only notes the memory your agents already have; it collects what changes
 after that. To bring in that existing memory as well, answer yes when `regesto init` offers
 it, or run `regesto harvest --backfill` once. It lands in `inbox/` like any other capture,
-and the next `regesto cycle` turns it into facts. Harvest reads Claude Code, Codex, and
-Hermes memory. Antigravity, Copilot, OpenCode, and Pi keep no memory files, so there is nothing to collect.
+and the next `regesto cycle` turns it into facts.
+
+Harvest reads Claude Code, Codex, and Hermes memory. Antigravity, Copilot, OpenCode, and Pi
+keep no memory files, so harvest has nothing to collect from them.
 
 On macOS, `schedule install` uses launchd. On other systems, schedule `regesto harvest`
 and `regesto cycle` with your preferred job runner.
@@ -199,10 +203,10 @@ and `regesto cycle` with your preferred job runner.
 ### Cycle health and external alerts
 
 When a cycle is failing, `regesto context` on the machine that runs it puts the failure
-reason and start time at the top of agent context and tells the agent to treat generated
-indexes as stale. Antigravity, Claude, Copilot, Hermes, OpenCode, and Pi receive that warning through their context hooks.
-Codex has no startup hook, so use `regesto context` or `regesto schedule status` when
-diagnosing its instance.
+reason and start time at the top of agent context. It also tells the agent to treat
+generated indexes as stale. Antigravity, Claude, Copilot, Hermes, OpenCode, and Pi receive
+that warning through their context hooks. Codex has no startup hook, so use `regesto
+context` or `regesto schedule status` when diagnosing its instance.
 
 Regesto does not send desktop notifications itself. A CLI cannot provide a consistent
 click action across macOS, Linux, and other environments. If you want an external alert,

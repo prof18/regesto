@@ -14,10 +14,10 @@ Run the stable search command with the user's actual query terms:
 ```
 
 Results are tab-separated `id`, `title`, and relative `path` fields. Read a matching claim
-in full before relying on it. A claim tagged `[proposed]` awaits human review; it may be
-used only with that caveat. Superseded claims are hidden unless history was requested.
+in full before relying on it. A claim tagged `[proposed]` awaits human review, so use it
+only with that caveat. Superseded claims are hidden unless history was requested.
 
-Useful exact filters are available when free text is too broad:
+When free text is too broad, narrow the search with exact filters:
 
 ```sh
 {{kb_root}}/bin/regesto-search [--subject S] [--relation R] [--scope SC] [--history] [terms...]

@@ -6,8 +6,8 @@ specific to GitHub Copilot CLI (and Copilot in VS Code). The
 capability details.
 
 Copilot CLI supports `SessionStart` hooks that inject context before the first turn, so
-its integration is deterministic like Claude Code's: the hook retrieves the index and the
-facts scoped to the current repository, and the agent starts already knowing what exists.
+its integration is deterministic like Claude Code's. The hook retrieves the index and the
+facts scoped to the current repository, so the agent starts already knowing what exists.
 Portable skills provide the search and write procedures on demand.
 
 ## Install
@@ -29,12 +29,12 @@ regesto doctor --integration copilot
 
 Installation does three things:
 
-1. Links Regesto's skills into `~/.agents/skills/`, a personal skills directory Copilot
-   CLI and Copilot in VS Code both discover and Codex, OpenCode, and pi share. Links an
-   earlier version left in `~/.copilot/skills/` are removed.
+1. Links Regesto's skills into `~/.agents/skills/`, a personal skills directory that
+   Copilot CLI and Copilot in VS Code both discover and that Codex, OpenCode, and pi share.
+   Regesto removes any links an earlier version left in `~/.copilot/skills/`.
 2. Creates `~/.copilot/instructions/regesto.instructions.md` with a marked
-   knowledge-base section. Copilot has no host-owned user instructions file, so this one
-   is Regesto-created; it is always loaded, and in VS Code it stacks additively with any
+   knowledge-base section. Copilot has no host-owned user instructions file, so Regesto
+   creates this one. Copilot always loads it, and in VS Code it stacks additively with any
    repository-level `.github/copilot-instructions.md` or `AGENTS.md`.
 3. Registers the SessionStart hook in `~/.copilot/hooks/regesto.json`, a Regesto-owned
    file in the user hooks directory Copilot reads. Foreign entries in other `*.json`
@@ -49,7 +49,7 @@ current repository already in context. The agent should still use the search ski
 anything the index only summarizes, and the write skill when you explicitly ask it to
 remember something.
 
-A broken hook degrades to injecting nothing — the session always starts.
+If the hook breaks, it injects nothing and the session still starts.
 
 ## Copilot in VS Code
 
@@ -87,13 +87,12 @@ cat ~/.copilot/hooks/regesto.json
 ```
 
 `doctor` reports the canonical target and remediation. Rerun `regesto install` after
-changing a path. Note that Copilot stops loading `~/.agents/skills` when the
+changing a path. Copilot stops loading `~/.agents/skills` when the
 `COPILOT_HOME` environment variable or `--config-dir` overrides its config home. In that
 case set `skills_dir` under `[integrations.copilot]` to the `skills` folder inside that
 config home.
 
 ## Harvest
 
-Copilot's session store is SQLite, so there is no native memory to harvest. Anything worth
-keeping should be written through the write skill or promoted from an exported session
-with `regesto promote`.
+Copilot's session store is SQLite, so there is no native memory to harvest. Save anything
+worth keeping with the write skill, or promote an exported session with `regesto promote`.

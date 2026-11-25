@@ -73,8 +73,8 @@ python3 -m json.tool ~/.claude/settings.json
 ```
 
 The hook deliberately fails open so a Regesto problem never blocks Claude from starting.
-That also means a broken hook can be silent. `doctor` shows the missing or stale artifact;
-`regesto-context` confirms whether Regesto itself can resolve facts; the final command
+That also means a broken hook can be silent. `doctor` shows the missing or stale artifact.
+`regesto-context` confirms whether Regesto itself can resolve facts. The final command
 checks that Claude's settings file is valid JSON.
 
 Two normal cases are easy to misread as failures:

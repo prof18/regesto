@@ -1,23 +1,25 @@
 # Example facts
 
-An invented project — *aurora*, a small web service — with a realistic controlled
-vocabulary, so a new instance can start populated rather than empty. `regesto init
---examples` copies `facts/` into `knowledge/facts/`.
+These facts describe an invented project, *aurora* (a small web service), with a
+realistic controlled vocabulary, so a new instance can start populated rather than empty.
+`regesto init --examples` copies `facts/` into `knowledge/facts/`.
 
-They exist to show the shape of a good fact, not to be kept. Delete them once you have
-written a few of your own; nothing depends on them.
+The examples show the shape of a good fact and are not meant to be kept. Delete them once
+you have written a few of your own; nothing depends on them.
 
 Between them they demonstrate:
 
-- all four types — `dec-`, `pref-`, `fact-`, `pat-`
-- both scopes — `global`, and `project:aurora`
-- a supersession pair on one `(subject, relation)`: `dec-http-port-8000` retired by
-  `dec-http-port-8080`, the older one kept on disk with its body intact
-- `source: human` alongside agent-written claims, which is the trust boundary lint
-  refuses to cross on its own
-- a `**Why:**` line on every claim, which is what makes a fact worth keeping a year later
+- all four claim types, with the prefixes `dec-`, `pref-`, `fact-`, and `pat-`;
+- both scopes, `global` and `project:aurora`;
+- a supersession pair on one `(subject, relation)`: `dec-http-port-8080` retires
+  `dec-http-port-8000`, and the older file stays on disk with its body intact;
+- `source: human` claims alongside agent-written ones, because lint does not let an
+  agent-written claim cross that trust boundary on its own;
+- a `**Why:**` line on every claim, so a reader a year later can still see the reason
+  behind it.
 
-The vocabulary they establish — `(git-commits, message-style)`, `(ci-runners,
-architecture)`, `(http-server, port)`, `(auth, session-transport)`,
-`(database-migrations, direction)` — is the kind to aim for: narrow enough that a future
-contradicting claim lands on the same pair, broad enough that it is not the whole sentence.
+They establish this vocabulary: `(git-commits, message-style)`, `(ci-runners,
+architecture)`, `(http-server, port)`, `(auth, session-transport)`, and
+`(database-migrations, direction)`. Aim for pairs like these. Each pair is narrow enough
+that a future contradicting claim lands on the same pair, and broad enough that it does
+not repeat the whole sentence.

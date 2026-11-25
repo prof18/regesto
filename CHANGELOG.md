@@ -6,47 +6,62 @@ or publish a version that has no section, so this file cannot fall behind.
 
 ## 0.8.2
 
-**Fact writes and `regesto install` work on filesystems without hard links.** Publishing a
-new fact or rendered skill used a same-directory hard link so a concurrent create could
-never replace an existing file. SMB/CIFS mounts (and some NFS/FAT volumes) reject that
-with "operation not supported", so install and write failed even though ordinary file
-creates worked. Publication still prefers a hard link where the filesystem allows it; when
-links are unsupported it reserves the destination with an exclusive create, then
-renames the complete temporary file over that reservation when the filesystem allows
-it. Some SMB clients reject rename entirely (and a failed rename may delete the
-destination); those fall through to copy+sync into the reservation file descriptor for
-creates, and into the existing file (or a fresh exclusive create) for install updates.
-That copy tier keeps the no-overwrite rule for creates but is not atomic: readers may
-see a partial file, and interrupting mid-copy can leave a stub that later creates refuse
-until removed by hand. Local disks that support hard links behave as before.
+**Fact writes and `regesto install` work on filesystems without hard links.** Regesto
+published a new fact or rendered skill through a same-directory hard link, so a concurrent
+create could never replace an existing file. SMB/CIFS mounts, and some NFS and FAT volumes,
+reject hard links with "operation not supported". On those, install and fact writes failed
+even though ordinary file creates worked.
 
-**The rest of the writes into your knowledge base no longer depend on rename either.**
-Publishing a fact was only half the story: editing one through `regesto lint` or `regesto
-cycle`, writing the manifest during `init` and `upgrade`, adding an integration to
-`config.toml`, saving harvest's per-machine baseline, and recording whether the last
-scheduled pass failed all still ended in a bare rename. On a share whose client rejects
-rename — and deletes the destination when it fails — that did not merely fail, it took the
-file with it, so a field update could lose the fact it was editing. They all publish
-through the same fallback now. Where that fallback replaces an executable, such as a
-`bin/` command or the engine copy in your knowledge base, it never writes into the old
-file: a binary or shell script that is running at that moment would be corrupted, so the
-old name is removed and the new content published as a fresh file instead.
+Publication now tries each of these in turn:
 
-**The steps that move a file rather than publish one now work there too.** Resolving a
-sync conflict, moving a fact out of an alias project directory, and archiving a capture the
-normalizer has processed relocate a file that already exists, between directories, so
-they could not use the same fallback. They now try rename first and, where it is
-rejected, copy the file into its new directory under an exclusive create and then remove
-the original — undoing the copy if the original survives, so one fact is never left living
-under two paths, and an archive name another writer holds is refused rather than
-overwritten. When a newer conflict copy wins, the displaced content is now archived as a
-copy before the winner is published over it, so the fact is never missing from its own
-path, even if the step fails halfway. Two such copies of one fact in a single pass used to
-give their displaced versions the same archive name, and the second overwrote the first;
-each now gets a name of its own. A scope move that cannot complete also puts the fact
-back exactly as it was found: left rewritten but unmoved, it was a lint error
-no repair retried, and `regesto cycle` aborts on any lint error, so one failed move could
-stop every later pass until someone moved the file by hand.
+1. Regesto makes a hard link, as before, where the filesystem supports one.
+2. Otherwise it reserves the destination with an exclusive create, then renames the finished
+   temporary file over that reservation.
+3. If the client rejects rename as well, Regesto copies the file instead. Some SMB clients do
+   reject rename, and a failed rename can delete the destination. A new file is copied into
+   the reserved file. An install update is copied into the existing file, or into a fresh
+   exclusive create.
+
+When it creates a file, the copy still never overwrites another writer's file, but it is
+not atomic. Readers can see a partial file, and an interrupted copy can leave a stub that
+later creates refuse until you delete it. Local disks that support hard links behave as before.
+
+**Every other write into your knowledge base stops depending on rename.** These steps all
+ended in a bare rename:
+
+- editing a fact through `regesto lint` or `regesto cycle`
+- writing the manifest during `init` and `upgrade`
+- adding an integration to `config.toml`
+- saving harvest's per-machine baseline
+- recording whether the last scheduled pass failed
+
+On a share whose client rejects rename and deletes the destination when it fails, each of
+these could lose the file it was writing. A field update could lose the fact it was editing.
+They all use the same fallback now.
+
+When the fallback replaces an executable, such as a `bin/` command or the engine copy in your
+knowledge base, it never writes into the old file. Rewriting a running binary or shell script
+in place would corrupt it, so Regesto removes the old name and publishes the new content as a
+fresh file.
+
+**Moving a file between directories works on those shares too.** Three steps move an existing
+file: resolving a sync conflict, moving a fact out of an alias project directory, and
+archiving a capture the normalizer has processed. They now try rename first. If the share
+rejects it, they copy the file into its new directory with an exclusive create and then
+remove the original. If the original cannot be removed, they delete the copy again, so one
+fact never lives under two paths. An archive name that another writer already holds is
+refused, and nothing overwrites it.
+
+Three related fixes came with this:
+
+- When a newer conflict copy wins, lint now archives a copy of the displaced content before
+  it publishes the winner. The fact stays at its own path even if the step fails halfway.
+- Two conflict copies of the same fact in one pass used to get the same archive name, and the
+  second overwrote the first. Each now gets its own name.
+- A scope move that cannot finish now puts the fact back byte for byte. Before, the fact was
+  left rewritten but unmoved, a lint error that no repair retried. `regesto cycle` aborts on
+  any lint error, so one failed move stopped every later pass until someone moved the file by
+  hand.
 
 ## 0.8.1
 
