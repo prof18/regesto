@@ -125,14 +125,16 @@ func Apply(plan *Plan) (Result, error) {
 				return result, err
 			}
 		case "skill-render":
-			// Backup on update too: on rename-rejecting shares a failed
+			// Back up on update too: on rename-rejecting shares a failed
 			// renameat can delete the target, and skill-render is the ordinary
-			// re-install path.
-			if err := applyFile(*item, item.Action == "update", &result); err != nil {
+			// re-install path. The copy is generated, so the backup only has to
+			// outlive the write; left in the skill folder, the next plan would
+			// prune it as a stale file.
+			if err := applyFile(*item, item.Action == "update", true, &result); err != nil {
 				return result, err
 			}
 		case "instructions", "hook":
-			if err := applyFile(*item, item.Action == "update", &result); err != nil {
+			if err := applyFile(*item, item.Action == "update", false, &result); err != nil {
 				return result, err
 			}
 		default:
@@ -236,7 +238,7 @@ func applyLink(item Item) error {
 	return root.Symlink(item.linkTarget, name)
 }
 
-func applyFile(item Item, withBackup bool, result *Result) error {
+func applyFile(item Item, withBackup, dropBackupOnSuccess bool, result *Result) error {
 	if err := verifyItemOwnership(item); err != nil {
 		return err
 	}
@@ -248,12 +250,15 @@ func applyFile(item Item, withBackup bool, result *Result) error {
 	if err := verifyRootBefore(root, name, item); err != nil {
 		return err
 	}
+	backupName := ""
 	if withBackup {
-		backupName, err := backupRoot(root, name, item.before, item.mode)
+		backupName, err = backupRoot(root, name, item.before, item.mode)
 		if err != nil {
 			return err
 		}
-		result.Backups = append(result.Backups, filepath.Join(filepath.Dir(item.CanonicalTarget), backupName))
+		if !dropBackupOnSuccess {
+			result.Backups = append(result.Backups, filepath.Join(filepath.Dir(item.CanonicalTarget), backupName))
+		}
 	}
 	tmp, tmpName, err := createRootTemp(root, ".regesto-install-")
 	if err != nil {
@@ -288,7 +293,18 @@ func applyFile(item Item, withBackup bool, result *Result) error {
 		// Removing the temporary name leaves the published file live.
 		return fsutil.PublishExclusive(root, tmpName, name)
 	}
-	return fsutil.PublishReplace(root, tmpName, name)
+	if err := fsutil.PublishReplace(root, tmpName, name); err != nil {
+		if backupName != "" && dropBackupOnSuccess {
+			result.Backups = append(result.Backups, filepath.Join(filepath.Dir(item.CanonicalTarget), backupName))
+		}
+		return err
+	}
+	if backupName != "" && dropBackupOnSuccess {
+		if err := root.Remove(backupName); err != nil {
+			result.Backups = append(result.Backups, filepath.Join(filepath.Dir(item.CanonicalTarget), backupName))
+		}
+	}
+	return nil
 }
 
 func verifyItemOwnership(item Item) error {

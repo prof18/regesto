@@ -4,6 +4,15 @@ What changed, for the people using it. Each release's section is what the releas
 publishes as its notes — the local release scripts read it from here and refuse to prepare
 or publish a version that has no section, so this file cannot fall behind.
 
+## 0.8.3
+
+**`regesto upgrade` no longer leaves backups inside the skill folders.** Since 0.8.2, updating
+a skill copy saved a `SKILL.md.regesto-backup.<timestamp>` file next to it. The next upgrade
+then removed that file as stale, so `regesto upgrade --dry-run` never came back clean.
+Regesto still makes the backup while it writes the new copy, and now deletes it once the
+write has finished. Backups of your own files, such as `AGENTS.md` and hook configs, are
+kept as before. The next upgrade removes any backups that 0.8.2 left behind.
+
 ## 0.8.2
 
 **Fact writes and `regesto install` work on filesystems without hard links.** Regesto

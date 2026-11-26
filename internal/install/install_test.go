@@ -482,6 +482,42 @@ func TestStaleFileInsideShippedSkillPrunesInOneInstall(t *testing.T) {
 	}
 }
 
+func TestUpdatedRenderedSkillLeavesNoBackupBehind(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := loadTestConfig(t, root, "integrations = [\"claude\"]\n")
+	initial, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Apply(initial); err != nil {
+		t.Fatal(err)
+	}
+	skillDir := filepath.Join(root, ".state", "integrations", "claude", "skills", "regesto-search")
+	writeTestFile(t, filepath.Join(skillDir, "SKILL.md"), "an older engine's copy\n")
+	plan, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Apply(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Backups) != 0 {
+		t.Fatalf("rendered skill update reported backups: %v", result.Backups)
+	}
+	if matches, _ := filepath.Glob(filepath.Join(skillDir, "*.regesto-backup.*")); len(matches) != 0 {
+		t.Fatalf("backup left inside the rendered skill: %v", matches)
+	}
+	second, err := Build(cfg, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Changes() != 0 {
+		t.Fatalf("second plan has %d changes", second.Changes())
+	}
+}
+
 func TestStaleGeneratedFileChangeAfterPlanIsRefused(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
